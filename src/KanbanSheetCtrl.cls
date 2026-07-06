@@ -254,10 +254,29 @@ Public Sub Setup(ws As Worksheet)
     m_BoardNames.Add "btn_check"
     m_BoardNames.Add "btn_reset"
 
+    ' 行の表示・非表示切替（設定ブロックの開閉）でセルに連動して図形が
+    ' ズレたりサイズが変わったりしないよう、セルに依存しない配置に固定する
+    FreezePlacement m_BoardNames
+    FreezePlacement m_SummaryNames
+
     ToggleVisibility m_BoardNames, False
     ToggleVisibility m_SummaryNames, True
+
+    ' 設定ブロックの行を非表示にすると B11 の位置がずれる可能性があるため、
+    ' 非表示にした後に基準位置を測り直してから簡易表示を再配置する
     ToggleSettingsRows False
+    m_BaseTop = m_Ws.Range("B11").Top
+    LayoutSummary
     LoadSummary
+End Sub
+
+Private Sub FreezePlacement(names As Collection)
+    Dim nm As Variant
+    For Each nm In names
+        On Error Resume Next
+        m_Ws.Shapes(CStr(nm)).Placement = xlFreeFloating
+        On Error GoTo 0
+    Next nm
 End Sub
 
 Private Sub ToggleVisibility(names As Collection, vis As Boolean)
@@ -482,17 +501,35 @@ NoSheet:
 End Sub
 
 Private Sub ShowFullBoard()
+    ' 設定ブロックの行を表示すると B11 の位置が下にずれるため、
+    ' 行の表示切替後に基準位置を測り直してから再配置する
+    ToggleSettingsRows True
+    m_BaseTop = m_Ws.Range("B11").Top
+    LayoutBoard
     ToggleVisibility m_SummaryNames, False
     ToggleVisibility m_BoardNames, True
-    ToggleSettingsRows True
     LoadFromExcel
 End Sub
 
 Private Sub ShowSummaryView()
+    ToggleSettingsRows False
+    m_BaseTop = m_Ws.Range("B11").Top
+    LayoutSummary
     ToggleVisibility m_BoardNames, False
     ToggleVisibility m_SummaryNames, True
-    ToggleSettingsRows False
     LoadSummary
+End Sub
+
+Private Sub LayoutSummary()
+    Dim hdrW(2) As Single
+    hdrW(0) = 220: hdrW(1) = 90: hdrW(2) = 90
+    Dim hx As Single: hx = m_BaseLeft
+    Dim i As Integer
+    For i = 0 To 2
+        SetRect "kb_sumhdr" & i, hx, m_BaseTop, hdrW(i), 24
+        hx = hx + hdrW(i)
+    Next i
+    SetRect "kb_sumlist", m_BaseLeft, m_BaseTop + 24, 400, 200
 End Sub
 
 Private Sub ClearExisting()
