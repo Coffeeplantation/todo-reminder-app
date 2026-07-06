@@ -180,7 +180,7 @@ Private Sub AddTask(ci As Integer)
     Dim n As String
     n = InputBox("タスク名:", "タスク追加（" & ColName(ci) & "）")
     If n = "" Then Exit Sub
-    Dim a As String : a = InputBox("担当者名（名簿リストと一致）:", "タスク追加")
+    Dim a As String : a = InputBox("担当者名（名簿シートと一致）:", "タスク追加")
     Dim d As String : d = InputBox("期日（yyyy/mm/dd）:", "タスク追加", Format(Date + 7, "yyyy/mm/dd"))
     Dim r As String : r = InputBox("リマインド日数前:", "タスク追加", "3")
     Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
@@ -206,7 +206,7 @@ End Sub
 Private Sub LoadFromExcel()
     Dim ws As Worksheet
     On Error GoTo NoSheet
-    Set ws = ThisWorkbook.Sheets("Todo表")
+    Set ws = ThisWorkbook.Sheets("タスクリスト")
     On Error GoTo 0
     Dim i As Integer
     For i = 0 To 2 : m_Lists(i).Clear : Next i
@@ -232,13 +232,13 @@ Private Sub LoadFromExcel()
     Next r
     Exit Sub
 NoSheet:
-    MsgBox "Todo表シートが見つかりません。", vbCritical
+    MsgBox "タスクリストシートが見つかりません。", vbCritical
 End Sub
 
 Private Sub SaveToExcel()
     Dim ws As Worksheet
     On Error GoTo NoSheet
-    Set ws = ThisWorkbook.Sheets("Todo表")
+    Set ws = ThisWorkbook.Sheets("タスクリスト")
     On Error GoTo 0
     Dim lr As Long
     lr = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
@@ -264,7 +264,7 @@ Private Sub SaveToExcel()
     MsgBox rn - 2 & " 件のタスクを保存しました。", vbInformation, "保存完了"
     Exit Sub
 NoSheet:
-    MsgBox "Todo表シートが見つかりません。", vbCritical
+    MsgBox "タスクリストシートが見つかりません。", vbCritical
 End Sub
 
 Private Sub ResetHeaders()

@@ -4,13 +4,14 @@ Option Explicit
 ' ============================================================
 '  Todoリマインダー VBAモジュール
 '  初回セットアップ: Alt+F8 -> SetupButtons を実行
+'  シート構成: todoリスト（設定） / タスクリスト / 名簿
 ' ============================================================
 
 ' ---- 初回セットアップ：シートにボタンを追加 ----
 Sub SetupButtons()
     Dim ws As Worksheet
     Dim shp As Shape
-    Set ws = ThisWorkbook.Sheets("Todo表")
+    Set ws = ThisWorkbook.Sheets("todoリスト")
 
     ' 既存ボタン削除
     Dim s As Shape
@@ -44,6 +45,7 @@ End Sub
 
 ' ---- メイン：リマインダーチェック＆Outlook送信 ----
 Sub CheckAndSendReminders()
+    Dim wsMain As Worksheet
     Dim wsTodo As Worksheet
     Dim wsContacts As Worksheet
     Dim lastRow As Long
@@ -51,6 +53,9 @@ Sub CheckAndSendReminders()
     Dim today As Date
     Dim dueDate As Date
     Dim reminderDays As Long
+    Dim defaultReminderDays As Long
+    Dim autoMailOn As Boolean
+    Dim signature As String
     Dim assigneeName As String
     Dim taskName As String
     Dim statusVal As String
@@ -65,9 +70,17 @@ Sub CheckAndSendReminders()
     skipCount = 0
 
     On Error GoTo SheetError
-    Set wsTodo = ThisWorkbook.Sheets("Todo表")
-    Set wsContacts = ThisWorkbook.Sheets("名簿リスト")
+    Set wsMain = ThisWorkbook.Sheets("todoリスト")
+    Set wsTodo = ThisWorkbook.Sheets("タスクリスト")
+    Set wsContacts = ThisWorkbook.Sheets("名簿")
     On Error GoTo 0
+
+    ' ---- todoリスト（設定シート）の設定を読み込み ----
+    autoMailOn = (Trim(wsMain.Range("C8").Value) <> "OFF")
+    defaultReminderDays = wsMain.Range("C4").Value
+    If defaultReminderDays <= 0 Then defaultReminderDays = 3
+    signature = wsMain.Range("C5").Value
+    If signature = "" Then signature = "Todoリマインダーシステム"
 
     lastRow = wsTodo.Cells(wsTodo.Rows.Count, "A").End(xlUp).Row
 
@@ -94,7 +107,7 @@ Sub CheckAndSendReminders()
         On Error GoTo 0
 
         reminderDays = wsTodo.Cells(i, 5).Value     ' E: リマインド日数前
-        If reminderDays <= 0 Then reminderDays = 3  ' デフォルト3日前
+        If reminderDays <= 0 Then reminderDays = defaultReminderDays  ' todoリストの既定値
 
         ' 完了済み・送信済みはスキップ
         If statusVal = "完了" Then GoTo NextRow
@@ -104,7 +117,7 @@ Sub CheckAndSendReminders()
         daysLeft = DateDiff("d", today, dueDate)
 
         If daysLeft < 0 Then
-            ' 期日超過
+            ' 期日超過（自動メール設定に関わらず判定・表示する）
             wsTodo.Cells(i, 7).Value = "期日超過"
             wsTodo.Cells(i, 7).Interior.Color = RGB(255, 99, 71)
         ElseIf daysLeft <= reminderDays Then
@@ -112,7 +125,7 @@ Sub CheckAndSendReminders()
             emailAddr = GetEmailByName(wsContacts, assigneeName)
 
             If emailAddr <> "" Then
-                If SendReminderEmail(emailAddr, assigneeName, taskName, dueDate, daysLeft) Then
+                If SendReminderEmail(autoMailOn, emailAddr, assigneeName, taskName, dueDate, daysLeft, signature) Then
                     wsTodo.Cells(i, 7).Value = "済"
                     wsTodo.Cells(i, 7).Interior.Color = RGB(144, 238, 144)
                     sentCount = sentCount + 1
@@ -130,15 +143,16 @@ NextRow:
     If sentCount > 0 Then
         msg = sentCount & " 件のリマインドメールを送信しました。"
         If skipCount > 0 Then msg = msg & vbCrLf & "（送信済みスキップ: " & skipCount & " 件）"
-        MsgBox msg, vbInformation, "送信完了"
+        If Not autoMailOn Then msg = msg & vbCrLf & "※自動メール送信はOFFのため、実際のメールは送信されていません（表示のみ更新）。"
     Else
-        MsgBox "送信対象のタスクはありませんでした。" & vbCrLf & _
-               "（スキップ済: " & skipCount & " 件）", vbInformation, "チェック完了"
+        msg = "送信対象のタスクはありませんでした。" & vbCrLf & _
+              "（スキップ済: " & skipCount & " 件）"
     End If
+    MsgBox msg, vbInformation, "チェック完了"
     Exit Sub
 
 SheetError:
-    MsgBox "「Todo表」または「名簿リスト」シートが見つかりません。" & vbCrLf & _
+    MsgBox "「todoリスト」「タスクリスト」「名簿」のいずれかのシートが見つかりません。" & vbCrLf & _
            "シート名を確認してください。", vbCritical, "シートエラー"
 End Sub
 
@@ -157,12 +171,19 @@ Function GetEmailByName(ws As Worksheet, personName As String) As String
 End Function
 
 ' ---- Outlook メール送信 ----
-Function SendReminderEmail(emailAddr As String, personName As String, _
-                            taskName As String, dueDate As Date, daysLeft As Long) As Boolean
+Function SendReminderEmail(autoMailOn As Boolean, emailAddr As String, personName As String, _
+                            taskName As String, dueDate As Date, daysLeft As Long, _
+                            signature As String) As Boolean
     Dim outlookApp As Object
     Dim mail As Object
     Dim subject As String
     Dim body As String
+
+    If Not autoMailOn Then
+        ' 自動メール送信OFF：実際の送信は行わず、判定・表示のみ更新する
+        SendReminderEmail = True
+        Exit Function
+    End If
 
     On Error GoTo SendError
 
@@ -186,13 +207,13 @@ Function SendReminderEmail(emailAddr As String, personName As String, _
            "  期　　日：" & Format(dueDate, "yyyy年mm月dd日") & vbCrLf & _
            "  残り日数：" & daysLeft & " 日" & vbCrLf & _
            "━━━━━━━━━━━━━━━━━━━━━━━━" & vbCrLf & vbCrLf & _
-           "このメールはTodoリマインダーシステムより自動送信されています。"
+           "このメールは" & signature & "より自動送信されています。"
 
     With mail
         .To = emailAddr
         .Subject = subject
         .Body = body
-        .Send   ' 直接送信。確認画面を出したい場合は .Display に変更
+        .Display   ' テスト用：ドラフト表示（本番運用時は .Send に戻す）
     End With
 
     SendReminderEmail = True
@@ -222,7 +243,7 @@ Sub ResetSentFlags()
 
     If answer = vbNo Then Exit Sub
 
-    Set wsTodo = ThisWorkbook.Sheets("Todo表")
+    Set wsTodo = ThisWorkbook.Sheets("タスクリスト")
     lastRow = wsTodo.Cells(wsTodo.Rows.Count, "A").End(xlUp).Row
 
     For i = 2 To lastRow
