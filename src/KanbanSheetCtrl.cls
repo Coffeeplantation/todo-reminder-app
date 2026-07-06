@@ -439,18 +439,6 @@ Private Sub BuildSummaryList()
         hx = hx + hdrW(i)
     Next i
 
-    Dim shpSumHint As Shape
-    Set shpSumHint = m_Ws.Shapes.AddShape(msoShapeRectangle, m_BaseLeft, m_BaseTop - 20, 300, 18)
-    shpSumHint.Name = "kb_sumhint"
-    shpSumHint.Fill.Visible = msoFalse
-    shpSumHint.Line.Visible = msoFalse
-    shpSumHint.TextFrame.Characters().Text = "クリックで Kanban ボードを開く"
-    shpSumHint.TextFrame.Characters().Font.Size = 8
-    shpSumHint.TextFrame.Characters().Font.Italic = True
-    shpSumHint.TextFrame.Characters().Font.Color = RGB(120, 120, 120)
-    shpSumHint.TextFrame.HorizontalAlignment = xlHAlignLeft
-    m_SummaryNames.Add shpSumHint.Name
-
     Dim oleSum As OLEObject
     Set oleSum = m_Ws.OLEObjects.Add(ClassType:="Forms.ListBox.1", _
         Left:=m_BaseLeft, Top:=m_BaseTop + 24, Width:=400, Height:=200)
