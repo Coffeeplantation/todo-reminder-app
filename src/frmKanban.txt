@@ -1,0 +1,282 @@
+Option Explicit
+
+Private m_Helpers(20)   As Object
+Private m_HCount        As Integer
+Private m_Lists(2)      As MSForms.ListBox
+Private m_Headers(2)    As MSForms.Label
+Private m_SelCol        As Integer
+Private m_SelIdx        As Integer
+
+Private Sub UserForm_Initialize()
+    Me.Caption = "Kanban ボード"
+    Me.Width = 848
+    Me.Height = 600
+    Me.BackColor = RGB(235, 240, 248)
+
+    m_SelCol = -1 : m_SelIdx = -1 : m_HCount = 0
+
+    Dim titles(2) As String
+    titles(0) = "  未完了"
+    titles(1) = "  進行中"
+    titles(2) = "  完了"
+
+    Dim bgCol(2) As Long
+    bgCol(0) = RGB(68, 114, 196)
+    bgCol(1) = RGB(220, 120, 0)
+    bgCol(2) = RGB(60, 150, 60)
+
+    Dim i As Integer
+    For i = 0 To 2
+        Dim cx As Integer : cx = 12 + i * 274
+
+        Dim lbl As MSForms.Label
+        Set lbl = Me.Controls.Add("Forms.Label.1")
+        With lbl
+            .Caption = titles(i)
+            .Left = cx : .Top = 10 : .Width = 262 : .Height = 28
+            .BackColor = bgCol(i)
+            .ForeColor = RGB(255, 255, 255)
+            .Font.Bold = True : .Font.Size = 10
+        End With
+        Set m_Headers(i) = lbl
+
+        Dim lb As MSForms.ListBox
+        Set lb = Me.Controls.Add("Forms.ListBox.1")
+        With lb
+            .Left = cx : .Top = 44 : .Width = 262 : .Height = 450
+            .Font.Size = 9
+            .BackColor = RGB(252, 254, 255)
+            .ColumnCount = 5
+            .ColumnWidths = "110 pt;75 pt;52 pt;0 pt;0 pt"
+        End With
+        Set m_Lists(i) = lb
+
+        Dim bAdd As MSForms.CommandButton
+        Set bAdd = Me.Controls.Add("Forms.CommandButton.1")
+        With bAdd
+            .Caption = "+ タスク追加"
+            .Name = "btnA" & i
+            .Left = cx : .Top = 502 : .Width = 262 : .Height = 24
+            .BackColor = bgCol(i) : .ForeColor = RGB(255, 255, 255)
+            .Font.Size = 9
+        End With
+        WireBtn bAdd
+
+        Dim hLb As New KanbanHelper
+        Set hLb.lb = lb
+        hLb.colIdx = i
+        Set hLb.formRef = Me
+        Set m_Helpers(m_HCount) = hLb
+        m_HCount = m_HCount + 1
+    Next i
+
+    AddArrow "→", 267, 215, "btnR0"
+    AddArrow "←", 267, 245, "btnL0"
+    AddArrow "→", 541, 215, "btnR1"
+    AddArrow "←", 541, 245, "btnL1"
+
+    Dim bDel As MSForms.CommandButton
+    Set bDel = Me.Controls.Add("Forms.CommandButton.1")
+    With bDel
+        .Caption = "選択を削除"
+        .Name = "btnDel"
+        .Left = 12 : .Top = 536 : .Width = 120 : .Height = 26
+        .BackColor = RGB(180, 0, 0) : .ForeColor = RGB(255, 255, 255)
+        .Font.Size = 9
+    End With
+    WireBtn bDel
+
+    Dim bSync As MSForms.CommandButton
+    Set bSync = Me.Controls.Add("Forms.CommandButton.1")
+    With bSync
+        .Caption = "Excel に保存"
+        .Name = "btnSync"
+        .Left = 596 : .Top = 536 : .Width = 120 : .Height = 26
+        .BackColor = RGB(0, 80, 160) : .ForeColor = RGB(255, 255, 255)
+        .Font.Bold = True : .Font.Size = 9
+    End With
+    WireBtn bSync
+
+    Dim bClose As MSForms.CommandButton
+    Set bClose = Me.Controls.Add("Forms.CommandButton.1")
+    With bClose
+        .Caption = "閉じる"
+        .Name = "btnClose"
+        .Left = 724 : .Top = 536 : .Width = 110 : .Height = 26
+        .Font.Size = 9
+    End With
+    WireBtn bClose
+
+    LoadFromExcel
+End Sub
+
+Private Sub AddArrow(cap As String, x As Integer, y As Integer, nm As String)
+    Dim b As MSForms.CommandButton
+    Set b = Me.Controls.Add("Forms.CommandButton.1")
+    With b
+        .Caption = cap
+        .Name = nm
+        .Left = x : .Top = y : .Width = 20 : .Height = 22
+        .Font.Bold = True : .Font.Size = 9
+    End With
+    WireBtn b
+End Sub
+
+Private Sub WireBtn(b As MSForms.CommandButton)
+    Dim h As New KanbanHelper
+    Set h.btn = b
+    Set h.formRef = Me
+    Set m_Helpers(m_HCount) = h
+    m_HCount = m_HCount + 1
+End Sub
+
+Public Sub OnListClick(ci As Integer)
+    m_SelCol = ci
+    m_SelIdx = m_Lists(ci).ListIndex
+    Dim i As Integer
+    Dim c(2) As Long
+    c(0) = RGB(68, 114, 196) : c(1) = RGB(220, 120, 0) : c(2) = RGB(60, 150, 60)
+    For i = 0 To 2
+        m_Headers(i).BackColor = c(i)
+    Next i
+    m_Headers(ci).BackColor = RGB(20, 20, 20)
+End Sub
+
+Public Sub OnBtnClick(nm As String)
+    Select Case nm
+        Case "btnA0": AddTask 0
+        Case "btnA1": AddTask 1
+        Case "btnA2": AddTask 2
+        Case "btnR0": MoveTask 0, 1
+        Case "btnL0": MoveTask 1, 0
+        Case "btnR1": MoveTask 1, 2
+        Case "btnL1": MoveTask 2, 1
+        Case "btnDel":   DelTask
+        Case "btnSync":  SaveToExcel
+        Case "btnClose": Me.Hide
+    End Select
+End Sub
+
+Private Sub MoveTask(fr As Integer, to_ As Integer)
+    If m_SelCol <> fr Or m_SelIdx < 0 Then
+        MsgBox "移動元（" & ColName(fr) & "）のタスクを選択してください。", vbInformation
+        Exit Sub
+    End If
+    Dim src As MSForms.ListBox : Set src = m_Lists(fr)
+    If src.ListIndex < 0 Then Exit Sub
+    Dim dst As MSForms.ListBox : Set dst = m_Lists(to_)
+    dst.AddItem src.List(src.ListIndex, 0)
+    Dim nr As Integer : nr = dst.ListCount - 1
+    Dim c As Integer
+    For c = 1 To 4
+        dst.List(nr, c) = src.List(src.ListIndex, c)
+    Next c
+    src.RemoveItem src.ListIndex
+    m_SelCol = -1 : m_SelIdx = -1
+    ResetHeaders
+End Sub
+
+Private Sub AddTask(ci As Integer)
+    Dim n As String
+    n = InputBox("タスク名:", "タスク追加（" & ColName(ci) & "）")
+    If n = "" Then Exit Sub
+    Dim a As String : a = InputBox("担当者名（名簿リストと一致）:", "タスク追加")
+    Dim d As String : d = InputBox("期日（yyyy/mm/dd）:", "タスク追加", Format(Date + 7, "yyyy/mm/dd"))
+    Dim r As String : r = InputBox("リマインド日数前:", "タスク追加", "3")
+    Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+    lb.AddItem n
+    Dim ri As Integer : ri = lb.ListCount - 1
+    lb.List(ri, 1) = a
+    lb.List(ri, 2) = d
+    lb.List(ri, 3) = r
+    lb.List(ri, 4) = "0"
+End Sub
+
+Private Sub DelTask()
+    If m_SelCol < 0 Or m_SelIdx < 0 Then
+        MsgBox "削除するタスクを選択してください。", vbInformation : Exit Sub
+    End If
+    Dim lb As MSForms.ListBox : Set lb = m_Lists(m_SelCol)
+    If lb.ListIndex < 0 Then Exit Sub
+    If MsgBox("「" & lb.List(lb.ListIndex, 0) & "」を削除しますか？", vbYesNo + vbQuestion) = vbNo Then Exit Sub
+    lb.RemoveItem lb.ListIndex
+    m_SelCol = -1 : m_SelIdx = -1
+End Sub
+
+Private Sub LoadFromExcel()
+    Dim ws As Worksheet
+    On Error GoTo NoSheet
+    Set ws = ThisWorkbook.Sheets("Todo表")
+    On Error GoTo 0
+    Dim i As Integer
+    For i = 0 To 2 : m_Lists(i).Clear : Next i
+    Dim lr As Long
+    lr = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    Dim r As Long
+    For r = 2 To lr
+        If ws.Cells(r, 1).Value = "" Then Exit For
+        Dim ci As Integer
+        Select Case ws.Cells(r, 6).Value
+            Case "完了":   ci = 2
+            Case "進行中": ci = 1
+            Case Else:     ci = 0
+        End Select
+        Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+        lb.AddItem CStr(ws.Cells(r, 2).Value)
+        Dim ri As Integer : ri = lb.ListCount - 1
+        lb.List(ri, 1) = CStr(ws.Cells(r, 3).Value)
+        Dim dv As Variant : dv = ws.Cells(r, 4).Value
+        If IsDate(dv) Then lb.List(ri, 2) = Format(CDate(dv), "yy/mm/dd") Else lb.List(ri, 2) = CStr(dv)
+        lb.List(ri, 3) = CStr(ws.Cells(r, 5).Value)
+        lb.List(ri, 4) = CStr(r)
+    Next r
+    Exit Sub
+NoSheet:
+    MsgBox "Todo表シートが見つかりません。", vbCritical
+End Sub
+
+Private Sub SaveToExcel()
+    Dim ws As Worksheet
+    On Error GoTo NoSheet
+    Set ws = ThisWorkbook.Sheets("Todo表")
+    On Error GoTo 0
+    Dim lr As Long
+    lr = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    If lr >= 2 Then ws.Rows("2:" & lr).ClearContents
+    Dim rn As Long : rn = 2
+    Dim sn(2) As String
+    sn(0) = "未完了" : sn(1) = "進行中" : sn(2) = "完了"
+    Dim ci As Integer
+    For ci = 0 To 2
+        Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+        Dim i As Integer
+        For i = 0 To lb.ListCount - 1
+            ws.Cells(rn, 1).Value = rn - 1
+            ws.Cells(rn, 2).Value = lb.List(i, 0)
+            ws.Cells(rn, 3).Value = lb.List(i, 1)
+            ws.Cells(rn, 4).Value = lb.List(i, 2)
+            ws.Cells(rn, 5).Value = lb.List(i, 3)
+            ws.Cells(rn, 6).Value = sn(ci)
+            ws.Cells(rn, 7).Value = ""
+            rn = rn + 1
+        Next i
+    Next ci
+    MsgBox rn - 2 & " 件のタスクを保存しました。", vbInformation, "保存完了"
+    Exit Sub
+NoSheet:
+    MsgBox "Todo表シートが見つかりません。", vbCritical
+End Sub
+
+Private Sub ResetHeaders()
+    m_Headers(0).BackColor = RGB(68, 114, 196)
+    m_Headers(1).BackColor = RGB(220, 120, 0)
+    m_Headers(2).BackColor = RGB(60, 150, 60)
+End Sub
+
+Private Function ColName(i As Integer) As String
+    Select Case i
+        Case 0: ColName = "未完了"
+        Case 1: ColName = "進行中"
+        Case 2: ColName = "完了"
+    End Select
+End Function

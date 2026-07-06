@@ -1,0 +1,11 @@
+# Windows
+Thumbs.db
+desktop.ini
+
+# Excel temp files
+~$*.xlsm
+~$*.xlsx
+*.xlk
+
+# OS
+.DS_Store
