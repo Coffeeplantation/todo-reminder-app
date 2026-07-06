@@ -1,11 +1,23 @@
 Option Explicit
 
-Private m_Helpers(20)   As Object
+Private m_Helpers(60)   As Object
 Private m_HCount        As Integer
 Private m_Lists(2)      As MSForms.ListBox
 Private m_Headers(2)    As MSForms.Label
 Private m_SelCol        As Integer
 Private m_SelIdx        As Integer
+
+Private m_Pills(30)     As MSForms.Label
+Private m_PillCount     As Integer
+Private m_DragAssignee  As String
+Private lblGhost        As MSForms.Label
+
+Private m_DragColIdx    As Integer   ' -1 = not dragging a card
+Private m_DragItemIdx   As Integer
+Private m_DragArmed     As Boolean
+Private m_DragVisible   As Boolean
+Private m_DragStartX    As Single    ' form-space coords at MouseDown
+Private m_DragStartY    As Single
 
 Private Sub UserForm_Initialize()
     Me.Caption = "Kanban ボード"
@@ -14,6 +26,7 @@ Private Sub UserForm_Initialize()
     Me.BackColor = RGB(235, 240, 248)
 
     m_SelCol = -1 : m_SelIdx = -1 : m_HCount = 0
+    m_DragColIdx = -1
 
     Dim titles(2) As String
     titles(0) = "  未完了"
@@ -33,7 +46,7 @@ Private Sub UserForm_Initialize()
         Set lbl = Me.Controls.Add("Forms.Label.1")
         With lbl
             .Caption = titles(i)
-            .Left = cx : .Top = 10 : .Width = 262 : .Height = 28
+            .Left = cx : .Top = 36 : .Width = 262 : .Height = 26
             .BackColor = bgCol(i)
             .ForeColor = RGB(255, 255, 255)
             .Font.Bold = True : .Font.Size = 10
@@ -43,7 +56,7 @@ Private Sub UserForm_Initialize()
         Dim lb As MSForms.ListBox
         Set lb = Me.Controls.Add("Forms.ListBox.1")
         With lb
-            .Left = cx : .Top = 44 : .Width = 262 : .Height = 450
+            .Left = cx : .Top = 70 : .Width = 262 : .Height = 424
             .Font.Size = 9
             .BackColor = RGB(252, 254, 255)
             .ColumnCount = 5
@@ -70,10 +83,10 @@ Private Sub UserForm_Initialize()
         m_HCount = m_HCount + 1
     Next i
 
-    AddArrow "→", 267, 215, "btnR0"
-    AddArrow "←", 267, 245, "btnL0"
-    AddArrow "→", 541, 215, "btnR1"
-    AddArrow "←", 541, 245, "btnL1"
+    AddArrow "→", 267, 241, "btnR0"
+    AddArrow "←", 267, 271, "btnL0"
+    AddArrow "→", 541, 241, "btnR1"
+    AddArrow "←", 541, 271, "btnL1"
 
     Dim bDel As MSForms.CommandButton
     Set bDel = Me.Controls.Add("Forms.CommandButton.1")
@@ -107,7 +120,207 @@ Private Sub UserForm_Initialize()
     End With
     WireBtn bClose
 
+    BuildAssigneePills
     LoadFromExcel
+End Sub
+
+Private Sub BuildAssigneePills()
+    Dim wsC As Worksheet
+    On Error Resume Next
+    Set wsC = ThisWorkbook.Sheets("名簿")
+    On Error GoTo 0
+    If wsC Is Nothing Then Exit Sub
+
+    Dim lblHint As MSForms.Label
+    Set lblHint = Me.Controls.Add("Forms.Label.1")
+    With lblHint
+        .Caption = "担当者をドラッグ→列へドロップで新規タスク追加"
+        .Left = 12 : .Top = 6 : .Width = 230 : .Height = 24
+        .Font.Size = 8 : .Font.Bold = True
+        .ForeColor = RGB(60, 60, 60)
+    End With
+
+    m_PillCount = 0
+    Dim lr As Long, r As Long, px As Integer
+    px = 250
+    lr = wsC.Cells(wsC.Rows.Count, "A").End(xlUp).Row
+    For r = 2 To lr
+        If wsC.Cells(r, 1).Value = "" Then Exit For
+        Dim nm As String : nm = CStr(wsC.Cells(r, 1).Value)
+
+        Dim pill As MSForms.Label
+        Set pill = Me.Controls.Add("Forms.Label.1")
+        With pill
+            .Caption = "  " & nm & "  "
+            .Left = px : .Top = 6 : .Height = 24
+            .Width = 16 + Len(nm) * 7
+            .BackColor = RGB(90, 110, 160)
+            .ForeColor = RGB(255, 255, 255)
+            .Font.Bold = True : .Font.Size = 9
+            .TextAlign = fmTextAlignCenter
+            .SpecialEffect = fmSpecialEffectRaised
+            .MousePointer = fmMousePointerSizeAll
+        End With
+        Set m_Pills(m_PillCount) = pill
+        px = px + pill.Width + 8
+
+        Dim hP As New KanbanHelper
+        Set hP.pillLbl = pill
+        hP.pillIndex = m_PillCount
+        hP.pillName = nm
+        Set hP.formRef = Me
+        Set m_Helpers(m_HCount) = hP
+        m_HCount = m_HCount + 1
+
+        m_PillCount = m_PillCount + 1
+    Next r
+
+    Set lblGhost = Me.Controls.Add("Forms.Label.1")
+    With lblGhost
+        .Visible = False
+        .Height = 24
+        .BackColor = RGB(230, 80, 40)
+        .ForeColor = RGB(255, 255, 255)
+        .Font.Bold = True : .Font.Size = 9
+        .TextAlign = fmTextAlignCenter
+        .SpecialEffect = fmSpecialEffectRaised
+    End With
+    lblGhost.ZOrder 0
+End Sub
+
+Public Sub OnPillMouseDown(idx As Integer, nm As String, x As Single, y As Single)
+    m_DragAssignee = nm
+    Dim pill As MSForms.Label : Set pill = m_Pills(idx)
+    lblGhost.Caption = "→ " & nm
+    lblGhost.Width = 24 + Len(nm) * 8
+    lblGhost.Left = pill.Left + x - lblGhost.Width / 2
+    lblGhost.Top = pill.Top + y - lblGhost.Height / 2
+    lblGhost.Visible = True
+    lblGhost.ZOrder 0
+End Sub
+
+Public Sub OnPillMouseMove(idx As Integer, x As Single, y As Single)
+    If m_DragAssignee = "" Then Exit Sub
+    Dim pill As MSForms.Label : Set pill = m_Pills(idx)
+    lblGhost.Left = pill.Left + x - lblGhost.Width / 2
+    lblGhost.Top = pill.Top + y - lblGhost.Height / 2
+End Sub
+
+Public Sub OnPillMouseUp(idx As Integer, x As Single, y As Single)
+    If m_DragAssignee = "" Then Exit Sub
+    Dim pill As MSForms.Label : Set pill = m_Pills(idx)
+    Dim dropX As Single, dropY As Single
+    dropX = pill.Left + x
+    dropY = pill.Top + y
+
+    Dim ci As Integer, target As Integer
+    target = -1
+    For ci = 0 To 2
+        Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+        If dropX >= lb.Left And dropX <= lb.Left + lb.Width And _
+           dropY >= lb.Top And dropY <= lb.Top + lb.Height Then
+            target = ci
+            Exit For
+        End If
+    Next ci
+
+    Dim assignee As String : assignee = m_DragAssignee
+    lblGhost.Visible = False
+    m_DragAssignee = ""
+
+    If target >= 0 Then QuickAddTask target, assignee
+End Sub
+
+Public Sub OnCardMouseDown(ci As Integer, x As Single, y As Single)
+    Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+    If lb.ListIndex < 0 Then Exit Sub
+    m_DragColIdx = ci
+    m_DragItemIdx = lb.ListIndex
+    m_DragArmed = True
+    m_DragVisible = False
+    m_DragStartX = lb.Left + x
+    m_DragStartY = lb.Top + y
+End Sub
+
+Public Sub OnCardMouseMove(ci As Integer, x As Single, y As Single)
+    If Not m_DragArmed Then Exit Sub
+    Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+    Dim curX As Single, curY As Single
+    curX = lb.Left + x : curY = lb.Top + y
+
+    If Not m_DragVisible Then
+        If Abs(curX - m_DragStartX) < 6 And Abs(curY - m_DragStartY) < 6 Then Exit Sub
+        m_DragVisible = True
+        lblGhost.Caption = "→ " & lb.List(m_DragItemIdx, 0)
+        lblGhost.Width = 24 + Len(CStr(lb.List(m_DragItemIdx, 0))) * 7
+        lblGhost.BackColor = RGB(40, 130, 90)
+        lblGhost.Visible = True
+        lblGhost.ZOrder 0
+    End If
+
+    lblGhost.Left = curX - lblGhost.Width / 2
+    lblGhost.Top = curY - lblGhost.Height / 2
+End Sub
+
+Public Sub OnCardMouseUp(ci As Integer, x As Single, y As Single)
+    If Not m_DragArmed Then Exit Sub
+    Dim wasVisible As Boolean : wasVisible = m_DragVisible
+    Dim srcCol As Integer, srcIdx As Integer
+    srcCol = m_DragColIdx : srcIdx = m_DragItemIdx
+
+    m_DragArmed = False
+    m_DragVisible = False
+    m_DragColIdx = -1
+    lblGhost.Visible = False
+
+    If Not wasVisible Then Exit Sub  ' plain click, not a drag - selection already handled by lb_Click
+
+    Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+    Dim dropX As Single, dropY As Single
+    dropX = lb.Left + x : dropY = lb.Top + y
+
+    Dim target As Integer, t As Integer
+    target = -1
+    For t = 0 To 2
+        Dim tgt As MSForms.ListBox : Set tgt = m_Lists(t)
+        If dropX >= tgt.Left And dropX <= tgt.Left + tgt.Width And _
+           dropY >= tgt.Top And dropY <= tgt.Top + tgt.Height Then
+            target = t
+            Exit For
+        End If
+    Next t
+
+    If target >= 0 And target <> srcCol Then MoveCardTo srcCol, srcIdx, target
+End Sub
+
+Private Sub MoveCardTo(fr As Integer, idxInSrc As Integer, to_ As Integer)
+    Dim src As MSForms.ListBox : Set src = m_Lists(fr)
+    If idxInSrc < 0 Or idxInSrc >= src.ListCount Then Exit Sub
+    Dim dst As MSForms.ListBox : Set dst = m_Lists(to_)
+    dst.AddItem src.List(idxInSrc, 0)
+    Dim nr As Integer : nr = dst.ListCount - 1
+    Dim c As Integer
+    For c = 1 To 4
+        dst.List(nr, c) = src.List(idxInSrc, c)
+    Next c
+    src.RemoveItem idxInSrc
+    m_SelCol = -1 : m_SelIdx = -1
+    ResetHeaders
+End Sub
+
+Private Sub QuickAddTask(ci As Integer, assignee As String)
+    Dim n As String
+    n = InputBox("タスク名:", "クイック追加（担当：" & assignee & " / " & ColName(ci) & "）")
+    If n = "" Then Exit Sub
+    Dim d As String : d = InputBox("期日（yyyy/mm/dd）:", "クイック追加", Format(Date + 7, "yyyy/mm/dd"))
+    Dim r As String : r = InputBox("リマインド日数前:", "クイック追加", "3")
+    Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+    lb.AddItem n
+    Dim ri As Integer : ri = lb.ListCount - 1
+    lb.List(ri, 1) = assignee
+    lb.List(ri, 2) = d
+    lb.List(ri, 3) = r
+    lb.List(ri, 4) = "0"
 End Sub
 
 Private Sub AddArrow(cap As String, x As Integer, y As Integer, nm As String)

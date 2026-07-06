@@ -13,11 +13,28 @@ Sub SetupButtons()
     Dim shp As Shape
     Set ws = ThisWorkbook.Sheets("todoリスト")
 
-    ' 既存ボタン削除
+    ' 既存ボタン・ブロック削除
     Dim s As Shape
     For Each s In ws.Shapes
-        If s.Name = "btn_check" Or s.Name = "btn_reset" Then s.Delete
+        If s.Name = "btn_check" Or s.Name = "btn_reset" Or s.Name = "btn_kanban" _
+           Or s.Name = "shp_settings_block" Then s.Delete
     Next s
+
+    ' 設定項目（B4:C8）を角丸四角形の枠でひとまとまりに
+    Dim rngBlock As Range
+    Set rngBlock = ws.Range("B4:C8")
+
+    Dim shpBlock As Shape
+    Set shpBlock = ws.Shapes.AddShape(msoShapeRoundedRectangle, _
+        rngBlock.Left - 6, rngBlock.Top - 6, rngBlock.Width + 12, rngBlock.Height + 12)
+    shpBlock.Name = "shp_settings_block"
+    shpBlock.Fill.Visible = msoFalse
+    shpBlock.Line.ForeColor.RGB = RGB(43, 63, 99)
+    shpBlock.Line.Weight = 1.75
+    shpBlock.Shadow.Visible = False
+    shpBlock.TextFrame.Characters().Text = ""
+    shpBlock.Placement = xlMove
+    shpBlock.ZOrder msoSendToBack
 
     ' チェックボタン（青）
     Set shp = ws.Shapes.AddShape(msoShapeRoundedRectangle, 680, 5, 155, 24)
@@ -40,7 +57,23 @@ Sub SetupButtons()
     shp.Line.Visible = False
     shp.OnAction = "ResetSentFlags"
 
+    ' Kanban ボタン（紫）
+    Set shp = ws.Shapes.AddShape(msoShapeRoundedRectangle, 680, 60, 155, 24)
+    shp.Name = "btn_kanban"
+    shp.TextFrame.Characters().Text = "Kanban ボードを開く"
+    shp.TextFrame.Characters().Font.Bold = True
+    shp.TextFrame.Characters().Font.Size = 9
+    shp.TextFrame.Characters().Font.Color = RGB(255, 255, 255)
+    shp.Fill.ForeColor.RGB = RGB(120, 80, 160)
+    shp.Line.Visible = False
+    shp.OnAction = "ShowKanban"
+
     MsgBox "セットアップ完了！ボタンが追加されました。", vbInformation, "セットアップ完了"
+End Sub
+
+' ---- Kanban ボードを表示 ----
+Sub ShowKanban()
+    frmKanban.Show
 End Sub
 
 ' ---- メイン：リマインダーチェック＆Outlook送信 ----
