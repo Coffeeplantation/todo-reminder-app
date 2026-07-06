@@ -160,8 +160,15 @@ Public Sub Setup(ws As Worksheet)
     BuildSummaryList
     LoadFromExcel
 
+    ' 設定ブロック（既定のリマインド日数前 等）とリマインド関連の2ボタンも
+    ' フルボードと一緒に開閉する対象に含める
+    m_BoardNames.Add "shp_settings_block"
+    m_BoardNames.Add "btn_check"
+    m_BoardNames.Add "btn_reset"
+
     ToggleVisibility m_BoardNames, False
     ToggleVisibility m_SummaryNames, True
+    ToggleSettingsRows False
     LoadSummary
 End Sub
 
@@ -172,6 +179,10 @@ Private Sub ToggleVisibility(names As Collection, vis As Boolean)
         m_Ws.Shapes(CStr(nm)).Visible = vis
         On Error GoTo 0
     Next nm
+End Sub
+
+Private Sub ToggleSettingsRows(vis As Boolean)
+    m_Ws.Rows("4:8").Hidden = Not vis
 End Sub
 
 Private Sub BuildSummaryList()
@@ -248,12 +259,14 @@ End Sub
 Private Sub ShowFullBoard()
     ToggleVisibility m_SummaryNames, False
     ToggleVisibility m_BoardNames, True
+    ToggleSettingsRows True
     LoadFromExcel
 End Sub
 
 Private Sub ShowSummaryView()
     ToggleVisibility m_BoardNames, False
     ToggleVisibility m_SummaryNames, True
+    ToggleSettingsRows False
     LoadSummary
 End Sub
 
