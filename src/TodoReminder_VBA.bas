@@ -7,13 +7,15 @@ Option Explicit
 '  シート構成: todoリスト（設定） / タスクリスト / 名簿
 ' ============================================================
 
+Public gKanban As KanbanSheetCtrl
+
 ' ---- 初回セットアップ：シートにボタンを追加 ----
 Sub SetupButtons()
     Dim ws As Worksheet
     Dim shp As Shape
     Set ws = ThisWorkbook.Sheets("todoリスト")
 
-    ' 既存ボタン・ブロック削除
+    ' 既存ボタン・ブロック削除（廃止した btn_kanban も含む）
     Dim s As Shape
     For Each s In ws.Shapes
         If s.Name = "btn_check" Or s.Name = "btn_reset" Or s.Name = "btn_kanban" _
@@ -57,23 +59,16 @@ Sub SetupButtons()
     shp.Line.Visible = False
     shp.OnAction = "ResetSentFlags"
 
-    ' Kanban ボタン（紫）
-    Set shp = ws.Shapes.AddShape(msoShapeRoundedRectangle, 680, 60, 155, 24)
-    shp.Name = "btn_kanban"
-    shp.TextFrame.Characters().Text = "Kanban ボードを開く"
-    shp.TextFrame.Characters().Font.Bold = True
-    shp.TextFrame.Characters().Font.Size = 9
-    shp.TextFrame.Characters().Font.Color = RGB(255, 255, 255)
-    shp.Fill.ForeColor.RGB = RGB(120, 80, 160)
-    shp.Line.Visible = False
-    shp.OnAction = "ShowKanban"
+    ' Kanban ボード（シート内埋め込み）をセットアップ
+    SetupKanbanSheet
 
-    MsgBox "セットアップ完了！ボタンが追加されました。", vbInformation, "セットアップ完了"
+    MsgBox "セットアップ完了！ボタンと Kanban ボードが追加されました。", vbInformation, "セットアップ完了"
 End Sub
 
-' ---- Kanban ボードを表示 ----
-Sub ShowKanban()
-    frmKanban.Show
+' ---- Kanban ボード（todoリスト シート内埋め込み）をセットアップ／再構築 ----
+Sub SetupKanbanSheet()
+    If gKanban Is Nothing Then Set gKanban = New KanbanSheetCtrl
+    gKanban.Setup ThisWorkbook.Sheets("todoリスト")
 End Sub
 
 ' ---- メイン：リマインダーチェック＆Outlook送信 ----

@@ -1,9 +1,24 @@
+VERSION 1.0 CLASS
+BEGIN
+  MultiUse = -1
+END
+Attribute VB_Name = "KanbanSheetCtrl"
+Attribute VB_GlobalNameSpace = False
+Attribute VB_Creatable = False
+Attribute VB_PredeclaredId = False
+Attribute VB_Exposed = False
 Option Explicit
 
-Private m_Helpers(60)   As Object
+' ============================================================
+'  todoリスト シート上に埋め込む Kanban ボード（ActiveX 版）
+'  frmKanban（廃止）の機能をシート内に移植したもの
+' ============================================================
+
+Private m_Ws            As Worksheet
+Private m_Helpers(80)   As Object
 Private m_HCount        As Integer
 Private m_Lists(2)      As MSForms.ListBox
-Private m_Headers(2)    As MSForms.Label
+Private m_Headers(2)    As Shape
 Private m_SelCol        As Integer
 Private m_SelIdx        As Integer
 
@@ -16,17 +31,23 @@ Private m_DragColIdx    As Integer   ' -1 = not dragging a card
 Private m_DragItemIdx   As Integer
 Private m_DragArmed     As Boolean
 Private m_DragVisible   As Boolean
-Private m_DragStartX    As Single    ' form-space coords at MouseDown
+Private m_DragStartX    As Single
 Private m_DragStartY    As Single
 
-Private Sub UserForm_Initialize()
-    Me.Caption = "Kanban ボード"
-    Me.Width = 848
-    Me.Height = 600
-    Me.BackColor = RGB(235, 240, 248)
+Private m_BaseLeft      As Single
+Private m_BaseTop       As Single
 
-    m_SelCol = -1 : m_SelIdx = -1 : m_HCount = 0
+Public Sub Setup(ws As Worksheet)
+    Set m_Ws = ws
+    m_SelCol = -1: m_SelIdx = -1: m_HCount = 0
     m_DragColIdx = -1
+    m_PillCount = 0
+
+    ClearExisting
+
+    ' 基準位置：設定ブロック（B4:C8）の下
+    m_BaseLeft = ws.Range("B11").Left
+    m_BaseTop = ws.Range("B11").Top
 
     Dim titles(2) As String
     titles(0) = "  未完了"
@@ -40,39 +61,41 @@ Private Sub UserForm_Initialize()
 
     Dim i As Integer
     For i = 0 To 2
-        Dim cx As Integer : cx = 12 + i * 274
+        Dim cx As Single: cx = m_BaseLeft + i * 274
 
-        Dim lbl As MSForms.Label
-        Set lbl = Me.Controls.Add("Forms.Label.1")
-        With lbl
-            .Caption = titles(i)
-            .Left = cx : .Top = 36 : .Width = 262 : .Height = 26
-            .BackColor = bgCol(i)
-            .ForeColor = RGB(255, 255, 255)
-            .Font.Bold = True : .Font.Size = 10
-        End With
-        Set m_Headers(i) = lbl
+        Dim shpH As Shape
+        Set shpH = ws.Shapes.AddShape(msoShapeRectangle, cx, m_BaseTop, 262, 26)
+        shpH.Name = "kb_hdr" & i
+        shpH.TextFrame.Characters().Text = titles(i)
+        shpH.TextFrame.Characters().Font.Bold = True
+        shpH.TextFrame.Characters().Font.Size = 10
+        shpH.TextFrame.Characters().Font.Color = RGB(255, 255, 255)
+        shpH.Fill.ForeColor.RGB = bgCol(i)
+        shpH.Line.Visible = False
+        Set m_Headers(i) = shpH
 
+        Dim oleLb As OLEObject
+        Set oleLb = ws.OLEObjects.Add(ClassType:="Forms.ListBox.1", _
+            Left:=cx, Top:=m_BaseTop + 30, Width:=262, Height:=300)
+        oleLb.Name = "kb_list" & i
         Dim lb As MSForms.ListBox
-        Set lb = Me.Controls.Add("Forms.ListBox.1")
-        With lb
-            .Left = cx : .Top = 70 : .Width = 262 : .Height = 424
-            .Font.Size = 9
-            .BackColor = RGB(252, 254, 255)
-            .ColumnCount = 5
-            .ColumnWidths = "110 pt;75 pt;52 pt;0 pt;0 pt"
-        End With
+        Set lb = oleLb.Object
+        lb.Font.Size = 9
+        lb.BackColor = RGB(252, 254, 255)
+        lb.ColumnCount = 5
+        lb.ColumnWidths = "110 pt;75 pt;52 pt;0 pt;0 pt"
         Set m_Lists(i) = lb
 
+        Dim oleAdd As OLEObject
+        Set oleAdd = ws.OLEObjects.Add(ClassType:="Forms.CommandButton.1", _
+            Left:=cx, Top:=m_BaseTop + 334, Width:=262, Height:=24)
+        oleAdd.Name = "kb_btnA" & i
         Dim bAdd As MSForms.CommandButton
-        Set bAdd = Me.Controls.Add("Forms.CommandButton.1")
-        With bAdd
-            .Caption = "+ タスク追加"
-            .Name = "btnA" & i
-            .Left = cx : .Top = 502 : .Width = 262 : .Height = 24
-            .BackColor = bgCol(i) : .ForeColor = RGB(255, 255, 255)
-            .Font.Size = 9
-        End With
+        Set bAdd = oleAdd.Object
+        bAdd.Caption = "+ タスク追加"
+        bAdd.BackColor = bgCol(i)
+        bAdd.ForeColor = RGB(255, 255, 255)
+        bAdd.Font.Size = 9
         WireBtn bAdd
 
         Dim hLb As New KanbanHelper
@@ -83,45 +106,54 @@ Private Sub UserForm_Initialize()
         m_HCount = m_HCount + 1
     Next i
 
-    AddArrow "→", 267, 241, "btnR0"
-    AddArrow "←", 267, 271, "btnL0"
-    AddArrow "→", 541, 241, "btnR1"
-    AddArrow "←", 541, 271, "btnL1"
+    AddArrow "→", m_BaseLeft + 255, m_BaseTop + 150, "kb_btnR0"
+    AddArrow "←", m_BaseLeft + 255, m_BaseTop + 178, "kb_btnL0"
+    AddArrow "→", m_BaseLeft + 529, m_BaseTop + 150, "kb_btnR1"
+    AddArrow "←", m_BaseLeft + 529, m_BaseTop + 178, "kb_btnL1"
 
+    Dim oleDel As OLEObject
+    Set oleDel = ws.OLEObjects.Add(ClassType:="Forms.CommandButton.1", _
+        Left:=m_BaseLeft, Top:=m_BaseTop + 364, Width:=120, Height:=26)
+    oleDel.Name = "kb_btnDel"
     Dim bDel As MSForms.CommandButton
-    Set bDel = Me.Controls.Add("Forms.CommandButton.1")
-    With bDel
-        .Caption = "選択を削除"
-        .Name = "btnDel"
-        .Left = 12 : .Top = 536 : .Width = 120 : .Height = 26
-        .BackColor = RGB(180, 0, 0) : .ForeColor = RGB(255, 255, 255)
-        .Font.Size = 9
-    End With
+    Set bDel = oleDel.Object
+    bDel.Caption = "選択を削除"
+    bDel.BackColor = RGB(180, 0, 0)
+    bDel.ForeColor = RGB(255, 255, 255)
+    bDel.Font.Size = 9
     WireBtn bDel
 
-    Dim bSync As MSForms.CommandButton
-    Set bSync = Me.Controls.Add("Forms.CommandButton.1")
-    With bSync
-        .Caption = "Excel に保存"
-        .Name = "btnSync"
-        .Left = 596 : .Top = 536 : .Width = 120 : .Height = 26
-        .BackColor = RGB(0, 80, 160) : .ForeColor = RGB(255, 255, 255)
-        .Font.Bold = True : .Font.Size = 9
-    End With
-    WireBtn bSync
-
-    Dim bClose As MSForms.CommandButton
-    Set bClose = Me.Controls.Add("Forms.CommandButton.1")
-    With bClose
-        .Caption = "閉じる"
-        .Name = "btnClose"
-        .Left = 724 : .Top = 536 : .Width = 110 : .Height = 26
-        .Font.Size = 9
-    End With
-    WireBtn bClose
+    Dim oleGhost As OLEObject
+    Set oleGhost = ws.OLEObjects.Add(ClassType:="Forms.Label.1", _
+        Left:=m_BaseLeft, Top:=m_BaseTop, Width:=10, Height:=24)
+    oleGhost.Name = "kb_ghost"
+    Set lblGhost = oleGhost.Object
+    lblGhost.Visible = False
+    lblGhost.Font.Bold = True
+    lblGhost.Font.Size = 9
+    lblGhost.TextAlign = fmTextAlignCenter
+    lblGhost.SpecialEffect = fmSpecialEffectRaised
 
     BuildAssigneePills
     LoadFromExcel
+End Sub
+
+Private Sub ClearExisting()
+    Dim i As Long
+    For i = m_Ws.OLEObjects.Count To 1 Step -1
+        If Left(m_Ws.OLEObjects(i).Name, 3) = "kb_" Then m_Ws.OLEObjects(i).Delete
+    Next i
+
+    Dim toDelete As Collection
+    Set toDelete = New Collection
+    Dim s As Shape
+    For Each s In m_Ws.Shapes
+        If Left(s.Name, 3) = "kb_" Then toDelete.Add s
+    Next s
+    Dim sh As Shape
+    For Each sh In toDelete
+        sh.Delete
+    Next sh
 End Sub
 
 Private Sub BuildAssigneePills()
@@ -131,38 +163,41 @@ Private Sub BuildAssigneePills()
     On Error GoTo 0
     If wsC Is Nothing Then Exit Sub
 
-    Dim lblHint As MSForms.Label
-    Set lblHint = Me.Controls.Add("Forms.Label.1")
-    With lblHint
-        .Caption = "担当者をドラッグ→列へドロップで新規タスク追加"
-        .Left = 12 : .Top = 6 : .Width = 230 : .Height = 24
-        .Font.Size = 8 : .Font.Bold = True
-        .ForeColor = RGB(60, 60, 60)
-    End With
+    Dim shpHint As Shape
+    Set shpHint = m_Ws.Shapes.AddShape(msoShapeRectangle, m_BaseLeft, m_BaseTop - 30, 230, 24)
+    shpHint.Name = "kb_hint"
+    shpHint.Fill.Visible = msoFalse
+    shpHint.Line.Visible = msoFalse
+    shpHint.TextFrame.Characters().Text = "担当者をドラッグ→列へドロップで新規タスク追加"
+    shpHint.TextFrame.Characters().Font.Size = 8
+    shpHint.TextFrame.Characters().Font.Bold = True
+    shpHint.TextFrame.Characters().Font.Color = RGB(60, 60, 60)
+    shpHint.TextFrame.HorizontalAlignment = xlHAlignLeft
 
     m_PillCount = 0
-    Dim lr As Long, r As Long, px As Integer
-    px = 250
+    Dim lr As Long, r As Long, px As Single
+    px = m_BaseLeft + 250
     lr = wsC.Cells(wsC.Rows.Count, "A").End(xlUp).Row
     For r = 2 To lr
         If wsC.Cells(r, 1).Value = "" Then Exit For
-        Dim nm As String : nm = CStr(wsC.Cells(r, 1).Value)
+        Dim nm As String: nm = CStr(wsC.Cells(r, 1).Value)
+        Dim pw As Single: pw = 16 + Len(nm) * 7
 
+        Dim olePill As OLEObject
+        Set olePill = m_Ws.OLEObjects.Add(ClassType:="Forms.Label.1", _
+            Left:=px, Top:=m_BaseTop - 30, Width:=pw, Height:=24)
+        olePill.Name = "kb_pill" & m_PillCount
         Dim pill As MSForms.Label
-        Set pill = Me.Controls.Add("Forms.Label.1")
-        With pill
-            .Caption = "  " & nm & "  "
-            .Left = px : .Top = 6 : .Height = 24
-            .Width = 16 + Len(nm) * 7
-            .BackColor = RGB(90, 110, 160)
-            .ForeColor = RGB(255, 255, 255)
-            .Font.Bold = True : .Font.Size = 9
-            .TextAlign = fmTextAlignCenter
-            .SpecialEffect = fmSpecialEffectRaised
-            .MousePointer = fmMousePointerSizeAll
-        End With
+        Set pill = olePill.Object
+        pill.Caption = "  " & nm & "  "
+        pill.BackColor = RGB(90, 110, 160)
+        pill.ForeColor = RGB(255, 255, 255)
+        pill.Font.Bold = True: pill.Font.Size = 9
+        pill.TextAlign = fmTextAlignCenter
+        pill.SpecialEffect = fmSpecialEffectRaised
+        pill.MousePointer = fmMousePointerSizeAll
         Set m_Pills(m_PillCount) = pill
-        px = px + pill.Width + 8
+        px = px + pw + 8
 
         Dim hP As New KanbanHelper
         Set hP.pillLbl = pill
@@ -174,41 +209,28 @@ Private Sub BuildAssigneePills()
 
         m_PillCount = m_PillCount + 1
     Next r
-
-    Set lblGhost = Me.Controls.Add("Forms.Label.1")
-    With lblGhost
-        .Visible = False
-        .Height = 24
-        .BackColor = RGB(230, 80, 40)
-        .ForeColor = RGB(255, 255, 255)
-        .Font.Bold = True : .Font.Size = 9
-        .TextAlign = fmTextAlignCenter
-        .SpecialEffect = fmSpecialEffectRaised
-    End With
-    lblGhost.ZOrder 0
 End Sub
 
 Public Sub OnPillMouseDown(idx As Integer, nm As String, x As Single, y As Single)
     m_DragAssignee = nm
-    Dim pill As MSForms.Label : Set pill = m_Pills(idx)
+    Dim pill As MSForms.Label: Set pill = m_Pills(idx)
     lblGhost.Caption = "→ " & nm
     lblGhost.Width = 24 + Len(nm) * 8
     lblGhost.Left = pill.Left + x - lblGhost.Width / 2
     lblGhost.Top = pill.Top + y - lblGhost.Height / 2
     lblGhost.Visible = True
-    lblGhost.ZOrder 0
 End Sub
 
 Public Sub OnPillMouseMove(idx As Integer, x As Single, y As Single)
     If m_DragAssignee = "" Then Exit Sub
-    Dim pill As MSForms.Label : Set pill = m_Pills(idx)
+    Dim pill As MSForms.Label: Set pill = m_Pills(idx)
     lblGhost.Left = pill.Left + x - lblGhost.Width / 2
     lblGhost.Top = pill.Top + y - lblGhost.Height / 2
 End Sub
 
 Public Sub OnPillMouseUp(idx As Integer, x As Single, y As Single)
     If m_DragAssignee = "" Then Exit Sub
-    Dim pill As MSForms.Label : Set pill = m_Pills(idx)
+    Dim pill As MSForms.Label: Set pill = m_Pills(idx)
     Dim dropX As Single, dropY As Single
     dropX = pill.Left + x
     dropY = pill.Top + y
@@ -216,7 +238,7 @@ Public Sub OnPillMouseUp(idx As Integer, x As Single, y As Single)
     Dim ci As Integer, target As Integer
     target = -1
     For ci = 0 To 2
-        Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+        Dim lb As MSForms.ListBox: Set lb = m_Lists(ci)
         If dropX >= lb.Left And dropX <= lb.Left + lb.Width And _
            dropY >= lb.Top And dropY <= lb.Top + lb.Height Then
             target = ci
@@ -224,7 +246,7 @@ Public Sub OnPillMouseUp(idx As Integer, x As Single, y As Single)
         End If
     Next ci
 
-    Dim assignee As String : assignee = m_DragAssignee
+    Dim assignee As String: assignee = m_DragAssignee
     lblGhost.Visible = False
     m_DragAssignee = ""
 
@@ -232,7 +254,7 @@ Public Sub OnPillMouseUp(idx As Integer, x As Single, y As Single)
 End Sub
 
 Public Sub OnCardMouseDown(ci As Integer, x As Single, y As Single)
-    Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+    Dim lb As MSForms.ListBox: Set lb = m_Lists(ci)
     If lb.ListIndex < 0 Then Exit Sub
     m_DragColIdx = ci
     m_DragItemIdx = lb.ListIndex
@@ -244,9 +266,9 @@ End Sub
 
 Public Sub OnCardMouseMove(ci As Integer, x As Single, y As Single)
     If Not m_DragArmed Then Exit Sub
-    Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+    Dim lb As MSForms.ListBox: Set lb = m_Lists(ci)
     Dim curX As Single, curY As Single
-    curX = lb.Left + x : curY = lb.Top + y
+    curX = lb.Left + x: curY = lb.Top + y
 
     If Not m_DragVisible Then
         If Abs(curX - m_DragStartX) < 6 And Abs(curY - m_DragStartY) < 6 Then Exit Sub
@@ -255,7 +277,6 @@ Public Sub OnCardMouseMove(ci As Integer, x As Single, y As Single)
         lblGhost.Width = 24 + Len(CStr(lb.List(m_DragItemIdx, 0))) * 7
         lblGhost.BackColor = RGB(40, 130, 90)
         lblGhost.Visible = True
-        lblGhost.ZOrder 0
     End If
 
     lblGhost.Left = curX - lblGhost.Width / 2
@@ -264,25 +285,25 @@ End Sub
 
 Public Sub OnCardMouseUp(ci As Integer, x As Single, y As Single)
     If Not m_DragArmed Then Exit Sub
-    Dim wasVisible As Boolean : wasVisible = m_DragVisible
+    Dim wasVisible As Boolean: wasVisible = m_DragVisible
     Dim srcCol As Integer, srcIdx As Integer
-    srcCol = m_DragColIdx : srcIdx = m_DragItemIdx
+    srcCol = m_DragColIdx: srcIdx = m_DragItemIdx
 
     m_DragArmed = False
     m_DragVisible = False
     m_DragColIdx = -1
     lblGhost.Visible = False
 
-    If Not wasVisible Then Exit Sub  ' plain click, not a drag - selection already handled by lb_Click
+    If Not wasVisible Then Exit Sub  ' plain click, not a drag
 
-    Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+    Dim lb As MSForms.ListBox: Set lb = m_Lists(ci)
     Dim dropX As Single, dropY As Single
-    dropX = lb.Left + x : dropY = lb.Top + y
+    dropX = lb.Left + x: dropY = lb.Top + y
 
     Dim target As Integer, t As Integer
     target = -1
     For t = 0 To 2
-        Dim tgt As MSForms.ListBox : Set tgt = m_Lists(t)
+        Dim tgt As MSForms.ListBox: Set tgt = m_Lists(t)
         If dropX >= tgt.Left And dropX <= tgt.Left + tgt.Width And _
            dropY >= tgt.Top And dropY <= tgt.Top + tgt.Height Then
             target = t
@@ -294,53 +315,35 @@ Public Sub OnCardMouseUp(ci As Integer, x As Single, y As Single)
 End Sub
 
 Private Sub MoveCardTo(fr As Integer, idxInSrc As Integer, to_ As Integer)
-    Dim src As MSForms.ListBox : Set src = m_Lists(fr)
+    Dim src As MSForms.ListBox: Set src = m_Lists(fr)
     If idxInSrc < 0 Or idxInSrc >= src.ListCount Then Exit Sub
-    Dim dst As MSForms.ListBox : Set dst = m_Lists(to_)
+    Dim dst As MSForms.ListBox: Set dst = m_Lists(to_)
     dst.AddItem src.List(idxInSrc, 0)
-    Dim nr As Integer : nr = dst.ListCount - 1
+    Dim nr As Integer: nr = dst.ListCount - 1
     Dim c As Integer
     For c = 1 To 4
         dst.List(nr, c) = src.List(idxInSrc, c)
     Next c
     src.RemoveItem idxInSrc
-    m_SelCol = -1 : m_SelIdx = -1
+    m_SelCol = -1: m_SelIdx = -1
     ResetHeaders
+    SaveToExcel
 End Sub
 
 Private Sub QuickAddTask(ci As Integer, assignee As String)
     Dim n As String
     n = InputBox("タスク名:", "クイック追加（担当：" & assignee & " / " & ColName(ci) & "）")
     If n = "" Then Exit Sub
-    Dim d As String : d = InputBox("期日（yyyy/mm/dd）:", "クイック追加", Format(Date + 7, "yyyy/mm/dd"))
-    Dim r As String : r = InputBox("リマインド日数前:", "クイック追加", "3")
-    Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+    Dim d As String: d = InputBox("期日（yyyy/mm/dd）:", "クイック追加", Format(Date + 7, "yyyy/mm/dd"))
+    Dim r As String: r = InputBox("リマインド日数前:", "クイック追加", "3")
+    Dim lb As MSForms.ListBox: Set lb = m_Lists(ci)
     lb.AddItem n
-    Dim ri As Integer : ri = lb.ListCount - 1
+    Dim ri As Integer: ri = lb.ListCount - 1
     lb.List(ri, 1) = assignee
     lb.List(ri, 2) = d
     lb.List(ri, 3) = r
     lb.List(ri, 4) = "0"
-End Sub
-
-Private Sub AddArrow(cap As String, x As Integer, y As Integer, nm As String)
-    Dim b As MSForms.CommandButton
-    Set b = Me.Controls.Add("Forms.CommandButton.1")
-    With b
-        .Caption = cap
-        .Name = nm
-        .Left = x : .Top = y : .Width = 20 : .Height = 22
-        .Font.Bold = True : .Font.Size = 9
-    End With
-    WireBtn b
-End Sub
-
-Private Sub WireBtn(b As MSForms.CommandButton)
-    Dim h As New KanbanHelper
-    Set h.btn = b
-    Set h.formRef = Me
-    Set m_Helpers(m_HCount) = h
-    m_HCount = m_HCount + 1
+    SaveToExcel
 End Sub
 
 Public Sub OnListClick(ci As Integer)
@@ -348,25 +351,23 @@ Public Sub OnListClick(ci As Integer)
     m_SelIdx = m_Lists(ci).ListIndex
     Dim i As Integer
     Dim c(2) As Long
-    c(0) = RGB(68, 114, 196) : c(1) = RGB(220, 120, 0) : c(2) = RGB(60, 150, 60)
+    c(0) = RGB(68, 114, 196): c(1) = RGB(220, 120, 0): c(2) = RGB(60, 150, 60)
     For i = 0 To 2
-        m_Headers(i).BackColor = c(i)
+        m_Headers(i).Fill.ForeColor.RGB = c(i)
     Next i
-    m_Headers(ci).BackColor = RGB(20, 20, 20)
+    m_Headers(ci).Fill.ForeColor.RGB = RGB(20, 20, 20)
 End Sub
 
 Public Sub OnBtnClick(nm As String)
     Select Case nm
-        Case "btnA0": AddTask 0
-        Case "btnA1": AddTask 1
-        Case "btnA2": AddTask 2
-        Case "btnR0": MoveTask 0, 1
-        Case "btnL0": MoveTask 1, 0
-        Case "btnR1": MoveTask 1, 2
-        Case "btnL1": MoveTask 2, 1
-        Case "btnDel":   DelTask
-        Case "btnSync":  SaveToExcel
-        Case "btnClose": Me.Hide
+        Case "kb_btnA0": AddTask 0
+        Case "kb_btnA1": AddTask 1
+        Case "kb_btnA2": AddTask 2
+        Case "kb_btnR0": MoveTask 0, 1
+        Case "kb_btnL0": MoveTask 1, 0
+        Case "kb_btnR1": MoveTask 1, 2
+        Case "kb_btnL1": MoveTask 2, 1
+        Case "kb_btnDel": DelTask
     End Select
 End Sub
 
@@ -375,18 +376,7 @@ Private Sub MoveTask(fr As Integer, to_ As Integer)
         MsgBox "移動元（" & ColName(fr) & "）のタスクを選択してください。", vbInformation
         Exit Sub
     End If
-    Dim src As MSForms.ListBox : Set src = m_Lists(fr)
-    If src.ListIndex < 0 Then Exit Sub
-    Dim dst As MSForms.ListBox : Set dst = m_Lists(to_)
-    dst.AddItem src.List(src.ListIndex, 0)
-    Dim nr As Integer : nr = dst.ListCount - 1
-    Dim c As Integer
-    For c = 1 To 4
-        dst.List(nr, c) = src.List(src.ListIndex, c)
-    Next c
-    src.RemoveItem src.ListIndex
-    m_SelCol = -1 : m_SelIdx = -1
-    ResetHeaders
+    MoveCardTo fr, m_SelIdx, to_
 End Sub
 
 Private Sub AddTask(ci As Integer)
@@ -396,33 +386,35 @@ Private Sub AddTask(ci As Integer)
     Dim a As String : a = InputBox("担当者名（名簿シートと一致）:", "タスク追加")
     Dim d As String : d = InputBox("期日（yyyy/mm/dd）:", "タスク追加", Format(Date + 7, "yyyy/mm/dd"))
     Dim r As String : r = InputBox("リマインド日数前:", "タスク追加", "3")
-    Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+    Dim lb As MSForms.ListBox: Set lb = m_Lists(ci)
     lb.AddItem n
-    Dim ri As Integer : ri = lb.ListCount - 1
+    Dim ri As Integer: ri = lb.ListCount - 1
     lb.List(ri, 1) = a
     lb.List(ri, 2) = d
     lb.List(ri, 3) = r
     lb.List(ri, 4) = "0"
+    SaveToExcel
 End Sub
 
 Private Sub DelTask()
     If m_SelCol < 0 Or m_SelIdx < 0 Then
-        MsgBox "削除するタスクを選択してください。", vbInformation : Exit Sub
+        MsgBox "削除するタスクを選択してください。", vbInformation: Exit Sub
     End If
-    Dim lb As MSForms.ListBox : Set lb = m_Lists(m_SelCol)
+    Dim lb As MSForms.ListBox: Set lb = m_Lists(m_SelCol)
     If lb.ListIndex < 0 Then Exit Sub
     If MsgBox("「" & lb.List(lb.ListIndex, 0) & "」を削除しますか？", vbYesNo + vbQuestion) = vbNo Then Exit Sub
     lb.RemoveItem lb.ListIndex
-    m_SelCol = -1 : m_SelIdx = -1
+    m_SelCol = -1: m_SelIdx = -1
+    SaveToExcel
 End Sub
 
-Private Sub LoadFromExcel()
+Public Sub LoadFromExcel()
     Dim ws As Worksheet
     On Error GoTo NoSheet
     Set ws = ThisWorkbook.Sheets("タスクリスト")
     On Error GoTo 0
     Dim i As Integer
-    For i = 0 To 2 : m_Lists(i).Clear : Next i
+    For i = 0 To 2: m_Lists(i).Clear: Next i
     Dim lr As Long
     lr = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
     Dim r As Long
@@ -434,11 +426,11 @@ Private Sub LoadFromExcel()
             Case "進行中": ci = 1
             Case Else:     ci = 0
         End Select
-        Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+        Dim lb As MSForms.ListBox: Set lb = m_Lists(ci)
         lb.AddItem CStr(ws.Cells(r, 2).Value)
-        Dim ri As Integer : ri = lb.ListCount - 1
+        Dim ri As Integer: ri = lb.ListCount - 1
         lb.List(ri, 1) = CStr(ws.Cells(r, 3).Value)
-        Dim dv As Variant : dv = ws.Cells(r, 4).Value
+        Dim dv As Variant: dv = ws.Cells(r, 4).Value
         If IsDate(dv) Then lb.List(ri, 2) = Format(CDate(dv), "yy/mm/dd") Else lb.List(ri, 2) = CStr(dv)
         lb.List(ri, 3) = CStr(ws.Cells(r, 5).Value)
         lb.List(ri, 4) = CStr(r)
@@ -461,7 +453,7 @@ Private Sub SaveToExcel()
     sn(0) = "未完了" : sn(1) = "進行中" : sn(2) = "完了"
     Dim ci As Integer
     For ci = 0 To 2
-        Dim lb As MSForms.ListBox : Set lb = m_Lists(ci)
+        Dim lb As MSForms.ListBox: Set lb = m_Lists(ci)
         Dim i As Integer
         For i = 0 To lb.ListCount - 1
             ws.Cells(rn, 1).Value = rn - 1
@@ -474,16 +466,35 @@ Private Sub SaveToExcel()
             rn = rn + 1
         Next i
     Next ci
-    MsgBox rn - 2 & " 件のタスクを保存しました。", vbInformation, "保存完了"
     Exit Sub
 NoSheet:
     MsgBox "タスクリストシートが見つかりません。", vbCritical
 End Sub
 
+Private Sub WireBtn(b As MSForms.CommandButton)
+    Dim h As New KanbanHelper
+    Set h.btn = b
+    Set h.formRef = Me
+    Set m_Helpers(m_HCount) = h
+    m_HCount = m_HCount + 1
+End Sub
+
+Private Sub AddArrow(cap As String, x As Single, y As Single, nm As String)
+    Dim oleB As OLEObject
+    Set oleB = m_Ws.OLEObjects.Add(ClassType:="Forms.CommandButton.1", _
+        Left:=x, Top:=y, Width:=20, Height:=22)
+    oleB.Name = nm
+    Dim b As MSForms.CommandButton
+    Set b = oleB.Object
+    b.Caption = cap
+    b.Font.Bold = True: b.Font.Size = 9
+    WireBtn b
+End Sub
+
 Private Sub ResetHeaders()
-    m_Headers(0).BackColor = RGB(68, 114, 196)
-    m_Headers(1).BackColor = RGB(220, 120, 0)
-    m_Headers(2).BackColor = RGB(60, 150, 60)
+    m_Headers(0).Fill.ForeColor.RGB = RGB(68, 114, 196)
+    m_Headers(1).Fill.ForeColor.RGB = RGB(220, 120, 0)
+    m_Headers(2).Fill.ForeColor.RGB = RGB(60, 150, 60)
 End Sub
 
 Private Function ColName(i As Integer) As String
