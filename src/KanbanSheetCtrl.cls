@@ -444,6 +444,7 @@ Private Sub BuildSummaryList()
 
     Dim hx As Single: hx = m_BaseLeft
     Dim i As Integer
+    Dim hdrNames(2) As String
     For i = 0 To 2
         Dim shpH As Shape
         Set shpH = m_Ws.Shapes.AddShape(msoShapeRectangle, hx, m_BaseTop, hdrW(i), 24)
@@ -454,9 +455,16 @@ Private Sub BuildSummaryList()
         shpH.TextFrame.Characters().Font.Color = RGB(255, 255, 255)
         shpH.Fill.ForeColor.RGB = RGB(43, 63, 99)
         shpH.Line.Visible = False
-        m_SummaryNames.Add shpH.Name
+        hdrNames(i) = shpH.Name
         hx = hx + hdrW(i)
     Next i
+
+    ' タスク名・期日・達成状況の3つの見出しを1つのブロックにまとめ、
+    ' バラバラにドラッグされないようにする
+    Dim hdrGroup As Shape
+    Set hdrGroup = m_Ws.Shapes.Range(hdrNames).Group
+    hdrGroup.Name = "kb_sumhdrgrp"
+    m_SummaryNames.Add hdrGroup.Name
 
     Dim oleSum As OLEObject
     Set oleSum = m_Ws.OLEObjects.Add(ClassType:="Forms.ListBox.1", _
@@ -521,14 +529,7 @@ Private Sub ShowSummaryView()
 End Sub
 
 Private Sub LayoutSummary()
-    Dim hdrW(2) As Single
-    hdrW(0) = 220: hdrW(1) = 90: hdrW(2) = 90
-    Dim hx As Single: hx = m_BaseLeft
-    Dim i As Integer
-    For i = 0 To 2
-        SetRect "kb_sumhdr" & i, hx, m_BaseTop, hdrW(i), 24
-        hx = hx + hdrW(i)
-    Next i
+    SetRect "kb_sumhdrgrp", m_BaseLeft, m_BaseTop, 400, 24
     SetRect "kb_sumlist", m_BaseLeft, m_BaseTop + 24, 400, 200
 End Sub
 
