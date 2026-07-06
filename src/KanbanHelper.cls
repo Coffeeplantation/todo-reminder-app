@@ -9,9 +9,11 @@ Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 Option Explicit
 
-Public WithEvents lb      As MSForms.ListBox
-Public WithEvents btn     As MSForms.CommandButton
-Public WithEvents pillLbl As MSForms.Label
+Public WithEvents lb        As MSForms.ListBox
+Public WithEvents btn       As MSForms.CommandButton
+Public WithEvents pillLbl   As MSForms.Label
+Public WithEvents moveLbl   As MSForms.Label
+Public WithEvents resizeLbl As MSForms.Label
 Public colIdx As Integer
 Public formRef As Object
 Public pillIndex As Integer
@@ -47,4 +49,28 @@ End Sub
 
 Private Sub pillLbl_MouseUp(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
     If Not formRef Is Nothing Then formRef.OnPillMouseUp pillIndex, X, Y
+End Sub
+
+Private Sub moveLbl_MouseDown(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
+    If Not formRef Is Nothing Then formRef.OnMoveMouseDown X, Y
+End Sub
+
+Private Sub moveLbl_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
+    If Not formRef Is Nothing Then formRef.OnMoveMouseMove X, Y
+End Sub
+
+Private Sub moveLbl_MouseUp(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
+    If Not formRef Is Nothing Then formRef.OnMoveMouseUp X, Y
+End Sub
+
+Private Sub resizeLbl_MouseDown(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
+    If Not formRef Is Nothing Then formRef.OnResizeMouseDown X, Y
+End Sub
+
+Private Sub resizeLbl_MouseMove(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
+    If Not formRef Is Nothing Then formRef.OnResizeMouseMove X, Y
+End Sub
+
+Private Sub resizeLbl_MouseUp(ByVal Button As Integer, ByVal Shift As Integer, ByVal X As Single, ByVal Y As Single)
+    If Not formRef Is Nothing Then formRef.OnResizeMouseUp X, Y
 End Sub

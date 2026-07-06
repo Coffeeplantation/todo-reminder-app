@@ -36,16 +36,47 @@ Private m_DragStartY    As Single
 
 Private m_BaseLeft      As Single
 Private m_BaseTop       As Single
+Private m_Scale         As Single       ' フルボードの拡大率（1 = 等倍）
 
 Private m_BoardNames    As Collection   ' フル Kanban ボードを構成する図形名
 Private m_SummaryNames  As Collection   ' 簡易表示（一覧）を構成する図形名
 Private m_SummaryList   As MSForms.ListBox
+
+' ---- フルボードの基準レイアウト定数（scale = 1 のときの値） ----
+Private Const BASE_TITLEBAR_Y As Single = -60
+Private Const BASE_TITLEBAR_H As Single = 24
+Private Const BASE_HINT_Y As Single = -30
+Private Const BASE_COL_W As Single = 262
+Private Const BASE_COL_GAP As Single = 274
+Private Const BASE_HDR_H As Single = 26
+Private Const BASE_LIST_Y As Single = 30
+Private Const BASE_LIST_H As Single = 300
+Private Const BASE_BTNADD_Y As Single = 334
+Private Const BASE_BTNADD_H As Single = 24
+Private Const BASE_ARROW_W As Single = 20
+Private Const BASE_ARROW_H As Single = 22
+Private Const BASE_BOTTOM_Y As Single = 364
+Private Const BASE_BOTTOM_H As Single = 26
+Private Const BASE_RESIZE_SIZE As Single = 16
+
+' ---- 移動／リサイズのドラッグ状態 ----
+Private m_MoveArmed     As Boolean
+Private m_MoveStartX    As Single
+Private m_MoveStartY    As Single
+Private m_MoveOrigLeft  As Single
+Private m_MoveOrigTop   As Single
+
+Private m_ResizeArmed   As Boolean
+Private m_ResizeStartX  As Single
+Private m_ResizeOrigScale As Single
 
 Public Sub Setup(ws As Worksheet)
     Set m_Ws = ws
     m_SelCol = -1: m_SelIdx = -1: m_HCount = 0
     m_DragColIdx = -1
     m_PillCount = 0
+    m_Scale = 1
+    m_MoveArmed = False: m_ResizeArmed = False
     Set m_BoardNames = New Collection
     Set m_SummaryNames = New Collection
 
@@ -156,6 +187,63 @@ Public Sub Setup(ws As Worksheet)
     lblGhost.SpecialEffect = fmSpecialEffectRaised
     m_BoardNames.Add oleGhost.Name
 
+    ' ---- タイトルバー（ドラッグで移動） ----
+    Dim oleTitle As OLEObject
+    Set oleTitle = ws.OLEObjects.Add(ClassType:="Forms.Label.1", _
+        Left:=m_BaseLeft, Top:=m_BaseTop + BASE_TITLEBAR_Y, _
+        Width:=BoardWidth(1), Height:=BASE_TITLEBAR_H)
+    oleTitle.Name = "kb_titlebar"
+    Dim lblTitle As MSForms.Label
+    Set lblTitle = oleTitle.Object
+    lblTitle.Caption = "  ▤ Kanban ボード（ドラッグで移動 / 右下の角でリサイズ）"
+    lblTitle.BackColor = RGB(43, 63, 99)
+    lblTitle.ForeColor = RGB(255, 255, 255)
+    lblTitle.Font.Bold = True
+    lblTitle.Font.Size = 9
+    lblTitle.TextAlign = fmTextAlignLeft
+    lblTitle.MousePointer = fmMousePointerSizeAll
+    m_BoardNames.Add oleTitle.Name
+
+    Dim hTitle As New KanbanHelper
+    Set hTitle.moveLbl = lblTitle
+    Set hTitle.formRef = Me
+    Set m_Helpers(m_HCount) = hTitle
+    m_HCount = m_HCount + 1
+
+    ' ---- リサイズハンドル（右下の角） ----
+    Dim oleResize As OLEObject
+    Set oleResize = ws.OLEObjects.Add(ClassType:="Forms.Label.1", _
+        Left:=m_BaseLeft + BoardWidth(1) - BASE_RESIZE_SIZE, _
+        Top:=m_BaseTop + BASE_BOTTOM_Y + BASE_BOTTOM_H, _
+        Width:=BASE_RESIZE_SIZE, Height:=BASE_RESIZE_SIZE)
+    oleResize.Name = "kb_resize"
+    Dim lblResize As MSForms.Label
+    Set lblResize = oleResize.Object
+    lblResize.Caption = "◢"
+    lblResize.BackColor = RGB(150, 150, 150)
+    lblResize.ForeColor = RGB(255, 255, 255)
+    lblResize.Font.Size = 8
+    lblResize.TextAlign = fmTextAlignCenter
+    lblResize.MousePointer = fmMousePointerSizeNWSE
+    m_BoardNames.Add oleResize.Name
+
+    Dim hResize As New KanbanHelper
+    Set hResize.resizeLbl = lblResize
+    Set hResize.formRef = Me
+    Set m_Helpers(m_HCount) = hResize
+    m_HCount = m_HCount + 1
+
+    ' ---- ドラッグ中の枠プレビュー（通常は非表示） ----
+    Dim shpOutline As Shape
+    Set shpOutline = ws.Shapes.AddShape(msoShapeRectangle, m_BaseLeft, m_BaseTop, 10, 10)
+    shpOutline.Name = "kb_outline"
+    shpOutline.Fill.Visible = msoFalse
+    shpOutline.Line.Visible = msoTrue
+    shpOutline.Line.ForeColor.RGB = RGB(255, 140, 0)
+    shpOutline.Line.Weight = 2
+    shpOutline.Line.DashStyle = msoLineDash
+    shpOutline.Visible = False
+
     BuildAssigneePills
     BuildSummaryList
     LoadFromExcel
@@ -184,6 +272,150 @@ End Sub
 Private Sub ToggleSettingsRows(vis As Boolean)
     m_Ws.Rows("4:8").Hidden = Not vis
 End Sub
+
+Private Function BoardWidth(s As Single) As Single
+    BoardWidth = 2 * BASE_COL_GAP * s + BASE_COL_W * s
+End Function
+
+Private Function BoardHeightTotal(s As Single) As Single
+    BoardHeightTotal = (-BASE_TITLEBAR_Y + BASE_BOTTOM_Y + BASE_BOTTOM_H) * s
+End Function
+
+Private Sub SetRect(nm As String, l As Single, t As Single, w As Single, h As Single)
+    On Error Resume Next
+    Dim sh As Shape
+    Set sh = m_Ws.Shapes(nm)
+    sh.Left = l
+    sh.Top = t
+    sh.Width = w
+    sh.Height = h
+    On Error GoTo 0
+End Sub
+
+' 現在の m_BaseLeft / m_BaseTop / m_Scale に基づき、フルボードの全図形を再配置
+Private Sub LayoutBoard()
+    Dim s As Single: s = m_Scale
+    Dim i As Integer
+    For i = 0 To 2
+        Dim cx As Single: cx = m_BaseLeft + i * BASE_COL_GAP * s
+        SetRect "kb_hdr" & i, cx, m_BaseTop, BASE_COL_W * s, BASE_HDR_H * s
+        SetRect "kb_list" & i, cx, m_BaseTop + BASE_LIST_Y * s, BASE_COL_W * s, BASE_LIST_H * s
+        SetRect "kb_btnA" & i, cx, m_BaseTop + BASE_BTNADD_Y * s, BASE_COL_W * s, BASE_BTNADD_H * s
+    Next i
+
+    SetRect "kb_btnR0", m_BaseLeft + 255 * s, m_BaseTop + 150 * s, BASE_ARROW_W * s, BASE_ARROW_H * s
+    SetRect "kb_btnL0", m_BaseLeft + 255 * s, m_BaseTop + 178 * s, BASE_ARROW_W * s, BASE_ARROW_H * s
+    SetRect "kb_btnR1", m_BaseLeft + 529 * s, m_BaseTop + 150 * s, BASE_ARROW_W * s, BASE_ARROW_H * s
+    SetRect "kb_btnL1", m_BaseLeft + 529 * s, m_BaseTop + 178 * s, BASE_ARROW_W * s, BASE_ARROW_H * s
+
+    SetRect "kb_btnDel", m_BaseLeft, m_BaseTop + BASE_BOTTOM_Y * s, 120 * s, BASE_BOTTOM_H * s
+    SetRect "kb_btnClose", m_BaseLeft + 130 * s, m_BaseTop + BASE_BOTTOM_Y * s, 150 * s, BASE_BOTTOM_H * s
+
+    SetRect "kb_hint", m_BaseLeft, m_BaseTop + BASE_HINT_Y * s, 230 * s, 24 * s
+    SetRect "kb_titlebar", m_BaseLeft, m_BaseTop + BASE_TITLEBAR_Y * s, BoardWidth(s), BASE_TITLEBAR_H * s
+    SetRect "kb_resize", m_BaseLeft + BoardWidth(s) - BASE_RESIZE_SIZE * s, _
+        m_BaseTop + (BASE_BOTTOM_Y + BASE_BOTTOM_H) * s, BASE_RESIZE_SIZE * s, BASE_RESIZE_SIZE * s
+
+    Dim px As Single: px = m_BaseLeft + 250 * s
+    For i = 0 To m_PillCount - 1
+        Dim pillW As Single: pillW = m_Pills(i).Width
+        SetRect "kb_pill" & i, px, m_BaseTop + BASE_HINT_Y * s, pillW, 24 * s
+        px = px + pillW + 8 * s
+    Next i
+
+    RescaleFonts
+End Sub
+
+Private Sub RescaleFonts()
+    Dim fsz As Single: fsz = 9 * m_Scale
+    If fsz < 6 Then fsz = 6
+    If fsz > 16 Then fsz = 16
+    Dim i As Integer
+    For i = 0 To 2
+        m_Lists(i).Font.Size = fsz
+        m_Headers(i).TextFrame.Characters().Font.Size = 10 * m_Scale
+    Next i
+End Sub
+
+Private Sub ShowOutline()
+    m_Ws.Shapes("kb_outline").Visible = True
+End Sub
+
+Private Sub HideOutline()
+    m_Ws.Shapes("kb_outline").Visible = False
+End Sub
+
+Public Sub OnMoveMouseDown(x As Single, y As Single)
+    m_MoveArmed = True
+    Dim tb As Shape: Set tb = m_Ws.Shapes("kb_titlebar")
+    m_MoveStartX = tb.Left + x
+    m_MoveStartY = tb.Top + y
+    m_MoveOrigLeft = m_BaseLeft
+    m_MoveOrigTop = m_BaseTop
+    SetRect "kb_outline", m_BaseLeft, m_BaseTop + BASE_TITLEBAR_Y * m_Scale, BoardWidth(m_Scale), BoardHeightTotal(m_Scale)
+    ShowOutline
+End Sub
+
+Public Sub OnMoveMouseMove(x As Single, y As Single)
+    If Not m_MoveArmed Then Exit Sub
+    Dim tb As Shape: Set tb = m_Ws.Shapes("kb_titlebar")
+    Dim curX As Single, curY As Single
+    curX = tb.Left + x: curY = tb.Top + y
+    Dim dx As Single, dy As Single
+    dx = curX - m_MoveStartX: dy = curY - m_MoveStartY
+    Dim newLeft As Single, newTop As Single
+    newLeft = m_MoveOrigLeft + dx
+    newTop = m_MoveOrigTop + dy
+    SetRect "kb_outline", newLeft, newTop + BASE_TITLEBAR_Y * m_Scale, BoardWidth(m_Scale), BoardHeightTotal(m_Scale)
+End Sub
+
+Public Sub OnMoveMouseUp(x As Single, y As Single)
+    If Not m_MoveArmed Then Exit Sub
+    m_MoveArmed = False
+    Dim tb As Shape: Set tb = m_Ws.Shapes("kb_titlebar")
+    Dim curX As Single, curY As Single
+    curX = tb.Left + x: curY = tb.Top + y
+    Dim dx As Single, dy As Single
+    dx = curX - m_MoveStartX: dy = curY - m_MoveStartY
+    m_BaseLeft = m_MoveOrigLeft + dx
+    m_BaseTop = m_MoveOrigTop + dy
+    HideOutline
+    LayoutBoard
+End Sub
+
+Public Sub OnResizeMouseDown(x As Single, y As Single)
+    m_ResizeArmed = True
+    Dim rz As Shape: Set rz = m_Ws.Shapes("kb_resize")
+    m_ResizeStartX = rz.Left + x
+    m_ResizeOrigScale = m_Scale
+    SetRect "kb_outline", m_BaseLeft, m_BaseTop + BASE_TITLEBAR_Y * m_Scale, BoardWidth(m_Scale), BoardHeightTotal(m_Scale)
+    ShowOutline
+End Sub
+
+Public Sub OnResizeMouseMove(x As Single, y As Single)
+    If Not m_ResizeArmed Then Exit Sub
+    Dim newScale As Single: newScale = ComputeResizeScale(x)
+    SetRect "kb_outline", m_BaseLeft, m_BaseTop + BASE_TITLEBAR_Y * newScale, BoardWidth(newScale), BoardHeightTotal(newScale)
+End Sub
+
+Public Sub OnResizeMouseUp(x As Single, y As Single)
+    If Not m_ResizeArmed Then Exit Sub
+    m_ResizeArmed = False
+    m_Scale = ComputeResizeScale(x)
+    HideOutline
+    LayoutBoard
+End Sub
+
+Private Function ComputeResizeScale(x As Single) As Single
+    Dim rz As Shape: Set rz = m_Ws.Shapes("kb_resize")
+    Dim curX As Single: curX = rz.Left + x
+    Dim dx As Single: dx = curX - m_ResizeStartX
+    Dim newScale As Single
+    newScale = m_ResizeOrigScale + dx / (2 * BASE_COL_GAP + BASE_COL_W)
+    If newScale < 0.5 Then newScale = 0.5
+    If newScale > 2 Then newScale = 2
+    ComputeResizeScale = newScale
+End Function
 
 Private Sub BuildSummaryList()
     Dim hdrTitles(2) As String
