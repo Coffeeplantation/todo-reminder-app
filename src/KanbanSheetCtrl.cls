@@ -439,6 +439,18 @@ Private Sub BuildSummaryList()
         hx = hx + hdrW(i)
     Next i
 
+    Dim shpSumHint As Shape
+    Set shpSumHint = m_Ws.Shapes.AddShape(msoShapeRectangle, m_BaseLeft, m_BaseTop - 20, 300, 18)
+    shpSumHint.Name = "kb_sumhint"
+    shpSumHint.Fill.Visible = msoFalse
+    shpSumHint.Line.Visible = msoFalse
+    shpSumHint.TextFrame.Characters().Text = "クリックで Kanban ボードを開く"
+    shpSumHint.TextFrame.Characters().Font.Size = 8
+    shpSumHint.TextFrame.Characters().Font.Italic = True
+    shpSumHint.TextFrame.Characters().Font.Color = RGB(120, 120, 120)
+    shpSumHint.TextFrame.HorizontalAlignment = xlHAlignLeft
+    m_SummaryNames.Add shpSumHint.Name
+
     Dim oleSum As OLEObject
     Set oleSum = m_Ws.OLEObjects.Add(ClassType:="Forms.ListBox.1", _
         Left:=m_BaseLeft, Top:=m_BaseTop + 24, Width:=400, Height:=200)
@@ -451,19 +463,12 @@ Private Sub BuildSummaryList()
     m_SummaryList.ColumnWidths = "220 pt;90 pt;90 pt"
     m_SummaryNames.Add oleSum.Name
 
-    Dim oleOpen As OLEObject
-    Set oleOpen = m_Ws.OLEObjects.Add(ClassType:="Forms.CommandButton.1", _
-        Left:=m_BaseLeft, Top:=m_BaseTop + 232, Width:=200, Height:=28)
-    oleOpen.Name = "kb_btnOpen"
-    Dim bOpen As MSForms.CommandButton
-    Set bOpen = oleOpen.Object
-    bOpen.Caption = "Kanban ボードを開く"
-    bOpen.BackColor = RGB(120, 80, 160)
-    bOpen.ForeColor = RGB(255, 255, 255)
-    bOpen.Font.Bold = True
-    bOpen.Font.Size = 9
-    WireBtn bOpen
-    m_SummaryNames.Add oleOpen.Name
+    Dim hSum As New KanbanHelper
+    Set hSum.lb = m_SummaryList
+    hSum.colIdx = -1   ' -1 = 簡易リスト（クリックでフルボードを開く）
+    Set hSum.formRef = Me
+    Set m_Helpers(m_HCount) = hSum
+    m_HCount = m_HCount + 1
 End Sub
 
 Private Sub LoadSummary()
@@ -713,6 +718,10 @@ Private Sub QuickAddTask(ci As Integer, assignee As String)
 End Sub
 
 Public Sub OnListClick(ci As Integer)
+    If ci = -1 Then
+        ShowFullBoard
+        Exit Sub
+    End If
     m_SelCol = ci
     m_SelIdx = m_Lists(ci).ListIndex
     Dim i As Integer
@@ -734,7 +743,6 @@ Public Sub OnBtnClick(nm As String)
         Case "kb_btnR1": MoveTask 1, 2
         Case "kb_btnL1": MoveTask 2, 1
         Case "kb_btnDel": DelTask
-        Case "kb_btnOpen": ShowFullBoard
         Case "kb_btnClose": ShowSummaryView
     End Select
 End Sub
