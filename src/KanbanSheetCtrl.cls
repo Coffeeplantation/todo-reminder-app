@@ -37,11 +37,17 @@ Private m_DragStartY    As Single
 Private m_BaseLeft      As Single
 Private m_BaseTop       As Single
 
+Private m_BoardNames    As Collection   ' フル Kanban ボードを構成する図形名
+Private m_SummaryNames  As Collection   ' 簡易表示（一覧）を構成する図形名
+Private m_SummaryList   As MSForms.ListBox
+
 Public Sub Setup(ws As Worksheet)
     Set m_Ws = ws
     m_SelCol = -1: m_SelIdx = -1: m_HCount = 0
     m_DragColIdx = -1
     m_PillCount = 0
+    Set m_BoardNames = New Collection
+    Set m_SummaryNames = New Collection
 
     ClearExisting
 
@@ -73,6 +79,7 @@ Public Sub Setup(ws As Worksheet)
         shpH.Fill.ForeColor.RGB = bgCol(i)
         shpH.Line.Visible = False
         Set m_Headers(i) = shpH
+        m_BoardNames.Add shpH.Name
 
         Dim oleLb As OLEObject
         Set oleLb = ws.OLEObjects.Add(ClassType:="Forms.ListBox.1", _
@@ -85,6 +92,7 @@ Public Sub Setup(ws As Worksheet)
         lb.ColumnCount = 5
         lb.ColumnWidths = "110 pt;75 pt;52 pt;0 pt;0 pt"
         Set m_Lists(i) = lb
+        m_BoardNames.Add oleLb.Name
 
         Dim oleAdd As OLEObject
         Set oleAdd = ws.OLEObjects.Add(ClassType:="Forms.CommandButton.1", _
@@ -97,6 +105,7 @@ Public Sub Setup(ws As Worksheet)
         bAdd.ForeColor = RGB(255, 255, 255)
         bAdd.Font.Size = 9
         WireBtn bAdd
+        m_BoardNames.Add oleAdd.Name
 
         Dim hLb As New KanbanHelper
         Set hLb.lb = lb
@@ -122,6 +131,18 @@ Public Sub Setup(ws As Worksheet)
     bDel.ForeColor = RGB(255, 255, 255)
     bDel.Font.Size = 9
     WireBtn bDel
+    m_BoardNames.Add oleDel.Name
+
+    Dim oleClose As OLEObject
+    Set oleClose = ws.OLEObjects.Add(ClassType:="Forms.CommandButton.1", _
+        Left:=m_BaseLeft + 130, Top:=m_BaseTop + 364, Width:=150, Height:=26)
+    oleClose.Name = "kb_btnClose"
+    Dim bClose As MSForms.CommandButton
+    Set bClose = oleClose.Object
+    bClose.Caption = "簡易表示に戻る"
+    bClose.Font.Size = 9
+    WireBtn bClose
+    m_BoardNames.Add oleClose.Name
 
     Dim oleGhost As OLEObject
     Set oleGhost = ws.OLEObjects.Add(ClassType:="Forms.Label.1", _
@@ -133,9 +154,107 @@ Public Sub Setup(ws As Worksheet)
     lblGhost.Font.Size = 9
     lblGhost.TextAlign = fmTextAlignCenter
     lblGhost.SpecialEffect = fmSpecialEffectRaised
+    m_BoardNames.Add oleGhost.Name
 
     BuildAssigneePills
+    BuildSummaryList
     LoadFromExcel
+
+    ToggleVisibility m_BoardNames, False
+    ToggleVisibility m_SummaryNames, True
+    LoadSummary
+End Sub
+
+Private Sub ToggleVisibility(names As Collection, vis As Boolean)
+    Dim nm As Variant
+    For Each nm In names
+        On Error Resume Next
+        m_Ws.Shapes(CStr(nm)).Visible = vis
+        On Error GoTo 0
+    Next nm
+End Sub
+
+Private Sub BuildSummaryList()
+    Dim hdrTitles(2) As String
+    hdrTitles(0) = "タスク名": hdrTitles(1) = "期日": hdrTitles(2) = "達成状況"
+    Dim hdrW(2) As Single
+    hdrW(0) = 220: hdrW(1) = 90: hdrW(2) = 90
+
+    Dim hx As Single: hx = m_BaseLeft
+    Dim i As Integer
+    For i = 0 To 2
+        Dim shpH As Shape
+        Set shpH = m_Ws.Shapes.AddShape(msoShapeRectangle, hx, m_BaseTop, hdrW(i), 24)
+        shpH.Name = "kb_sumhdr" & i
+        shpH.TextFrame.Characters().Text = hdrTitles(i)
+        shpH.TextFrame.Characters().Font.Bold = True
+        shpH.TextFrame.Characters().Font.Size = 9
+        shpH.TextFrame.Characters().Font.Color = RGB(255, 255, 255)
+        shpH.Fill.ForeColor.RGB = RGB(43, 63, 99)
+        shpH.Line.Visible = False
+        m_SummaryNames.Add shpH.Name
+        hx = hx + hdrW(i)
+    Next i
+
+    Dim oleSum As OLEObject
+    Set oleSum = m_Ws.OLEObjects.Add(ClassType:="Forms.ListBox.1", _
+        Left:=m_BaseLeft, Top:=m_BaseTop + 24, Width:=400, Height:=200)
+    oleSum.Name = "kb_sumlist"
+    Set m_SummaryList = oleSum.Object
+    m_SummaryList.Font.Size = 9
+    m_SummaryList.BackColor = RGB(252, 254, 255)
+    m_SummaryList.SpecialEffect = fmSpecialEffectSunken
+    m_SummaryList.ColumnCount = 3
+    m_SummaryList.ColumnWidths = "220 pt;90 pt;90 pt"
+    m_SummaryNames.Add oleSum.Name
+
+    Dim oleOpen As OLEObject
+    Set oleOpen = m_Ws.OLEObjects.Add(ClassType:="Forms.CommandButton.1", _
+        Left:=m_BaseLeft, Top:=m_BaseTop + 232, Width:=200, Height:=28)
+    oleOpen.Name = "kb_btnOpen"
+    Dim bOpen As MSForms.CommandButton
+    Set bOpen = oleOpen.Object
+    bOpen.Caption = "Kanban ボードを開く"
+    bOpen.BackColor = RGB(120, 80, 160)
+    bOpen.ForeColor = RGB(255, 255, 255)
+    bOpen.Font.Bold = True
+    bOpen.Font.Size = 9
+    WireBtn bOpen
+    m_SummaryNames.Add oleOpen.Name
+End Sub
+
+Private Sub LoadSummary()
+    Dim ws As Worksheet
+    On Error GoTo NoSheet
+    Set ws = ThisWorkbook.Sheets("タスクリスト")
+    On Error GoTo 0
+    m_SummaryList.Clear
+    Dim lr As Long
+    lr = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    Dim r As Long
+    For r = 2 To lr
+        If ws.Cells(r, 1).Value = "" Then Exit For
+        m_SummaryList.AddItem CStr(ws.Cells(r, 2).Value)
+        Dim ri As Long: ri = m_SummaryList.ListCount - 1
+        Dim dv As Variant: dv = ws.Cells(r, 4).Value
+        If IsDate(dv) Then m_SummaryList.List(ri, 1) = Format(CDate(dv), "yyyy/mm/dd") Else m_SummaryList.List(ri, 1) = CStr(dv)
+        m_SummaryList.List(ri, 2) = CStr(ws.Cells(r, 6).Value)
+    Next r
+    Exit Sub
+NoSheet:
+    MsgBox "タスクリストシートが見つかりません。", vbCritical
+End Sub
+
+Private Sub ShowFullBoard()
+    ToggleVisibility m_SummaryNames, False
+    ToggleVisibility m_BoardNames, True
+    LoadFromExcel
+End Sub
+
+Private Sub ShowSummaryView()
+    ToggleVisibility m_BoardNames, False
+    ToggleVisibility m_SummaryNames, True
+    LoadSummary
 End Sub
 
 Private Sub ClearExisting()
@@ -173,6 +292,7 @@ Private Sub BuildAssigneePills()
     shpHint.TextFrame.Characters().Font.Bold = True
     shpHint.TextFrame.Characters().Font.Color = RGB(60, 60, 60)
     shpHint.TextFrame.HorizontalAlignment = xlHAlignLeft
+    m_BoardNames.Add shpHint.Name
 
     m_PillCount = 0
     Dim lr As Long, r As Long, px As Single
@@ -197,6 +317,7 @@ Private Sub BuildAssigneePills()
         pill.SpecialEffect = fmSpecialEffectRaised
         pill.MousePointer = fmMousePointerSizeAll
         Set m_Pills(m_PillCount) = pill
+        m_BoardNames.Add olePill.Name
         px = px + pw + 8
 
         Dim hP As New KanbanHelper
@@ -368,6 +489,8 @@ Public Sub OnBtnClick(nm As String)
         Case "kb_btnR1": MoveTask 1, 2
         Case "kb_btnL1": MoveTask 2, 1
         Case "kb_btnDel": DelTask
+        Case "kb_btnOpen": ShowFullBoard
+        Case "kb_btnClose": ShowSummaryView
     End Select
 End Sub
 
@@ -489,6 +612,7 @@ Private Sub AddArrow(cap As String, x As Single, y As Single, nm As String)
     b.Caption = cap
     b.Font.Bold = True: b.Font.Size = 9
     WireBtn b
+    m_BoardNames.Add oleB.Name
 End Sub
 
 Private Sub ResetHeaders()

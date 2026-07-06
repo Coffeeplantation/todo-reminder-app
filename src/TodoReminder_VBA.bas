@@ -67,7 +67,9 @@ End Sub
 
 ' ---- Kanban ボード（todoリスト シート内埋め込み）をセットアップ／再構築 ----
 Sub SetupKanbanSheet()
-    If gKanban Is Nothing Then Set gKanban = New KanbanSheetCtrl
+    ' 再実行のたびに必ず新しいインスタンスを作る
+    ' （クラスコードを更新した後に古いインスタンスが残ると状態が混在するため）
+    Set gKanban = New KanbanSheetCtrl
     gKanban.Setup ThisWorkbook.Sheets("todoリスト")
 End Sub
 
