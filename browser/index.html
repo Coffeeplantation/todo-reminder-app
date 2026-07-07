@@ -113,6 +113,7 @@
 
   /* ---- kanban board ---- */
   .board-hint { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  #boardView { overflow: auto; }
   .board-toolbar {
     display: flex;
     justify-content: space-between;
@@ -129,16 +130,14 @@
     padding: 3px 12px;
     font-size: 12px;
     font-weight: bold;
-    cursor: grab;
     user-select: none;
   }
-  .pill.drag-over { outline: 2px dashed #ff8c00; }
   .kanban-columns {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 10px;
+    position: relative;
   }
   .kb-col {
+    position: absolute;
+    width: 240px;
     background: #fbfcff;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -147,6 +146,7 @@
     min-height: 160px;
   }
   .kb-col.current-month { box-shadow: 0 0 0 2px #ff8c00; }
+  .kb-col.dragging-col { box-shadow: 0 10px 24px rgba(0,0,0,0.3); }
   .kb-col-hdr {
     background: #2b3f63;
     color: #fff;
@@ -154,6 +154,8 @@
     font-size: 13px;
     padding: 6px 10px;
     border-radius: 6px 6px 0 0;
+    cursor: grab;
+    user-select: none;
   }
   .kb-col.drop-target { box-shadow: inset 0 0 0 2px #ff8c00; }
   .kb-cards {
@@ -340,7 +342,7 @@
 
   <section class="panel">
     <h2>タスク（月別ボード）</h2>
-    <div class="board-hint">期日の月ごとに小さなパネルへ分かれます（常に今年の1月〜12月を表示）。カードはタスク名/期日/達成状況のみ表示し、クリックすると担当者・ステータス・期日などの詳細編集が開きます。カードは各月パネル内であれば自由な位置にドラッグして配置できます。各月パネル下部の「設定/リマインダー/名簿」リンクから、共有の設定・リマインダーチェック・名簿をどの月からでも開けます。</div>
+    <div class="board-hint">期日の月ごとに独立したパネルに分かれます（常に今年の1月〜12月を表示）。各月パネルは見出し部分をドラッグすると画面中の好きな位置に自由に移動できます。カードはタスク名/期日/達成状況のみ表示し、クリックすると担当者・ステータス・期日などの詳細編集が開きます。カードは各月パネル内であれば自由な位置にドラッグして配置できます。各月パネル下部の「設定/リマインダー/名簿」リンクから、共有の設定・リマインダーチェック・名簿をどの月からでも開けます。</div>
 
     <div id="boardView">
       <div class="board-toolbar">
@@ -437,7 +439,8 @@
       { name: "山田太郎", email: "yamada@example.com", dept: "営業部" },
       { name: "鈴木花子", email: "suzuki@example.com", dept: "経理部" }
     ],
-    nextTaskId: 3
+    nextTaskId: 3,
+    monthPos: {}
   });
 
   let state = load();
@@ -658,6 +661,7 @@
   // クリックした（選択した）カードだけ、担当者・期日・ステータス・リマインド日数前・送信済み状況の詳細を展開する。
   let selectedTaskId = null;
   let zCounter = state.tasks.reduce((max, t) => Math.max(max, t.z || 0), 0);
+  let colZCounter = Object.values(state.monthPos).reduce((max, p) => Math.max(max, p.z || 0), 0);
   const kanbanColumns = document.getElementById("kanbanColumns");
 
   function clampPos(wrap, x, y) {
@@ -679,6 +683,75 @@
       }
     });
     return assigned;
+  }
+
+  // 月パネルの既定配置（未配置のキーにのみ、簡単なグリッド状の初期位置を割り当てる）
+  function ensureColPos(keys) {
+    let assigned = false;
+    const perRow = 4, colW = 260, rowH = 320;
+    keys.forEach((key, i) => {
+      if (!state.monthPos[key]) {
+        assigned = true;
+        state.monthPos[key] = { x: (i % perRow) * colW, y: Math.floor(i / perRow) * rowH, z: 0 };
+      }
+    });
+    return assigned;
+  }
+
+  // 月パネル同士が自由配置後にどこまで広がっても収まるよう、キャンバスのサイズを実測して合わせる
+  function resizeBoardCanvas() {
+    let maxRight = 0, maxBottom = 0;
+    kanbanColumns.querySelectorAll(".kb-col").forEach(col => {
+      maxRight = Math.max(maxRight, col.offsetLeft + col.offsetWidth);
+      maxBottom = Math.max(maxBottom, col.offsetTop + col.offsetHeight);
+    });
+    kanbanColumns.style.width = (maxRight + 20) + "px";
+    kanbanColumns.style.height = (maxBottom + 20) + "px";
+  }
+
+  // 月パネル自体のドラッグ移動（見出し部分をつかんで画面中の好きな位置へ）
+  function attachColDrag(col, key) {
+    const hdr = col.querySelector(".kb-col-hdr");
+    hdr.addEventListener("mousedown", e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+
+      state.monthPos[key].z = ++colZCounter;
+      col.style.zIndex = state.monthPos[key].z;
+      save();
+
+      const startX = e.clientX, startY = e.clientY;
+      const containerRect = kanbanColumns.getBoundingClientRect();
+      const colRect = col.getBoundingClientRect();
+      const offsetX = startX - colRect.left;
+      const offsetY = startY - colRect.top;
+      let moved = false;
+
+      function onMove(ev) {
+        if (!moved && (Math.abs(ev.clientX - startX) > 3 || Math.abs(ev.clientY - startY) > 3)) {
+          moved = true;
+          col.classList.add("dragging-col");
+        }
+        if (!moved) return;
+        const x = Math.max(0, ev.clientX - containerRect.left - offsetX);
+        const y = Math.max(0, ev.clientY - containerRect.top - offsetY);
+        col.style.left = x + "px";
+        col.style.top = y + "px";
+        resizeBoardCanvas();
+      }
+      function onUp() {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        if (!moved) return;
+        col.classList.remove("dragging-col");
+        state.monthPos[key].x = parseFloat(col.style.left);
+        state.monthPos[key].y = parseFloat(col.style.top);
+        save();
+        resizeBoardCanvas();
+      }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
   }
 
   function attachCardDrag(card, task) {
@@ -809,16 +882,22 @@
   function renderBoard() {
     kanbanColumns.innerHTML = "";
     const nowKey = monthKeyFromDate(new Date());
-    let needsSave = false;
-    for (const key of getMonthKeys()) {
+    const monthKeys = getMonthKeys();
+    let needsSave = ensureColPos(monthKeys);
+    for (const key of monthKeys) {
       const col = document.createElement("div");
       col.className = "kb-col" + (key === nowKey ? " current-month" : "");
       col.dataset.month = key;
+      const pos = state.monthPos[key];
+      col.style.left = pos.x + "px";
+      col.style.top = pos.y + "px";
+      col.style.zIndex = pos.z || 0;
 
       const hdr = document.createElement("div");
       hdr.className = "kb-col-hdr";
       hdr.textContent = monthLabel(key) + (key === nowKey ? "（今月）" : "");
       col.appendChild(hdr);
+      attachColDrag(col, key);
 
       const cardsWrap = document.createElement("div");
       cardsWrap.className = "kb-cards";
@@ -853,23 +932,10 @@
       });
       col.appendChild(links);
 
-      col.addEventListener("dragover", e => {
-        e.preventDefault();
-        col.classList.add("drop-target");
-      });
-      col.addEventListener("dragleave", () => col.classList.remove("drop-target"));
-      col.addEventListener("drop", e => {
-        e.preventDefault();
-        col.classList.remove("drop-target");
-        const assignee = e.dataTransfer.getData("text/assignee");
-        if (assignee) {
-          openTaskDialog({ monthKey: key, assignee });
-        }
-      });
-
       kanbanColumns.appendChild(col);
     }
     if (needsSave) save();
+    resizeBoardCanvas();
   }
 
   function moveTaskToMonth(taskId, monthKey) {
@@ -900,7 +966,7 @@
     renderBoard();
   });
 
-  // ---- 担当者ピル ----
+  // ---- 担当者ピル（表示のみ。ドラッグでのクイック追加は廃止） ----
   const assigneePills = document.getElementById("assigneePills");
   function renderPills() {
     assigneePills.innerHTML = "";
@@ -908,11 +974,6 @@
       const pill = document.createElement("div");
       pill.className = "pill";
       pill.textContent = c.name;
-      pill.draggable = true;
-      pill.addEventListener("dragstart", e => {
-        e.dataTransfer.setData("text/assignee", c.name);
-        e.dataTransfer.effectAllowed = "copy";
-      });
       assigneePills.appendChild(pill);
     }
   }
@@ -926,10 +987,10 @@
   const taskReminderDays = document.getElementById("taskReminderDays");
   const assigneeList = document.getElementById("assigneeList");
 
-  function openTaskDialog({ monthKey, assignee }) {
+  function openTaskDialog({ monthKey }) {
     taskForm.reset();
     taskName.value = "";
-    taskAssignee.value = assignee || "";
+    taskAssignee.value = "";
     let d;
     if (monthKey && monthKey !== "unset") {
       const [y, m] = monthKey.split("-").map(Number);
