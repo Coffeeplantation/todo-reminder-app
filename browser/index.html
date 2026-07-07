@@ -98,26 +98,7 @@
   .status-完了 { background: var(--green); }
 
   /* ---- kanban board ---- */
-  .board-hint { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
   #boardView { overflow: auto; }
-  .board-toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .pills { display: flex; gap: 6px; flex-wrap: wrap; }
-  .pill {
-    background: #5a6ea0;
-    color: #fff;
-    border-radius: 12px;
-    padding: 3px 12px;
-    font-size: 12px;
-    font-weight: bold;
-    user-select: none;
-  }
   .kanban-columns {
     position: relative;
   }
@@ -315,13 +296,7 @@
   </section>
 
   <section class="panel">
-    <h2>タスク（月別ボード）</h2>
-    <div class="board-hint">期日の月ごとに独立したパネルに分かれます（常に今年の1月〜12月を表示）。各月パネルは見出し部分をドラッグすると画面中の好きな位置に自由に移動できます。カードはタスク名/期日/達成状況のみ表示し、クリックすると担当者・ステータス・期日などの詳細編集が開きます。カードは各月パネル内であれば自由な位置にドラッグして配置できます。各月パネル下部の「設定/リマインダー/名簿」リンクから、共有の設定・リマインダーチェック・名簿をどの月からでも開けます。</div>
-
     <div id="boardView">
-      <div class="board-toolbar">
-        <div class="pills" id="assigneePills"></div>
-      </div>
       <div class="kanban-columns" id="kanbanColumns"></div>
       <div class="kb-actions">
         <button id="btnDelSelected" class="danger small">選択を削除</button>
@@ -940,18 +915,6 @@
     renderBoard();
   });
 
-  // ---- 担当者ピル（表示のみ。ドラッグでのクイック追加は廃止） ----
-  const assigneePills = document.getElementById("assigneePills");
-  function renderPills() {
-    assigneePills.innerHTML = "";
-    for (const c of state.contacts) {
-      const pill = document.createElement("div");
-      pill.className = "pill";
-      pill.textContent = c.name;
-      assigneePills.appendChild(pill);
-    }
-  }
-
   // ---- タスク追加ダイアログ ----
   const taskDialog = document.getElementById("taskDialog");
   const taskForm = document.getElementById("taskForm");
@@ -1021,7 +984,6 @@
         state.contacts = state.contacts.filter(x => x !== c);
         save();
         renderContacts();
-        renderPills();
       });
       contactBody.appendChild(tr);
     }
@@ -1044,12 +1006,10 @@
     save();
     contactDialog.close();
     renderContacts();
-    renderPills();
   });
 
   function renderAll() {
     renderSettings();
-    renderPills();
     renderContacts();
     renderBoard();
     reminderLog.textContent = "";
