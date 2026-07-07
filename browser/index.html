@@ -130,8 +130,8 @@
   .pill.drag-over { outline: 2px dashed #ff8c00; }
   .kanban-columns {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
   }
   .kb-col {
     background: #fbfcff;
@@ -139,24 +139,24 @@
     border-radius: 6px;
     display: flex;
     flex-direction: column;
-    min-height: 340px;
+    min-height: 160px;
   }
+  .kb-col.current-month { box-shadow: 0 0 0 2px #ff8c00; }
   .kb-col-hdr {
+    background: #2b3f63;
     color: #fff;
     font-weight: bold;
     font-size: 13px;
     padding: 6px 10px;
     border-radius: 6px 6px 0 0;
   }
-  .kb-col[data-status="未完了"] .kb-col-hdr { background: var(--blue); }
-  .kb-col[data-status="進行中"] .kb-col-hdr { background: var(--orange); }
-  .kb-col[data-status="完了"] .kb-col-hdr { background: var(--green); }
   .kb-col.drop-target { box-shadow: inset 0 0 0 2px #ff8c00; }
   .kb-cards {
     flex: 1;
     padding: 8px;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    align-content: flex-start;
     gap: 6px;
     overflow-y: auto;
   }
@@ -165,13 +165,26 @@
     border: 1px solid var(--border);
     border-left: 4px solid #999;
     border-radius: 4px;
-    padding: 6px 8px;
-    font-size: 12px;
+    padding: 5px 7px;
+    font-size: 11px;
+    line-height: 1.3;
     cursor: grab;
+    min-width: 0;
   }
-  .kb-card.selected { outline: 2px solid #2b3f63; }
-  .kb-card .t-name { font-weight: bold; }
-  .kb-card .t-meta { color: var(--muted); display: flex; justify-content: space-between; align-items: center; margin-top: 2px; }
+  .kb-card.selected {
+    outline: 2px solid #2b3f63;
+    grid-column: 1 / -1;
+  }
+  .kb-card .t-name {
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .kb-card.selected .t-name { white-space: normal; }
+  .kb-card .t-meta { color: var(--muted); display: flex; flex-direction: column; gap: 2px; margin-top: 3px; }
+  .kb-card.selected .t-meta { flex-direction: row; justify-content: space-between; align-items: center; }
+  .kb-card .status-badge { align-self: flex-start; }
   .kb-card .t-detail {
     margin-top: 6px;
     padding-top: 6px;
@@ -179,11 +192,20 @@
     color: var(--muted);
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
+    font-size: 12px;
   }
-  .kb-col[data-status="未完了"] .kb-card { border-left-color: var(--blue); }
-  .kb-col[data-status="進行中"] .kb-card { border-left-color: var(--orange); }
-  .kb-col[data-status="完了"] .kb-card { border-left-color: var(--green); }
+  .kb-card .t-detail label { display: flex; flex-direction: column; gap: 2px; }
+  .kb-card .t-detail input, .kb-card .t-detail select {
+    padding: 3px 5px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .kb-card.status-未完了 { border-left-color: var(--blue); }
+  .kb-card.status-進行中 { border-left-color: var(--orange); }
+  .kb-card.status-完了 { border-left-color: var(--green); }
   .kb-col-footer {
     padding: 6px;
     display: flex;
@@ -272,30 +294,14 @@
   </section>
 
   <section class="panel">
-    <h2>タスク（Kanban ボード）</h2>
-    <div class="board-hint">カードには タスク名 / 期日 / 達成状況 のみ表示されます。クリックすると担当者などの詳細が開きます。</div>
+    <h2>タスク（月別ボード）</h2>
+    <div class="board-hint">期日の月ごとに小さなパネルへ分かれます。カードはタスク名/期日/達成状況のみ表示し、クリックすると担当者・ステータス・期日などの詳細編集が開きます。</div>
 
     <div id="boardView">
       <div class="board-toolbar">
         <div class="pills" id="assigneePills"></div>
       </div>
-      <div class="kanban-columns">
-        <div class="kb-col" data-status="未完了">
-          <div class="kb-col-hdr">未完了</div>
-          <div class="kb-cards" data-status="未完了"></div>
-          <div class="kb-col-footer"><button class="btn-add-task small" data-status="未完了">+ タスク追加</button></div>
-        </div>
-        <div class="kb-col" data-status="進行中">
-          <div class="kb-col-hdr">進行中</div>
-          <div class="kb-cards" data-status="進行中"></div>
-          <div class="kb-col-footer"><button class="btn-add-task small" data-status="進行中">+ タスク追加</button></div>
-        </div>
-        <div class="kb-col" data-status="完了">
-          <div class="kb-col-hdr">完了</div>
-          <div class="kb-cards" data-status="完了"></div>
-          <div class="kb-col-footer"><button class="btn-add-task small" data-status="完了">+ タスク追加</button></div>
-        </div>
-      </div>
+      <div class="kanban-columns" id="kanbanColumns"></div>
       <div class="kb-actions">
         <button id="btnDelSelected" class="danger small">選択を削除</button>
       </div>
@@ -429,6 +435,42 @@
     const [, y, mo, da] = m;
     return `${y}-${mo.padStart(2, "0")}-${da.padStart(2, "0")}`;
   }
+  function pad2(n) { return String(n).padStart(2, "0"); }
+  function monthKeyFromDate(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
+  function monthKeyOfTask(task) {
+    const d = parseDue(task.due);
+    return d ? monthKeyFromDate(d) : "unset";
+  }
+  function monthLabel(key) {
+    if (key === "unset") return "期日未設定";
+    const [y, m] = key.split("-").map(Number);
+    const now = new Date();
+    return (y === now.getFullYear()) ? `${m}月` : `${y}年${m}月`;
+  }
+  function addMonths(key, delta) {
+    let [y, m] = key.split("-").map(Number);
+    m += delta;
+    while (m > 12) { m -= 12; y++; }
+    while (m < 1) { m += 12; y--; }
+    return `${y}-${pad2(m)}`;
+  }
+  function getMonthKeys() {
+    const nowKey = monthKeyFromDate(new Date());
+    const dueKeys = state.tasks.map(monthKeyOfTask).filter(k => k !== "unset");
+    const hasUnset = state.tasks.some(t => monthKeyOfTask(t) === "unset");
+    const allKeys = dueKeys.concat([nowKey]);
+    let minKey = allKeys.reduce((a, b) => (a < b ? a : b));
+    let maxKey = allKeys.reduce((a, b) => (a > b ? a : b));
+    const result = [];
+    let k = minKey;
+    while (true) {
+      result.push(k);
+      if (k === maxKey) break;
+      k = addMonths(k, 1);
+    }
+    if (hasUnset) result.push("unset");
+    return result;
+  }
 
   // ---------------------------------------------------------------
   // 設定パネル
@@ -540,78 +582,141 @@
   }
 
   // ---------------------------------------------------------------
-  // Kanban ボード
+  // 月別ボード（期日の月ごとにパネルを分割）
   // ---------------------------------------------------------------
   // カードは既定では タスク名/期日/達成状況 の3項目のみを表示する簡易表示。
-  // クリックした（選択した）カードだけ、担当者・リマインド日数前・送信済み状況の詳細を展開する。
+  // クリックした（選択した）カードだけ、担当者・期日・ステータス・リマインド日数前・送信済み状況の詳細を展開する。
   let selectedTaskId = null;
+  const kanbanColumns = document.getElementById("kanbanColumns");
+
+  function buildCardEl(task) {
+    const due = parseDue(task.due);
+    const expanded = task.id === selectedTaskId;
+    const card = document.createElement("div");
+    card.className = `kb-card status-${task.status}` + (expanded ? " selected" : "");
+    card.draggable = true;
+    card.dataset.taskId = task.id;
+    card.innerHTML = `
+      <div class="t-name">${escapeHtml(task.name)}</div>
+      <div class="t-meta">
+        <span>${due ? formatDate(due) : escapeHtml(task.due || "未設定")}</span>
+        <span class="status-badge status-${task.status}">${task.status}</span>
+      </div>
+      ${expanded ? `
+      <div class="t-detail" data-detail>
+        <label>担当者
+          <input type="text" class="edit-assignee" value="${escapeHtml(task.assignee)}" list="assigneeList">
+        </label>
+        <label>期日（yyyy/mm/dd）
+          <input type="text" class="edit-due" value="${due ? formatDate(due) : escapeHtml(task.due || "")}">
+        </label>
+        <label>ステータス
+          <select class="edit-status">
+            ${STATUSES.map(s => `<option value="${s}" ${s === task.status ? "selected" : ""}>${s}</option>`).join("")}
+          </select>
+        </label>
+        <span>リマインド日数前: ${task.reminderDays}</span>
+        <span>送信済み: ${task.sentFlag ? escapeHtml(task.sentFlag) : "（未判定）"}</span>
+      </div>` : ""}
+    `;
+    card.addEventListener("click", e => {
+      if (e.target.closest("[data-detail]")) return;
+      selectedTaskId = expanded ? null : task.id;
+      renderBoard();
+    });
+    card.addEventListener("dragstart", e => {
+      e.dataTransfer.setData("text/task-id", String(task.id));
+      e.dataTransfer.effectAllowed = "move";
+    });
+    if (expanded) {
+      card.querySelector(".edit-assignee").addEventListener("change", e => {
+        task.assignee = e.target.value.trim();
+        save();
+        renderBoard();
+      });
+      card.querySelector(".edit-due").addEventListener("change", e => {
+        const normalized = normalizeDueInput(e.target.value);
+        if (!normalized) { alert("期日は yyyy/mm/dd 形式で入力してください。"); renderBoard(); return; }
+        task.due = normalized;
+        task.sentFlag = "";
+        save();
+        renderBoard();
+      });
+      card.querySelector(".edit-status").addEventListener("change", e => {
+        task.status = e.target.value;
+        task.sentFlag = "";
+        save();
+        renderBoard();
+      });
+    }
+    return card;
+  }
 
   function renderBoard() {
-    for (const status of STATUSES) {
-      const col = document.querySelector(`.kb-cards[data-status="${status}"]`);
-      col.innerHTML = "";
-      const tasks = state.tasks.filter(t => t.status === status);
+    kanbanColumns.innerHTML = "";
+    const nowKey = monthKeyFromDate(new Date());
+    for (const key of getMonthKeys()) {
+      const col = document.createElement("div");
+      col.className = "kb-col" + (key === nowKey ? " current-month" : "");
+      col.dataset.month = key;
+
+      const hdr = document.createElement("div");
+      hdr.className = "kb-col-hdr";
+      hdr.textContent = monthLabel(key) + (key === nowKey ? "（今月）" : "");
+      col.appendChild(hdr);
+
+      const cardsWrap = document.createElement("div");
+      cardsWrap.className = "kb-cards";
+      const tasks = state.tasks.filter(t => monthKeyOfTask(t) === key);
       if (tasks.length === 0) {
-        col.innerHTML = `<div class="empty-msg">タスクなし</div>`;
-        continue;
+        cardsWrap.innerHTML = `<div class="empty-msg">タスクなし</div>`;
+      } else {
+        for (const task of tasks) cardsWrap.appendChild(buildCardEl(task));
       }
-      for (const task of tasks) {
-        const due = parseDue(task.due);
-        const expanded = task.id === selectedTaskId;
-        const card = document.createElement("div");
-        card.className = "kb-card" + (expanded ? " selected" : "");
-        card.draggable = true;
-        card.dataset.taskId = task.id;
-        card.innerHTML = `
-          <div class="t-name">${escapeHtml(task.name)}</div>
-          <div class="t-meta">
-            <span>${due ? formatDate(due) : escapeHtml(task.due)}</span>
-            <span class="status-badge status-${task.status}">${task.status}</span>
-          </div>
-          ${expanded ? `
-          <div class="t-detail">
-            <span>担当者: ${escapeHtml(task.assignee || "（未設定）")}</span>
-            <span>リマインド日数前: ${task.reminderDays}</span>
-            <span>送信済み: ${task.sentFlag ? escapeHtml(task.sentFlag) : "（未判定）"}</span>
-          </div>` : ""}
-        `;
-        card.addEventListener("click", () => {
-          selectedTaskId = expanded ? null : task.id;
-          renderBoard();
-        });
-        card.addEventListener("dragstart", e => {
-          e.dataTransfer.setData("text/task-id", String(task.id));
-          e.dataTransfer.effectAllowed = "move";
-        });
-        col.appendChild(card);
-      }
+      col.appendChild(cardsWrap);
+
+      const footer = document.createElement("div");
+      footer.className = "kb-col-footer";
+      const addBtn = document.createElement("button");
+      addBtn.className = "small";
+      addBtn.textContent = "+ タスク追加";
+      addBtn.addEventListener("click", () => openTaskDialog({ monthKey: key }));
+      footer.appendChild(addBtn);
+      col.appendChild(footer);
+
+      col.addEventListener("dragover", e => {
+        e.preventDefault();
+        col.classList.add("drop-target");
+      });
+      col.addEventListener("dragleave", () => col.classList.remove("drop-target"));
+      col.addEventListener("drop", e => {
+        e.preventDefault();
+        col.classList.remove("drop-target");
+        const taskId = Number(e.dataTransfer.getData("text/task-id"));
+        const assignee = e.dataTransfer.getData("text/assignee");
+        if (taskId) {
+          moveTaskToMonth(taskId, key);
+        } else if (assignee) {
+          openTaskDialog({ monthKey: key, assignee });
+        }
+      });
+
+      kanbanColumns.appendChild(col);
     }
   }
 
-  document.querySelectorAll(".kb-col").forEach(col => {
-    col.addEventListener("dragover", e => {
-      e.preventDefault();
-      col.classList.add("drop-target");
-    });
-    col.addEventListener("dragleave", () => col.classList.remove("drop-target"));
-    col.addEventListener("drop", e => {
-      e.preventDefault();
-      col.classList.remove("drop-target");
-      const taskId = Number(e.dataTransfer.getData("text/task-id"));
-      const assignee = e.dataTransfer.getData("text/assignee");
-      const newStatus = col.dataset.status;
-      if (taskId) {
-        moveTaskToStatus(taskId, newStatus);
-      } else if (assignee) {
-        openTaskDialog({ status: newStatus, assignee });
-      }
-    });
-  });
-
-  function moveTaskToStatus(taskId, status) {
+  function moveTaskToMonth(taskId, monthKey) {
     const task = state.tasks.find(t => t.id === taskId);
-    if (!task || task.status === status) return;
-    task.status = status;
+    if (!task || monthKeyOfTask(task) === monthKey) return;
+    if (monthKey === "unset") {
+      task.due = "";
+    } else {
+      const [y, m] = monthKey.split("-").map(Number);
+      const oldDue = parseDue(task.due);
+      const day = oldDue ? oldDue.getDate() : 15;
+      const lastDay = new Date(y, m, 0).getDate();
+      task.due = `${y}-${pad2(m)}-${pad2(Math.min(day, lastDay))}`;
+    }
     task.sentFlag = ""; // spec.md 5.4: 移動のたびに送信済みフラグはリセットされる
     save();
     renderBoard();
@@ -653,25 +758,26 @@
   const taskDue = document.getElementById("taskDue");
   const taskReminderDays = document.getElementById("taskReminderDays");
   const assigneeList = document.getElementById("assigneeList");
-  let pendingStatus = "未完了";
 
-  function openTaskDialog({ status, assignee }) {
-    pendingStatus = status;
+  function openTaskDialog({ monthKey, assignee }) {
     taskForm.reset();
     taskName.value = "";
     taskAssignee.value = assignee || "";
-    const d = new Date();
-    d.setDate(d.getDate() + 7);
+    let d;
+    if (monthKey && monthKey !== "unset") {
+      const [y, m] = monthKey.split("-").map(Number);
+      d = new Date(y, m - 1, 15);
+    } else {
+      d = new Date();
+      d.setDate(d.getDate() + 7);
+    }
     taskDue.value = formatDate(d);
     taskReminderDays.value = 3;
     assigneeList.innerHTML = state.contacts.map(c => `<option value="${escapeHtml(c.name)}">`).join("");
-    document.getElementById("taskDialogTitle").textContent = `タスク追加（${status}）`;
+    document.getElementById("taskDialogTitle").textContent = `タスク追加（${monthLabel(monthKey || monthKeyFromDate(new Date()))}）`;
     taskDialog.showModal();
   }
 
-  document.querySelectorAll(".btn-add-task").forEach(btn => {
-    btn.addEventListener("click", () => openTaskDialog({ status: btn.dataset.status }));
-  });
   document.getElementById("taskCancel").addEventListener("click", () => taskDialog.close());
 
   taskForm.addEventListener("submit", e => {
@@ -684,7 +790,7 @@
       assignee: taskAssignee.value.trim(),
       due,
       reminderDays: Math.max(0, parseInt(taskReminderDays.value, 10) || 0),
-      status: pendingStatus,
+      status: "未完了",
       sentFlag: ""
     });
     save();
