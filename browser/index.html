@@ -63,6 +63,14 @@
     border-radius: 4px;
     width: 100%;
   }
+  .settings-grid input[type=color] {
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    width: 60px;
+    height: 28px;
+    cursor: pointer;
+  }
   .toggle {
     display: inline-flex;
     align-items: center;
@@ -111,6 +119,7 @@
     flex-direction: column;
     min-height: 160px;
   }
+  .kb-col.collapsed { min-height: 0; }
   .kb-col.current-month { box-shadow: 0 0 0 2px #ff8c00; }
   .kb-col.dragging-col { box-shadow: 0 10px 24px rgba(0,0,0,0.3); }
   .kb-col-hdr {
@@ -120,7 +129,11 @@
     border-radius: 6px 6px 0 0;
     cursor: grab;
     user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
+  .kb-col.collapsed .kb-col-hdr { border-radius: 6px; }
   .kb-col.drop-target { box-shadow: inset 0 0 0 2px #ff8c00; }
   .kb-cards {
     flex: 1;
@@ -286,6 +299,12 @@
           <input type="checkbox" id="cfgAutoMail">
           <span id="cfgAutoMailLabel">OFF（ブラウザ版は常にドライラン）</span>
         </span>
+
+        <label for="cfgColorNear">月別ボード：現在月に近い色</label>
+        <input type="color" id="cfgColorNear" value="#2b3f63">
+
+        <label for="cfgColorFar">月別ボード：現在月から遠い色</label>
+        <input type="color" id="cfgColorFar" value="#c4ced0">
       </div>
     </div>
   </section>
@@ -386,7 +405,9 @@
     settings: {
       reminderDays: 3,
       signature: "Todoリマインダーシステム",
-      autoMailOn: false
+      autoMailOn: false,
+      boardColorNear: "#2b3f63",
+      boardColorFar: "#c4ced0"
     },
     tasks: [
       { id: 1, name: "プロジェクト報告書提出", assignee: "山田太郎", due: "2026-07-15", reminderDays: 3, status: "未完了", sentFlag: "" },
@@ -407,7 +428,9 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return defaultState();
       const parsed = JSON.parse(raw);
-      return Object.assign(defaultState(), parsed);
+      const merged = Object.assign(defaultState(), parsed);
+      merged.settings = Object.assign(defaultState().settings, parsed.settings || {});
+      return merged;
     } catch (e) {
       console.error("localStorage の読み込みに失敗しました。初期データを使用します。", e);
       return defaultState();
@@ -463,10 +486,14 @@
     const now = new Date();
     return (y === now.getFullYear()) ? `${m}月` : `${y}年${m}月`;
   }
-  // 現在月に近いほど濃く、遠いほど薄い見出し色を返す（期日未設定は最も薄い扱い）
+  function hexToRgb(hex) {
+    const n = parseInt(hex.replace("#", ""), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  // 現在月に近いほど濃く、遠いほど薄い見出し色を返す（期日未設定は最も薄い扱い）。色は設定でカスタマイズ可能。
   function monthHeaderColor(key, nowKey) {
-    const dark = [43, 63, 99]; // #2b3f63
-    const light = [196, 206, 224];
+    const dark = hexToRgb(state.settings.boardColorNear);
+    const light = hexToRgb(state.settings.boardColorFar);
     let t = 1;
     if (key !== "unset") {
       const [y, m] = key.split("-").map(Number);
@@ -475,7 +502,8 @@
       t = Math.min(1, dist / 11);
     }
     const rgb = dark.map((d, i) => Math.round(d + (light[i] - d) * t));
-    return { bg: `rgb(${rgb.join(",")})`, fg: t > 0.55 ? "#1f2937" : "#ffffff" };
+    const brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
+    return { bg: `rgb(${rgb.join(",")})`, fg: brightness > 150 ? "#1f2937" : "#ffffff" };
   }
   function getMonthKeys() {
     // インターフェースは常に「今年の1月〜12月」の固定カレンダー年のみを表示する
@@ -523,6 +551,8 @@
   const cfgSignature = document.getElementById("cfgSignature");
   const cfgAutoMail = document.getElementById("cfgAutoMail");
   const cfgAutoMailLabel = document.getElementById("cfgAutoMailLabel");
+  const cfgColorNear = document.getElementById("cfgColorNear");
+  const cfgColorFar = document.getElementById("cfgColorFar");
 
   function renderSettings() {
     cfgReminderDays.value = state.settings.reminderDays;
@@ -531,6 +561,8 @@
     cfgAutoMailLabel.textContent = state.settings.autoMailOn
       ? "ON（ブラウザ版は実送信できないためドライランのまま判定のみ行います）"
       : "OFF（ブラウザ版は常にドライラン）";
+    cfgColorNear.value = state.settings.boardColorNear;
+    cfgColorFar.value = state.settings.boardColorFar;
   }
   cfgReminderDays.addEventListener("change", () => {
     state.settings.reminderDays = Math.max(0, parseInt(cfgReminderDays.value, 10) || 0);
@@ -544,6 +576,16 @@
     state.settings.autoMailOn = cfgAutoMail.checked;
     renderSettings();
     save();
+  });
+  cfgColorNear.addEventListener("input", () => {
+    state.settings.boardColorNear = cfgColorNear.value;
+    save();
+    renderBoard();
+  });
+  cfgColorFar.addEventListener("input", () => {
+    state.settings.boardColorFar = cfgColorFar.value;
+    save();
+    renderBoard();
   });
 
   // ---------------------------------------------------------------
@@ -656,14 +698,14 @@
     return assigned;
   }
 
-  // 月パネルの既定配置（未配置のキーにのみ、簡単なグリッド状の初期位置を割り当てる）
+  // 月パネルの既定配置（未配置のキーにのみ、簡単なグリッド状の初期位置を割り当てる）。既定では折りたたみ状態（月名のみ）。
   function ensureColPos(keys) {
     let assigned = false;
     const perRow = 4, colW = 260, rowH = 320;
     keys.forEach((key, i) => {
       if (!state.monthPos[key]) {
         assigned = true;
-        state.monthPos[key] = { x: (i % perRow) * colW, y: Math.floor(i / perRow) * rowH, z: 0 };
+        state.monthPos[key] = { x: (i % perRow) * colW, y: Math.floor(i / perRow) * rowH, z: 0, collapsed: true };
       }
     });
     return assigned;
@@ -680,9 +722,12 @@
     kanbanColumns.style.height = (maxBottom + 20) + "px";
   }
 
-  // 月パネル自体のドラッグ移動（見出し部分をつかんで画面中の好きな位置へ）
+  // 月パネル自体のドラッグ移動（見出し部分をつかんで画面中の好きな位置へ）。
+  // 見出しのクリック（＝移動しなかった場合）は折りたたみ⇔展開の切り替えになる。
   function attachColDrag(col, key) {
     const hdr = col.querySelector(".kb-col-hdr");
+    let suppressClick = false;
+
     hdr.addEventListener("mousedown", e => {
       if (e.button !== 0) return;
       e.preventDefault();
@@ -714,6 +759,7 @@
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
         if (!moved) return;
+        suppressClick = true;
         col.classList.remove("dragging-col");
         state.monthPos[key].x = parseFloat(col.style.left);
         state.monthPos[key].y = parseFloat(col.style.top);
@@ -723,11 +769,19 @@
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     });
+
+    hdr.addEventListener("click", () => {
+      if (suppressClick) { suppressClick = false; return; }
+      state.monthPos[key].collapsed = !state.monthPos[key].collapsed;
+      save();
+      renderBoard();
+    });
   }
 
-  const COL_MIN_W = 180, COL_MIN_H = 140;
+  const COL_MIN_W = 90, COL_HEADER_H = 34, COL_MIN_H = COL_HEADER_H;
 
-  // 月パネル右下のハンドルをドラッグして大きさを自由に変更する
+  // 月パネル右下のハンドルをドラッグして大きさを自由に変更する。
+  // 見出しの高さまで縮めると、折りたたみ状態（月名のみ表示）に切り替わる。
   function attachColResize(col, key) {
     const handle = document.createElement("div");
     handle.className = "kb-col-resize";
@@ -737,21 +791,25 @@
       e.stopPropagation();
       const startX = e.clientX, startY = e.clientY;
       const startW = col.offsetWidth, startH = col.offsetHeight;
+      let requestedW = startW, requestedH = startH;
 
       function onMove(ev) {
-        const w = Math.max(COL_MIN_W, startW + (ev.clientX - startX));
-        const h = Math.max(COL_MIN_H, startH + (ev.clientY - startY));
-        col.style.width = w + "px";
-        col.style.height = h + "px";
+        requestedW = Math.max(COL_MIN_W, startW + (ev.clientX - startX));
+        requestedH = Math.max(COL_MIN_H, startH + (ev.clientY - startY));
+        col.style.width = requestedW + "px";
+        col.style.height = requestedH + "px";
         resizeBoardCanvas();
       }
       function onUp() {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
-        state.monthPos[key].w = col.offsetWidth;
-        state.monthPos[key].h = col.offsetHeight;
+        // flexboxの子要素は内容サイズより縮まないため、実測値ではなく要求値で折りたたみ判定する
+        const isMin = requestedH <= COL_HEADER_H + 6;
+        state.monthPos[key].w = requestedW;
+        if (!isMin) state.monthPos[key].h = requestedH;
+        state.monthPos[key].collapsed = isMin;
         save();
-        resizeBoardCanvas();
+        renderBoard();
       }
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
@@ -890,58 +948,62 @@
     const monthKeys = getMonthKeys();
     let needsSave = ensureColPos(monthKeys);
     for (const key of monthKeys) {
-      const col = document.createElement("div");
-      col.className = "kb-col" + (key === nowKey ? " current-month" : "");
-      col.dataset.month = key;
       const pos = state.monthPos[key];
+      const collapsed = !!pos.collapsed;
+      const col = document.createElement("div");
+      col.className = "kb-col" + (key === nowKey ? " current-month" : "") + (collapsed ? " collapsed" : "");
+      col.dataset.month = key;
       col.style.left = pos.x + "px";
       col.style.top = pos.y + "px";
       col.style.zIndex = pos.z || 0;
       col.style.width = (pos.w || 240) + "px";
-      if (pos.h) col.style.height = pos.h + "px";
+      if (!collapsed && pos.h) col.style.height = pos.h + "px";
 
       const hdr = document.createElement("div");
       hdr.className = "kb-col-hdr";
-      hdr.textContent = monthLabel(key) + (key === nowKey ? "（今月）" : "");
+      hdr.textContent = (collapsed ? "▶ " : "▼ ") + monthLabel(key) + (key === nowKey ? "（今月）" : "");
       const { bg, fg } = monthHeaderColor(key, nowKey);
       hdr.style.background = bg;
       hdr.style.color = fg;
       col.appendChild(hdr);
       attachColDrag(col, key);
-      attachColResize(col, key);
 
-      const cardsWrap = document.createElement("div");
-      cardsWrap.className = "kb-cards";
-      const tasks = state.tasks.filter(t => monthKeyOfTask(t) === key);
-      if (tasks.length === 0) {
-        cardsWrap.innerHTML = `<div class="empty-msg">タスクなし</div>`;
-      } else {
-        if (ensureDefaultPos(tasks)) needsSave = true;
-        const maxY = Math.max(...tasks.map(t => t.pos.y + 90));
-        cardsWrap.style.minHeight = Math.max(220, maxY) + "px";
-        for (const task of tasks) cardsWrap.appendChild(buildCardEl(task));
+      if (!collapsed) {
+        const cardsWrap = document.createElement("div");
+        cardsWrap.className = "kb-cards";
+        const tasks = state.tasks.filter(t => monthKeyOfTask(t) === key);
+        if (tasks.length === 0) {
+          cardsWrap.innerHTML = `<div class="empty-msg">タスクなし</div>`;
+        } else {
+          if (ensureDefaultPos(tasks)) needsSave = true;
+          const maxY = Math.max(...tasks.map(t => t.pos.y + 90));
+          cardsWrap.style.minHeight = Math.max(220, maxY) + "px";
+          for (const task of tasks) cardsWrap.appendChild(buildCardEl(task));
+        }
+        col.appendChild(cardsWrap);
+
+        const footer = document.createElement("div");
+        footer.className = "kb-col-footer";
+        const addBtn = document.createElement("button");
+        addBtn.className = "small";
+        addBtn.textContent = "+ タスク追加";
+        addBtn.addEventListener("click", () => openTaskDialog({ monthKey: key }));
+        footer.appendChild(addBtn);
+        col.appendChild(footer);
+
+        const links = document.createElement("div");
+        links.className = "kb-col-links";
+        [["settings", "設定"], ["reminder", "リマインダー"], ["contacts", "名簿"]].forEach(([panelKey, label]) => {
+          const link = document.createElement("span");
+          link.className = "kb-link";
+          link.textContent = label;
+          link.addEventListener("click", () => openPanelModal(panelKey));
+          links.appendChild(link);
+        });
+        col.appendChild(links);
+
+        attachColResize(col, key);
       }
-      col.appendChild(cardsWrap);
-
-      const footer = document.createElement("div");
-      footer.className = "kb-col-footer";
-      const addBtn = document.createElement("button");
-      addBtn.className = "small";
-      addBtn.textContent = "+ タスク追加";
-      addBtn.addEventListener("click", () => openTaskDialog({ monthKey: key }));
-      footer.appendChild(addBtn);
-      col.appendChild(footer);
-
-      const links = document.createElement("div");
-      links.className = "kb-col-links";
-      [["settings", "設定"], ["reminder", "リマインダー"], ["contacts", "名簿"]].forEach(([panelKey, label]) => {
-        const link = document.createElement("span");
-        link.className = "kb-link";
-        link.textContent = label;
-        link.addEventListener("click", () => openPanelModal(panelKey));
-        links.appendChild(link);
-      });
-      col.appendChild(links);
 
       kanbanColumns.appendChild(col);
     }
