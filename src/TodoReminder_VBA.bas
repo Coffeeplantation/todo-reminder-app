@@ -15,6 +15,11 @@ Sub SetupButtons()
     Dim shp As Shape
     Set ws = ThisWorkbook.Sheets("todoリスト")
 
+    ' 前回 Setup 時のシート保護が残っていても図形を削除・再生成できるように解除
+    On Error Resume Next
+    ws.Unprotect
+    On Error GoTo 0
+
     ' 既存ボタン・ブロック削除（廃止した btn_kanban も含む）
     Dim s As Shape
     For Each s In ws.Shapes

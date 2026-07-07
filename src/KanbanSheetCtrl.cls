@@ -80,6 +80,11 @@ Public Sub Setup(ws As Worksheet)
     Set m_BoardNames = New Collection
     Set m_SummaryNames = New Collection
 
+    ' 前回 Setup 時にシート保護をかけている場合、図形の削除・再生成ができるように解除
+    On Error Resume Next
+    ws.Unprotect
+    On Error GoTo 0
+
     ClearExisting
 
     ' 基準位置：設定ブロック（B4:C8）の下
@@ -268,6 +273,23 @@ Public Sub Setup(ws As Worksheet)
     m_BaseTop = m_Ws.Range("B11").Top
     LayoutSummary
     LoadSummary
+
+    ProtectShapes
+End Sub
+
+' ユーザーがマウスで図形をドラッグして動かし、レイアウトを分解できないようにする。
+' DrawingObjects:=True で図形の選択・ドラッグ移動・削除をUI操作から禁止する一方、
+' Contents:=False（セル・コントロールの値は保護しない）＆ UserInterfaceOnly:=True
+' （マクロからの変更は保護の影響を受けない）なので、
+' ・ボタンのクリックやリストのクリック／選択
+' ・本コード自身が行う再配置（SetRect 等）やドラッグ機能（タイトルバー移動、
+'   リサイズ、担当者ピルのドラッグ、カードのドラッグ）
+' はこれまで通り動作する。UserInterfaceOnly はブック保存時にリセットされる仕様のため、
+' Setup（＝ Workbook_Open のたびに実行）で毎回かけ直す。
+Private Sub ProtectShapes()
+    On Error Resume Next
+    m_Ws.Protect DrawingObjects:=True, Contents:=False, Scenarios:=True, UserInterfaceOnly:=True
+    On Error GoTo 0
 End Sub
 
 Private Sub FreezePlacement(names As Collection)
@@ -444,7 +466,6 @@ Private Sub BuildSummaryList()
 
     Dim hx As Single: hx = m_BaseLeft
     Dim i As Integer
-    Dim hdrNames(2) As String
     For i = 0 To 2
         Dim shpH As Shape
         Set shpH = m_Ws.Shapes.AddShape(msoShapeRectangle, hx, m_BaseTop, hdrW(i), 24)
@@ -455,16 +476,12 @@ Private Sub BuildSummaryList()
         shpH.TextFrame.Characters().Font.Color = RGB(255, 255, 255)
         shpH.Fill.ForeColor.RGB = RGB(43, 63, 99)
         shpH.Line.Visible = False
-        hdrNames(i) = shpH.Name
+        ' Excelのネイティブ Group() は再レイアウトのたびに内部の幅比率が
+        ' 少しずつ崩れる不具合があるため使わない。3つを常に同じ基準位置から
+        ' 再配置することでズレなく並べ、ドラッグでの分解防止はシート保護（Setup末尾）で行う。
+        m_SummaryNames.Add shpH.Name
         hx = hx + hdrW(i)
     Next i
-
-    ' タスク名・期日・達成状況の3つの見出しを1つのブロックにまとめ、
-    ' バラバラにドラッグされないようにする
-    Dim hdrGroup As Shape
-    Set hdrGroup = m_Ws.Shapes.Range(hdrNames).Group
-    hdrGroup.Name = "kb_sumhdrgrp"
-    m_SummaryNames.Add hdrGroup.Name
 
     Dim oleSum As OLEObject
     Set oleSum = m_Ws.OLEObjects.Add(ClassType:="Forms.ListBox.1", _
@@ -529,7 +546,14 @@ Private Sub ShowSummaryView()
 End Sub
 
 Private Sub LayoutSummary()
-    SetRect "kb_sumhdrgrp", m_BaseLeft, m_BaseTop, 400, 24
+    Dim hdrW(2) As Single
+    hdrW(0) = 220: hdrW(1) = 90: hdrW(2) = 90
+    Dim hx As Single: hx = m_BaseLeft
+    Dim i As Integer
+    For i = 0 To 2
+        SetRect "kb_sumhdr" & i, hx, m_BaseTop, hdrW(i), 24
+        hx = hx + hdrW(i)
+    Next i
     SetRect "kb_sumlist", m_BaseLeft, m_BaseTop + 24, 400, 200
 End Sub
 
