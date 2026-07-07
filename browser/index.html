@@ -226,6 +226,18 @@
     gap: 4px;
   }
   .kb-col-footer button { flex: 1; }
+  .kb-col-links {
+    display: flex;
+    justify-content: space-around;
+    padding: 0 6px 8px;
+    font-size: 10px;
+  }
+  .kb-link {
+    color: var(--blue);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .kb-link:hover { color: #2b3f63; }
   .kb-actions {
     display: flex;
     justify-content: space-between;
@@ -260,6 +272,27 @@
   dialog input { padding: 5px 6px; border: 1px solid var(--border); border-radius: 4px; }
   dialog .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
+  dialog.panel-modal {
+    width: 480px;
+    max-width: 92vw;
+  }
+  .panel-modal-body {
+    padding: 16px;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+  .panel-modal-body .panel {
+    border: none;
+    padding: 0;
+  }
+  .panel-modal-body .panel-toggle { cursor: default; }
+  .panel-modal-body .panel-toggle .toggle-icon { display: none; }
+  .panel-modal-footer {
+    padding: 0 16px 16px;
+    display: flex;
+    justify-content: flex-end;
+  }
+
   footer { text-align: center; color: var(--muted); font-size: 11px; padding: 16px; }
 </style>
 </head>
@@ -279,7 +312,7 @@
 
 <main>
 
-  <section class="panel collapsible">
+  <section class="panel collapsible" id="sectionSettings">
     <h2>
       <span class="panel-toggle" id="toggleSettings">設定 <span class="toggle-icon"></span></span>
     </h2>
@@ -300,7 +333,7 @@
     </div>
   </section>
 
-  <section class="panel collapsible">
+  <section class="panel collapsible" id="sectionReminder">
     <h2>
       <span class="panel-toggle" id="toggleReminder">リマインダーチェック <span class="toggle-icon"></span></span>
       <span class="btn-row">
@@ -315,7 +348,7 @@
 
   <section class="panel">
     <h2>タスク（月別ボード）</h2>
-    <div class="board-hint">期日の月ごとに小さなパネルへ分かれます（最低12ヶ月分は常に表示）。カードはタスク名/期日/達成状況のみ表示し、クリックすると担当者・ステータス・期日などの詳細編集が開きます。カードは各月パネル内であれば自由な位置にドラッグして配置できます。</div>
+    <div class="board-hint">期日の月ごとに小さなパネルへ分かれます（常に今年の1月〜12月を表示）。カードはタスク名/期日/達成状況のみ表示し、クリックすると担当者・ステータス・期日などの詳細編集が開きます。カードは各月パネル内であれば自由な位置にドラッグして配置できます。各月パネル下部の「設定/リマインダー/名簿」リンクから、共有の設定・リマインダーチェック・名簿をどの月からでも開けます。</div>
 
     <div id="boardView">
       <div class="board-toolbar">
@@ -328,7 +361,7 @@
     </div>
   </section>
 
-  <section class="panel collapsible">
+  <section class="panel collapsible" id="sectionContacts">
     <h2>
       <span class="panel-toggle" id="toggleContacts">名簿 <span class="toggle-icon"></span></span>
       <span class="btn-row"><button id="btnAddContact" class="secondary small">担当者を追加</button></span>
@@ -351,6 +384,15 @@
 </main>
 
 <footer>Todoリマインダー ブラウザ版 — デスクトップ Excel（VBA）版の開発・UI検証用ポート。仕様は docs/spec.md を参照。</footer>
+
+<!-- 各月パネルの「設定/リマインダー/名簿」リンクから開く共有モーダル -->
+<!-- 中身は既存パネル（sectionSettings 等）をそのまま移動して表示するため、データや操作は常に1つに共有される -->
+<dialog id="panelModal" class="panel-modal">
+  <div class="panel-modal-body" id="panelModalBody"></div>
+  <div class="panel-modal-footer">
+    <button type="button" class="plain small" id="panelModalClose">閉じる</button>
+  </div>
+</dialog>
 
 <!-- タスク追加ダイアログ -->
 <dialog id="taskDialog">
@@ -472,31 +514,12 @@
     const now = new Date();
     return (y === now.getFullYear()) ? `${m}月` : `${y}年${m}月`;
   }
-  function addMonths(key, delta) {
-    let [y, m] = key.split("-").map(Number);
-    m += delta;
-    while (m > 12) { m -= 12; y++; }
-    while (m < 1) { m += 12; y--; }
-    return `${y}-${pad2(m)}`;
-  }
-  const BOARD_MIN_MONTHS = 12;
   function getMonthKeys() {
-    const nowKey = monthKeyFromDate(new Date());
-    const dueKeys = state.tasks.map(monthKeyOfTask).filter(k => k !== "unset");
+    // インターフェースは常に「今年の1月〜12月」の固定カレンダー年のみを表示する
+    const year = new Date().getFullYear();
     const hasUnset = state.tasks.some(t => monthKeyOfTask(t) === "unset");
-    const allKeys = dueKeys.concat([nowKey]);
-    let minKey = allKeys.reduce((a, b) => (a < b ? a : b));
-    let maxKey = allKeys.reduce((a, b) => (a > b ? a : b));
-    // 縮小版でも常に最低12ヶ月分は表示する（今月起点で11ヶ月先まで確保。既存タスクの月は削らない）
-    const minForwardKey = addMonths(nowKey, BOARD_MIN_MONTHS - 1);
-    if (maxKey < minForwardKey) maxKey = minForwardKey;
     const result = [];
-    let k = minKey;
-    while (true) {
-      result.push(k);
-      if (k === maxKey) break;
-      k = addMonths(k, 1);
-    }
+    for (let m = 1; m <= 12; m++) result.push(`${year}-${pad2(m)}`);
     if (hasUnset) result.push("unset");
     return result;
   }
@@ -529,6 +552,37 @@
   function renderPanelToggles() {
     panelToggleRenders.forEach(fn => fn());
   }
+
+  // ---------------------------------------------------------------
+  // 共有モーダル（各月パネルの「設定/リマインダー/名簿」リンクから開く）
+  // 中身は複製せず、既存パネル要素をそのまま移動して表示する（データ・操作は常に1つに共有）。
+  // ---------------------------------------------------------------
+  const PANEL_SECTION_IDS = {
+    settings: "sectionSettings",
+    reminder: "sectionReminder",
+    contacts: "sectionContacts"
+  };
+  const panelModal = document.getElementById("panelModal");
+  const panelModalBody = document.getElementById("panelModalBody");
+  let modalReturn = null;
+
+  function openPanelModal(key) {
+    const el = document.getElementById(PANEL_SECTION_IDS[key]);
+    modalReturn = { el, parent: el.parentElement, nextSibling: el.nextSibling };
+    panelModalBody.appendChild(el);
+    const body = el.querySelector(".panel-body");
+    if (body) body.style.display = "";
+    panelModal.showModal();
+  }
+
+  document.getElementById("panelModalClose").addEventListener("click", () => panelModal.close());
+  panelModal.addEventListener("close", () => {
+    if (!modalReturn) return;
+    const { el, parent, nextSibling } = modalReturn;
+    if (nextSibling) parent.insertBefore(el, nextSibling); else parent.appendChild(el);
+    modalReturn = null;
+    renderPanelToggles();
+  });
 
   // ---------------------------------------------------------------
   // 設定パネル
@@ -829,6 +883,17 @@
       addBtn.addEventListener("click", () => openTaskDialog({ monthKey: key }));
       footer.appendChild(addBtn);
       col.appendChild(footer);
+
+      const links = document.createElement("div");
+      links.className = "kb-col-links";
+      [["settings", "設定"], ["reminder", "リマインダー"], ["contacts", "名簿"]].forEach(([panelKey, label]) => {
+        const link = document.createElement("span");
+        link.className = "kb-link";
+        link.textContent = label;
+        link.addEventListener("click", () => openPanelModal(panelKey));
+        links.appendChild(link);
+      });
+      col.appendChild(links);
 
       col.addEventListener("dragover", e => {
         e.preventDefault();
