@@ -59,30 +59,15 @@
     justify-content: space-between;
   }
 
-  /* ---- グループ枠（設定/リマインダー/ボード/名簿をまとめる大枠） ---- */
-  .group {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-  }
-  .group-hdr {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
+  /* ---- 個別折りたたみパネル（設定・リマインダーチェック・名簿） ---- */
+  .panel-toggle {
     cursor: pointer;
     user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
-  .group-hdr h2 { margin: 0; font-size: 15px; color: #2b3f63; }
-  .group-hdr .toggle-icon { font-size: 12px; color: var(--muted); }
-  .group.collapsed .group-body { display: none; }
-  .group-body {
-    padding: 0 16px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-  .group-body > .panel { border-radius: 6px; }
+  .panel-toggle .toggle-icon { font-size: 11px; color: var(--muted); font-weight: normal; }
   .settings-grid {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -155,7 +140,7 @@
   .pill.drag-over { outline: 2px dashed #ff8c00; }
   .kanban-columns {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 10px;
   }
   .kb-col {
@@ -179,13 +164,12 @@
   .kb-cards {
     flex: 1;
     padding: 8px;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-    align-content: flex-start;
-    gap: 6px;
-    overflow-y: auto;
+    position: relative;
+    min-height: 220px;
   }
   .kb-card {
+    position: absolute;
+    width: 128px;
     background: #fff;
     border: 1px solid var(--border);
     border-left: 4px solid #999;
@@ -194,11 +178,16 @@
     font-size: 11px;
     line-height: 1.3;
     cursor: grab;
-    min-width: 0;
+    touch-action: none;
   }
   .kb-card.selected {
     outline: 2px solid #2b3f63;
-    grid-column: 1 / -1;
+    width: 220px;
+  }
+  .kb-card.dragging {
+    cursor: grabbing;
+    box-shadow: 0 8px 18px rgba(0,0,0,0.25);
+    opacity: 0.95;
   }
   .kb-card .t-name {
     font-weight: bold;
@@ -290,44 +279,43 @@
 
 <main>
 
-  <div class="group" id="mainGroup">
-    <div class="group-hdr" id="mainGroupHdr">
-      <h2>タスク管理（設定・リマインダー・ボード・名簿）</h2>
-      <span class="toggle-icon" id="mainGroupIcon">▲ クリックで折りたたむ</span>
-    </div>
-    <div class="group-body">
+  <section class="panel collapsible">
+    <h2>
+      <span class="panel-toggle" id="toggleSettings">設定 <span class="toggle-icon"></span></span>
+    </h2>
+    <div class="panel-body" id="settingsPanelBody">
+      <div class="settings-grid">
+        <label for="cfgReminderDays">既定のリマインド日数前</label>
+        <input type="number" id="cfgReminderDays" min="0" value="3">
 
-  <section class="panel">
-    <h2>設定</h2>
-    <div class="settings-grid">
-      <label for="cfgReminderDays">既定のリマインド日数前</label>
-      <input type="number" id="cfgReminderDays" min="0" value="3">
+        <label for="cfgSignature">署名</label>
+        <input type="text" id="cfgSignature" value="Todoリマインダーシステム">
 
-      <label for="cfgSignature">署名</label>
-      <input type="text" id="cfgSignature" value="Todoリマインダーシステム">
-
-      <label for="cfgAutoMail">自動メール送信（ON/OFF）</label>
-      <span class="toggle">
-        <input type="checkbox" id="cfgAutoMail">
-        <span id="cfgAutoMailLabel">OFF（ブラウザ版は常にドライラン）</span>
-      </span>
+        <label for="cfgAutoMail">自動メール送信（ON/OFF）</label>
+        <span class="toggle">
+          <input type="checkbox" id="cfgAutoMail">
+          <span id="cfgAutoMailLabel">OFF（ブラウザ版は常にドライラン）</span>
+        </span>
+      </div>
     </div>
   </section>
 
-  <section class="panel">
+  <section class="panel collapsible">
     <h2>
-      リマインダーチェック
+      <span class="panel-toggle" id="toggleReminder">リマインダーチェック <span class="toggle-icon"></span></span>
       <span class="btn-row">
         <button id="btnCheck">リマインド送信チェック</button>
         <button id="btnReset" class="secondary">送信済みフラグをリセット</button>
       </span>
     </h2>
-    <div id="reminderLog"></div>
+    <div class="panel-body" id="reminderPanelBody">
+      <div id="reminderLog"></div>
+    </div>
   </section>
 
   <section class="panel">
     <h2>タスク（月別ボード）</h2>
-    <div class="board-hint">期日の月ごとに小さなパネルへ分かれます（最低12ヶ月分は常に表示）。カードはタスク名/期日/達成状況のみ表示し、クリックすると担当者・ステータス・期日などの詳細編集が開きます。</div>
+    <div class="board-hint">期日の月ごとに小さなパネルへ分かれます（最低12ヶ月分は常に表示）。カードはタスク名/期日/達成状況のみ表示し、クリックすると担当者・ステータス・期日などの詳細編集が開きます。カードは各月パネル内であれば自由な位置にドラッグして配置できます。</div>
 
     <div id="boardView">
       <div class="board-toolbar">
@@ -340,26 +328,25 @@
     </div>
   </section>
 
-  <section class="panel">
+  <section class="panel collapsible">
     <h2>
-      名簿
+      <span class="panel-toggle" id="toggleContacts">名簿 <span class="toggle-icon"></span></span>
       <span class="btn-row"><button id="btnAddContact" class="secondary small">担当者を追加</button></span>
     </h2>
-    <table style="width:100%; border-collapse:collapse;">
-      <thead>
-        <tr style="background:#2b3f63; color:#fff; font-size:12px;">
-          <th style="text-align:left; padding:6px 8px;">名前</th>
-          <th style="text-align:left; padding:6px 8px;">メールアドレス</th>
-          <th style="text-align:left; padding:6px 8px;">部署</th>
-          <th style="padding:6px 8px;"></th>
-        </tr>
-      </thead>
-      <tbody id="contactBody"></tbody>
-    </table>
-  </section>
-
+    <div class="panel-body" id="contactsPanelBody">
+      <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr style="background:#2b3f63; color:#fff; font-size:12px;">
+            <th style="text-align:left; padding:6px 8px;">名前</th>
+            <th style="text-align:left; padding:6px 8px;">メールアドレス</th>
+            <th style="text-align:left; padding:6px 8px;">部署</th>
+            <th style="padding:6px 8px;"></th>
+          </tr>
+        </thead>
+        <tbody id="contactBody"></tbody>
+      </table>
     </div>
-  </div>
+  </section>
 
 </main>
 
@@ -417,7 +404,7 @@
       { name: "鈴木花子", email: "suzuki@example.com", dept: "経理部" }
     ],
     nextTaskId: 3,
-    ui: { mainGroupCollapsed: false }
+    ui: { settingsCollapsed: true, reminderCollapsed: true, contactsCollapsed: true }
   });
 
   let state = load();
@@ -427,7 +414,9 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return defaultState();
       const parsed = JSON.parse(raw);
-      return Object.assign(defaultState(), parsed);
+      const merged = Object.assign(defaultState(), parsed);
+      merged.ui = Object.assign(defaultState().ui, parsed.ui || {});
+      return merged;
     } catch (e) {
       console.error("localStorage の読み込みに失敗しました。初期データを使用します。", e);
       return defaultState();
@@ -513,21 +502,33 @@
   }
 
   // ---------------------------------------------------------------
-  // グループ枠（設定/リマインダー/ボード/名簿の一括折りたたみ）
+  // 個別折りたたみパネル（設定・リマインダーチェック・名簿）
+  // 既定は非表示。見出しをクリックすると拡大表示する。
   // ---------------------------------------------------------------
-  const mainGroup = document.getElementById("mainGroup");
-  const mainGroupIcon = document.getElementById("mainGroupIcon");
-
-  function renderGroupToggle() {
-    const collapsed = !!state.ui.mainGroupCollapsed;
-    mainGroup.classList.toggle("collapsed", collapsed);
-    mainGroupIcon.textContent = collapsed ? "▼ クリックで表示" : "▲ クリックで折りたたむ";
+  function setupCollapsiblePanel(toggleId, bodyId, stateKey) {
+    const toggle = document.getElementById(toggleId);
+    const body = document.getElementById(bodyId);
+    const icon = toggle.querySelector(".toggle-icon");
+    function render() {
+      const collapsed = !!state.ui[stateKey];
+      body.style.display = collapsed ? "none" : "";
+      icon.textContent = collapsed ? "▼ クリックで拡大表示" : "▲ クリックで縮小";
+    }
+    toggle.addEventListener("click", () => {
+      state.ui[stateKey] = !state.ui[stateKey];
+      save();
+      render();
+    });
+    return render;
   }
-  document.getElementById("mainGroupHdr").addEventListener("click", () => {
-    state.ui.mainGroupCollapsed = !state.ui.mainGroupCollapsed;
-    save();
-    renderGroupToggle();
-  });
+  const panelToggleRenders = [
+    setupCollapsiblePanel("toggleSettings", "settingsPanelBody", "settingsCollapsed"),
+    setupCollapsiblePanel("toggleReminder", "reminderPanelBody", "reminderCollapsed"),
+    setupCollapsiblePanel("toggleContacts", "contactsPanelBody", "contactsCollapsed")
+  ];
+  function renderPanelToggles() {
+    panelToggleRenders.forEach(fn => fn());
+  }
 
   // ---------------------------------------------------------------
   // 設定パネル
@@ -644,15 +645,102 @@
   // カードは既定では タスク名/期日/達成状況 の3項目のみを表示する簡易表示。
   // クリックした（選択した）カードだけ、担当者・期日・ステータス・リマインド日数前・送信済み状況の詳細を展開する。
   let selectedTaskId = null;
+  let zCounter = state.tasks.reduce((max, t) => Math.max(max, t.z || 0), 0);
   const kanbanColumns = document.getElementById("kanbanColumns");
+
+  function clampPos(wrap, x, y) {
+    const cardW = 128, cardH = 70;
+    const w = Math.max(wrap.clientWidth, cardW + 8);
+    const h = Math.max(wrap.clientHeight, cardH + 8);
+    return {
+      x: Math.max(4, Math.min(x, w - cardW - 4)),
+      y: Math.max(4, Math.min(y, h - cardH - 4))
+    };
+  }
+
+  function ensureDefaultPos(tasks) {
+    let assigned = false;
+    tasks.forEach((t, i) => {
+      if (!t.pos) {
+        assigned = true;
+        t.pos = { x: 6 + (i % 2) * 108, y: 6 + Math.floor(i / 2) * 64 };
+      }
+    });
+    return assigned;
+  }
+
+  function attachCardDrag(card, task) {
+    card.addEventListener("mousedown", e => {
+      if (e.button !== 0) return;
+      if (e.target.closest("[data-detail]")) return;
+      e.preventDefault();
+
+      // 重なったカードをクリック/ドラッグしたときに最前面へ出す
+      task.z = ++zCounter;
+      card.style.zIndex = (task.id === selectedTaskId ? 1000 : 0) + task.z;
+      save();
+
+      const startX = e.clientX, startY = e.clientY;
+      const originWrap = card.parentElement;
+      const cardRect = card.getBoundingClientRect();
+      const offsetX = startX - cardRect.left;
+      const offsetY = startY - cardRect.top;
+      let moved = false;
+
+      function onMove(ev) {
+        if (!moved && (Math.abs(ev.clientX - startX) > 3 || Math.abs(ev.clientY - startY) > 3)) {
+          moved = true;
+          card.classList.add("dragging");
+        }
+        if (!moved) return;
+        card.style.position = "fixed";
+        card.style.left = (ev.clientX - offsetX) + "px";
+        card.style.top = (ev.clientY - offsetY) + "px";
+        card.style.zIndex = 99999;
+        document.querySelectorAll(".kb-col.drop-target").forEach(c => c.classList.remove("drop-target"));
+        const under = document.elementFromPoint(ev.clientX, ev.clientY);
+        const col = under && under.closest(".kb-col");
+        if (col) col.classList.add("drop-target");
+      }
+
+      function onUp(ev) {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        document.querySelectorAll(".kb-col.drop-target").forEach(c => c.classList.remove("drop-target"));
+        if (!moved) return;
+        card.classList.remove("dragging");
+        card.style.position = "";
+        card.style.left = "";
+        card.style.top = "";
+
+        const under = document.elementFromPoint(ev.clientX, ev.clientY);
+        const targetCol = under && under.closest(".kb-col");
+        const targetWrap = targetCol ? targetCol.querySelector(".kb-cards") : originWrap;
+        const wrapRect = targetWrap.getBoundingClientRect();
+        task.pos = clampPos(targetWrap, ev.clientX - wrapRect.left - offsetX, ev.clientY - wrapRect.top - offsetY);
+
+        if (targetCol && targetCol.dataset.month !== monthKeyOfTask(task)) {
+          moveTaskToMonth(task.id, targetCol.dataset.month);
+        } else {
+          save();
+          renderBoard();
+        }
+      }
+
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  }
 
   function buildCardEl(task) {
     const due = parseDue(task.due);
     const expanded = task.id === selectedTaskId;
     const card = document.createElement("div");
     card.className = `kb-card status-${task.status}` + (expanded ? " selected" : "");
-    card.draggable = true;
     card.dataset.taskId = task.id;
+    card.style.left = task.pos.x + "px";
+    card.style.top = task.pos.y + "px";
+    card.style.zIndex = (expanded ? 1000 : 0) + (task.z || 0);
     card.innerHTML = `
       <div class="t-name">${escapeHtml(task.name)}</div>
       <div class="t-meta">
@@ -681,10 +769,7 @@
       selectedTaskId = expanded ? null : task.id;
       renderBoard();
     });
-    card.addEventListener("dragstart", e => {
-      e.dataTransfer.setData("text/task-id", String(task.id));
-      e.dataTransfer.effectAllowed = "move";
-    });
+    attachCardDrag(card, task);
     if (expanded) {
       card.querySelector(".edit-assignee").addEventListener("change", e => {
         task.assignee = e.target.value.trim();
@@ -712,6 +797,7 @@
   function renderBoard() {
     kanbanColumns.innerHTML = "";
     const nowKey = monthKeyFromDate(new Date());
+    let needsSave = false;
     for (const key of getMonthKeys()) {
       const col = document.createElement("div");
       col.className = "kb-col" + (key === nowKey ? " current-month" : "");
@@ -728,6 +814,9 @@
       if (tasks.length === 0) {
         cardsWrap.innerHTML = `<div class="empty-msg">タスクなし</div>`;
       } else {
+        if (ensureDefaultPos(tasks)) needsSave = true;
+        const maxY = Math.max(...tasks.map(t => t.pos.y + 90));
+        cardsWrap.style.minHeight = Math.max(220, maxY) + "px";
         for (const task of tasks) cardsWrap.appendChild(buildCardEl(task));
       }
       col.appendChild(cardsWrap);
@@ -749,17 +838,15 @@
       col.addEventListener("drop", e => {
         e.preventDefault();
         col.classList.remove("drop-target");
-        const taskId = Number(e.dataTransfer.getData("text/task-id"));
         const assignee = e.dataTransfer.getData("text/assignee");
-        if (taskId) {
-          moveTaskToMonth(taskId, key);
-        } else if (assignee) {
+        if (assignee) {
           openTaskDialog({ monthKey: key, assignee });
         }
       });
 
       kanbanColumns.appendChild(col);
     }
+    if (needsSave) save();
   }
 
   function moveTaskToMonth(taskId, monthKey) {
@@ -927,6 +1014,7 @@
         try {
           const parsed = JSON.parse(reader.result);
           state = Object.assign(defaultState(), parsed);
+          state.ui = Object.assign(defaultState().ui, parsed.ui || {});
           save();
           renderAll();
         } catch (err) {
@@ -946,7 +1034,7 @@
   });
 
   function renderAll() {
-    renderGroupToggle();
+    renderPanelToggles();
     renderSettings();
     renderPills();
     renderContacts();
