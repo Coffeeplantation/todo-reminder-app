@@ -223,11 +223,6 @@
     cursor: pointer;
   }
   .kb-link:hover { color: #2b3f63; }
-  .kb-actions {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 10px;
-  }
   .empty-msg { color: var(--muted); font-size: 12px; padding: 10px; text-align: center; }
 
   /* ---- reminder log ---- */
@@ -277,7 +272,6 @@
     justify-content: flex-end;
   }
 
-  footer { text-align: center; color: var(--muted); font-size: 11px; padding: 16px; }
 </style>
 </head>
 <body>
@@ -325,9 +319,6 @@
   <section class="panel">
     <div id="boardView">
       <div class="kanban-columns" id="kanbanColumns"></div>
-      <div class="kb-actions">
-        <button id="btnDelSelected" class="danger small">選択を削除</button>
-      </div>
     </div>
   </section>
 
@@ -353,7 +344,6 @@
 
 </main>
 
-<footer>Todoリマインダー ブラウザ版 — デスクトップ Excel（VBA）版の開発・UI検証用ポート。仕様は docs/spec.md を参照。</footer>
 
 <!-- 各月パネルの「設定/リマインダー/名簿」リンクから開く共有モーダル -->
 <!-- 中身は既存パネル（sectionSettings 等）をそのまま移動して表示するため、データや操作は常に1つに共有される -->
@@ -1027,17 +1017,6 @@
     save();
     renderBoard();
   }
-
-  document.getElementById("btnDelSelected").addEventListener("click", () => {
-    if (selectedTaskId == null) { alert("削除するタスクを選択してください。"); return; }
-    const task = state.tasks.find(t => t.id === selectedTaskId);
-    if (!task) return;
-    if (!confirm(`「${task.name}」を削除しますか？`)) return;
-    state.tasks = state.tasks.filter(t => t.id !== selectedTaskId);
-    selectedTaskId = null;
-    save();
-    renderBoard();
-  });
 
   // ---- タスク追加ダイアログ ----
   const taskDialog = document.getElementById("taskDialog");
