@@ -95,21 +95,6 @@
   button:disabled { opacity: 0.5; cursor: default; }
   .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
 
-  /* ---- view toggle: summary vs full kanban ---- */
-  #summaryView table {
-    width: 100%;
-    border-collapse: collapse;
-    cursor: pointer;
-  }
-  #summaryView th, #summaryView td {
-    text-align: left;
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--border);
-    font-size: 13px;
-  }
-  #summaryView th { background: #2b3f63; color: #fff; font-size: 12px; }
-  #summaryView tbody tr:hover { background: #eef2fa; }
-  #summaryView .hint { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
   .status-badge {
     display: inline-block;
     padding: 1px 8px;
@@ -122,7 +107,7 @@
   .status-完了 { background: var(--green); }
 
   /* ---- kanban board ---- */
-  #boardView { display: none; }
+  .board-hint { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
   .board-toolbar {
     display: flex;
     justify-content: space-between;
@@ -186,7 +171,16 @@
   }
   .kb-card.selected { outline: 2px solid #2b3f63; }
   .kb-card .t-name { font-weight: bold; }
-  .kb-card .t-meta { color: var(--muted); display: flex; justify-content: space-between; margin-top: 2px; }
+  .kb-card .t-meta { color: var(--muted); display: flex; justify-content: space-between; align-items: center; margin-top: 2px; }
+  .kb-card .t-detail {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--border);
+    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
   .kb-col[data-status="未完了"] .kb-card { border-left-color: var(--blue); }
   .kb-col[data-status="進行中"] .kb-card { border-left-color: var(--orange); }
   .kb-col[data-status="完了"] .kb-card { border-left-color: var(--green); }
@@ -278,25 +272,12 @@
   </section>
 
   <section class="panel">
-    <h2>
-      タスク
-      <span class="btn-row">
-        <button id="btnToggleView" class="plain small">Kanbanボードを開く</button>
-      </span>
-    </h2>
-
-    <div id="summaryView">
-      <div class="hint">行をクリックすると Kanban ボードが開きます。</div>
-      <table>
-        <thead><tr><th>タスク名</th><th>期日</th><th>達成状況</th></tr></thead>
-        <tbody id="summaryBody"></tbody>
-      </table>
-    </div>
+    <h2>タスク（Kanban ボード）</h2>
+    <div class="board-hint">カードには タスク名 / 期日 / 達成状況 のみ表示されます。クリックすると担当者などの詳細が開きます。</div>
 
     <div id="boardView">
       <div class="board-toolbar">
         <div class="pills" id="assigneePills"></div>
-        <button id="btnCloseBoard" class="plain small">簡易表示に戻る</button>
       </div>
       <div class="kanban-columns">
         <div class="kb-col" data-status="未完了">
@@ -532,7 +513,6 @@
     }
 
     save();
-    renderSummary();
     renderBoard();
 
     let msg;
@@ -548,7 +528,6 @@
     if (!confirm("送信済みフラグを全てリセットしますか？\n（「済」「アドレス不明」「期日超過」を全て空白に戻します）")) return;
     for (const task of state.tasks) task.sentFlag = "";
     save();
-    renderSummary();
     renderBoard();
     reminderLog.textContent = "";
   }
@@ -556,57 +535,16 @@
   document.getElementById("btnCheck").addEventListener("click", checkAndSendReminders);
   document.getElementById("btnReset").addEventListener("click", resetSentFlags);
 
-  // ---------------------------------------------------------------
-  // 簡易表示（サマリー）
-  // ---------------------------------------------------------------
-  const summaryBody = document.getElementById("summaryBody");
-
-  function renderSummary() {
-    summaryBody.innerHTML = "";
-    if (state.tasks.length === 0) {
-      summaryBody.innerHTML = `<tr><td colspan="3" class="empty-msg">タスクがありません</td></tr>`;
-      return;
-    }
-    for (const task of state.tasks) {
-      const tr = document.createElement("tr");
-      const due = parseDue(task.due);
-      tr.innerHTML = `
-        <td>${escapeHtml(task.name)}</td>
-        <td>${due ? formatDate(due) : escapeHtml(task.due)}</td>
-        <td><span class="status-badge status-${task.status}">${task.status}</span></td>
-      `;
-      tr.addEventListener("click", showBoardView);
-      summaryBody.appendChild(tr);
-    }
-  }
-
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
   // ---------------------------------------------------------------
-  // Kanban ボード（フル表示）
+  // Kanban ボード
   // ---------------------------------------------------------------
-  const summaryView = document.getElementById("summaryView");
-  const boardView = document.getElementById("boardView");
-  const btnToggleView = document.getElementById("btnToggleView");
+  // カードは既定では タスク名/期日/達成状況 の3項目のみを表示する簡易表示。
+  // クリックした（選択した）カードだけ、担当者・リマインド日数前・送信済み状況の詳細を展開する。
   let selectedTaskId = null;
-
-  function showBoardView() {
-    summaryView.style.display = "none";
-    boardView.style.display = "block";
-    btnToggleView.style.display = "none";
-    renderBoard();
-  }
-  function showSummaryView() {
-    boardView.style.display = "none";
-    summaryView.style.display = "block";
-    btnToggleView.style.display = "inline-block";
-    selectedTaskId = null;
-    renderSummary();
-  }
-  btnToggleView.addEventListener("click", showBoardView);
-  document.getElementById("btnCloseBoard").addEventListener("click", showSummaryView);
 
   function renderBoard() {
     for (const status of STATUSES) {
@@ -619,16 +557,26 @@
       }
       for (const task of tasks) {
         const due = parseDue(task.due);
+        const expanded = task.id === selectedTaskId;
         const card = document.createElement("div");
-        card.className = "kb-card" + (task.id === selectedTaskId ? " selected" : "");
+        card.className = "kb-card" + (expanded ? " selected" : "");
         card.draggable = true;
         card.dataset.taskId = task.id;
         card.innerHTML = `
           <div class="t-name">${escapeHtml(task.name)}</div>
-          <div class="t-meta"><span>${escapeHtml(task.assignee)}</span><span>${due ? formatDate(due) : escapeHtml(task.due)}</span></div>
+          <div class="t-meta">
+            <span>${due ? formatDate(due) : escapeHtml(task.due)}</span>
+            <span class="status-badge status-${task.status}">${task.status}</span>
+          </div>
+          ${expanded ? `
+          <div class="t-detail">
+            <span>担当者: ${escapeHtml(task.assignee || "（未設定）")}</span>
+            <span>リマインド日数前: ${task.reminderDays}</span>
+            <span>送信済み: ${task.sentFlag ? escapeHtml(task.sentFlag) : "（未判定）"}</span>
+          </div>` : ""}
         `;
         card.addEventListener("click", () => {
-          selectedTaskId = task.id;
+          selectedTaskId = expanded ? null : task.id;
           renderBoard();
         });
         card.addEventListener("dragstart", e => {
@@ -667,7 +615,6 @@
     task.sentFlag = ""; // spec.md 5.4: 移動のたびに送信済みフラグはリセットされる
     save();
     renderBoard();
-    renderSummary();
   }
 
   document.getElementById("btnDelSelected").addEventListener("click", () => {
@@ -679,7 +626,6 @@
     selectedTaskId = null;
     save();
     renderBoard();
-    renderSummary();
   });
 
   // ---- 担当者ピル ----
@@ -744,7 +690,6 @@
     save();
     taskDialog.close();
     renderBoard();
-    renderSummary();
   });
 
   // ---------------------------------------------------------------
@@ -839,7 +784,6 @@
 
   function renderAll() {
     renderSettings();
-    renderSummary();
     renderPills();
     renderContacts();
     renderBoard();
