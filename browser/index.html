@@ -104,7 +104,6 @@
   }
   .kb-col {
     position: absolute;
-    width: 240px;
     background: #fbfcff;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -115,8 +114,6 @@
   .kb-col.current-month { box-shadow: 0 0 0 2px #ff8c00; }
   .kb-col.dragging-col { box-shadow: 0 10px 24px rgba(0,0,0,0.3); }
   .kb-col-hdr {
-    background: #2b3f63;
-    color: #fff;
     font-weight: bold;
     font-size: 13px;
     padding: 6px 10px;
@@ -130,6 +127,17 @@
     padding: 8px;
     position: relative;
     min-height: 220px;
+    overflow: auto;
+  }
+  .kb-col-resize {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 15px;
+    height: 15px;
+    cursor: nwse-resize;
+    background: linear-gradient(135deg, transparent 0 45%, var(--muted) 45% 55%, transparent 55% 100%);
+    border-radius: 0 0 6px 0;
   }
   .kb-card {
     position: absolute;
@@ -455,6 +463,20 @@
     const now = new Date();
     return (y === now.getFullYear()) ? `${m}月` : `${y}年${m}月`;
   }
+  // 現在月に近いほど濃く、遠いほど薄い見出し色を返す（期日未設定は最も薄い扱い）
+  function monthHeaderColor(key, nowKey) {
+    const dark = [43, 63, 99]; // #2b3f63
+    const light = [196, 206, 224];
+    let t = 1;
+    if (key !== "unset") {
+      const [y, m] = key.split("-").map(Number);
+      const [ny, nm] = nowKey.split("-").map(Number);
+      const dist = Math.abs((y - ny) * 12 + (m - nm));
+      t = Math.min(1, dist / 11);
+    }
+    const rgb = dark.map((d, i) => Math.round(d + (light[i] - d) * t));
+    return { bg: `rgb(${rgb.join(",")})`, fg: t > 0.55 ? "#1f2937" : "#ffffff" };
+  }
   function getMonthKeys() {
     // インターフェースは常に「今年の1月〜12月」の固定カレンダー年のみを表示する
     const year = new Date().getFullYear();
@@ -628,7 +650,7 @@
     tasks.forEach((t, i) => {
       if (!t.pos) {
         assigned = true;
-        t.pos = { x: 6 + (i % 2) * 108, y: 6 + Math.floor(i / 2) * 64 };
+        t.pos = { x: 6, y: 6 + i * 64 };
       }
     });
     return assigned;
@@ -701,6 +723,40 @@
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     });
+  }
+
+  const COL_MIN_W = 180, COL_MIN_H = 140;
+
+  // 月パネル右下のハンドルをドラッグして大きさを自由に変更する
+  function attachColResize(col, key) {
+    const handle = document.createElement("div");
+    handle.className = "kb-col-resize";
+    handle.addEventListener("mousedown", e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX, startY = e.clientY;
+      const startW = col.offsetWidth, startH = col.offsetHeight;
+
+      function onMove(ev) {
+        const w = Math.max(COL_MIN_W, startW + (ev.clientX - startX));
+        const h = Math.max(COL_MIN_H, startH + (ev.clientY - startY));
+        col.style.width = w + "px";
+        col.style.height = h + "px";
+        resizeBoardCanvas();
+      }
+      function onUp() {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        state.monthPos[key].w = col.offsetWidth;
+        state.monthPos[key].h = col.offsetHeight;
+        save();
+        resizeBoardCanvas();
+      }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+    col.appendChild(handle);
   }
 
   function attachCardDrag(card, task) {
@@ -841,12 +897,18 @@
       col.style.left = pos.x + "px";
       col.style.top = pos.y + "px";
       col.style.zIndex = pos.z || 0;
+      col.style.width = (pos.w || 240) + "px";
+      if (pos.h) col.style.height = pos.h + "px";
 
       const hdr = document.createElement("div");
       hdr.className = "kb-col-hdr";
       hdr.textContent = monthLabel(key) + (key === nowKey ? "（今月）" : "");
+      const { bg, fg } = monthHeaderColor(key, nowKey);
+      hdr.style.background = bg;
+      hdr.style.color = fg;
       col.appendChild(hdr);
       attachColDrag(col, key);
+      attachColResize(col, key);
 
       const cardsWrap = document.createElement("div");
       cardsWrap.className = "kb-cards";
