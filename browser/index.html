@@ -1,3 +1,5 @@
+
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -59,15 +61,8 @@
     justify-content: space-between;
   }
 
-  /* ---- 個別折りたたみパネル（設定・リマインダーチェック・名簿） ---- */
-  .panel-toggle {
-    cursor: pointer;
-    user-select: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .panel-toggle .toggle-icon { font-size: 11px; color: var(--muted); font-weight: normal; }
+  /* ---- 設定・リマインダーチェック・名簿は画面に常時非表示。各月パネルのリンクから共有モーダルでのみ表示する ---- */
+  .modal-only { display: none; }
   .settings-grid {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -285,8 +280,7 @@
     border: none;
     padding: 0;
   }
-  .panel-modal-body .panel-toggle { cursor: default; }
-  .panel-modal-body .panel-toggle .toggle-icon { display: none; }
+  .panel-modal-body .modal-only { display: block; }
   .panel-modal-footer {
     padding: 0 16px 16px;
     display: flex;
@@ -312,10 +306,8 @@
 
 <main>
 
-  <section class="panel collapsible" id="sectionSettings">
-    <h2>
-      <span class="panel-toggle" id="toggleSettings">設定 <span class="toggle-icon"></span></span>
-    </h2>
+  <section class="panel modal-only" id="sectionSettings">
+    <h2>設定</h2>
     <div class="panel-body" id="settingsPanelBody">
       <div class="settings-grid">
         <label for="cfgReminderDays">既定のリマインド日数前</label>
@@ -333,9 +325,9 @@
     </div>
   </section>
 
-  <section class="panel collapsible" id="sectionReminder">
+  <section class="panel modal-only" id="sectionReminder">
     <h2>
-      <span class="panel-toggle" id="toggleReminder">リマインダーチェック <span class="toggle-icon"></span></span>
+      リマインダーチェック
       <span class="btn-row">
         <button id="btnCheck">リマインド送信チェック</button>
         <button id="btnReset" class="secondary">送信済みフラグをリセット</button>
@@ -361,9 +353,9 @@
     </div>
   </section>
 
-  <section class="panel collapsible" id="sectionContacts">
+  <section class="panel modal-only" id="sectionContacts">
     <h2>
-      <span class="panel-toggle" id="toggleContacts">名簿 <span class="toggle-icon"></span></span>
+      名簿
       <span class="btn-row"><button id="btnAddContact" class="secondary small">担当者を追加</button></span>
     </h2>
     <div class="panel-body" id="contactsPanelBody">
@@ -445,8 +437,7 @@
       { name: "山田太郎", email: "yamada@example.com", dept: "営業部" },
       { name: "鈴木花子", email: "suzuki@example.com", dept: "経理部" }
     ],
-    nextTaskId: 3,
-    ui: { settingsCollapsed: true, reminderCollapsed: true, contactsCollapsed: true }
+    nextTaskId: 3
   });
 
   let state = load();
@@ -456,9 +447,7 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return defaultState();
       const parsed = JSON.parse(raw);
-      const merged = Object.assign(defaultState(), parsed);
-      merged.ui = Object.assign(defaultState().ui, parsed.ui || {});
-      return merged;
+      return Object.assign(defaultState(), parsed);
     } catch (e) {
       console.error("localStorage の読み込みに失敗しました。初期データを使用します。", e);
       return defaultState();
@@ -525,37 +514,9 @@
   }
 
   // ---------------------------------------------------------------
-  // 個別折りたたみパネル（設定・リマインダーチェック・名簿）
-  // 既定は非表示。見出しをクリックすると拡大表示する。
-  // ---------------------------------------------------------------
-  function setupCollapsiblePanel(toggleId, bodyId, stateKey) {
-    const toggle = document.getElementById(toggleId);
-    const body = document.getElementById(bodyId);
-    const icon = toggle.querySelector(".toggle-icon");
-    function render() {
-      const collapsed = !!state.ui[stateKey];
-      body.style.display = collapsed ? "none" : "";
-      icon.textContent = collapsed ? "▼ クリックで拡大表示" : "▲ クリックで縮小";
-    }
-    toggle.addEventListener("click", () => {
-      state.ui[stateKey] = !state.ui[stateKey];
-      save();
-      render();
-    });
-    return render;
-  }
-  const panelToggleRenders = [
-    setupCollapsiblePanel("toggleSettings", "settingsPanelBody", "settingsCollapsed"),
-    setupCollapsiblePanel("toggleReminder", "reminderPanelBody", "reminderCollapsed"),
-    setupCollapsiblePanel("toggleContacts", "contactsPanelBody", "contactsCollapsed")
-  ];
-  function renderPanelToggles() {
-    panelToggleRenders.forEach(fn => fn());
-  }
-
-  // ---------------------------------------------------------------
   // 共有モーダル（各月パネルの「設定/リマインダー/名簿」リンクから開く）
-  // 中身は複製せず、既存パネル要素をそのまま移動して表示する（データ・操作は常に1つに共有）。
+  // 設定・リマインダーチェック・名簿は画面には常に非表示（.modal-only）で、
+  // このモーダルへ既存パネル要素をそのまま移動して表示する（複製ではなく常にデータ・操作を共有）。
   // ---------------------------------------------------------------
   const PANEL_SECTION_IDS = {
     settings: "sectionSettings",
@@ -570,8 +531,6 @@
     const el = document.getElementById(PANEL_SECTION_IDS[key]);
     modalReturn = { el, parent: el.parentElement, nextSibling: el.nextSibling };
     panelModalBody.appendChild(el);
-    const body = el.querySelector(".panel-body");
-    if (body) body.style.display = "";
     panelModal.showModal();
   }
 
@@ -581,7 +540,6 @@
     const { el, parent, nextSibling } = modalReturn;
     if (nextSibling) parent.insertBefore(el, nextSibling); else parent.appendChild(el);
     modalReturn = null;
-    renderPanelToggles();
   });
 
   // ---------------------------------------------------------------
@@ -1079,7 +1037,6 @@
         try {
           const parsed = JSON.parse(reader.result);
           state = Object.assign(defaultState(), parsed);
-          state.ui = Object.assign(defaultState().ui, parsed.ui || {});
           save();
           renderAll();
         } catch (err) {
@@ -1099,7 +1056,6 @@
   });
 
   function renderAll() {
-    renderPanelToggles();
     renderSettings();
     renderPills();
     renderContacts();
