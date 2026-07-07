@@ -13,3 +13,6 @@ desktop.ini
 # Editor / Claude Code
 .vscode/
 .claude/settings.local.json
+
+# Playwright MCP verification artifacts
+.playwright-mcp/
