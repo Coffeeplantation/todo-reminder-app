@@ -26,22 +26,8 @@
     color: var(--text);
     font-size: 14px;
   }
-  header {
-    background: #2b3f63;
-    color: #fff;
-    padding: 12px 20px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  header h1 { font-size: 16px; margin: 0; }
-  header .sub { font-size: 12px; opacity: 0.85; }
   main {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 16px;
+    padding: 8px;
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -293,18 +279,6 @@
 </style>
 </head>
 <body>
-
-<header>
-  <div>
-    <h1>Todoリマインダー（ブラウザ版・開発用）</h1>
-    <div class="sub">docs/spec.md 準拠 / データはこのブラウザの localStorage にのみ保存されます</div>
-  </div>
-  <div class="btn-row">
-    <button id="btnExport" class="plain small">JSONエクスポート</button>
-    <button id="btnImport" class="plain small">JSONインポート</button>
-    <button id="btnResetAll" class="danger small">全データ初期化</button>
-  </div>
-</header>
 
 <main>
 
@@ -1071,49 +1045,6 @@
     contactDialog.close();
     renderContacts();
     renderPills();
-  });
-
-  // ---------------------------------------------------------------
-  // エクスポート / インポート / 初期化
-  // ---------------------------------------------------------------
-  document.getElementById("btnExport").addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "todo-reminder-data.json";
-    a.click();
-    URL.revokeObjectURL(url);
-  });
-
-  document.getElementById("btnImport").addEventListener("click", () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "application/json";
-    input.addEventListener("change", () => {
-      const file = input.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const parsed = JSON.parse(reader.result);
-          state = Object.assign(defaultState(), parsed);
-          save();
-          renderAll();
-        } catch (err) {
-          alert("JSONの読み込みに失敗しました: " + err.message);
-        }
-      };
-      reader.readAsText(file);
-    });
-    input.click();
-  });
-
-  document.getElementById("btnResetAll").addEventListener("click", () => {
-    if (!confirm("全データを初期化します。よろしいですか？")) return;
-    state = defaultState();
-    save();
-    renderAll();
   });
 
   function renderAll() {
