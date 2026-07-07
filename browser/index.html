@@ -58,6 +58,31 @@
     align-items: center;
     justify-content: space-between;
   }
+
+  /* ---- グループ枠（設定/リマインダー/ボード/名簿をまとめる大枠） ---- */
+  .group {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .group-hdr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .group-hdr h2 { margin: 0; font-size: 15px; color: #2b3f63; }
+  .group-hdr .toggle-icon { font-size: 12px; color: var(--muted); }
+  .group.collapsed .group-body { display: none; }
+  .group-body {
+    padding: 0 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .group-body > .panel { border-radius: 6px; }
   .settings-grid {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -265,6 +290,13 @@
 
 <main>
 
+  <div class="group" id="mainGroup">
+    <div class="group-hdr" id="mainGroupHdr">
+      <h2>タスク管理（設定・リマインダー・ボード・名簿）</h2>
+      <span class="toggle-icon" id="mainGroupIcon">▲ クリックで折りたたむ</span>
+    </div>
+    <div class="group-body">
+
   <section class="panel">
     <h2>設定</h2>
     <div class="settings-grid">
@@ -295,7 +327,7 @@
 
   <section class="panel">
     <h2>タスク（月別ボード）</h2>
-    <div class="board-hint">期日の月ごとに小さなパネルへ分かれます。カードはタスク名/期日/達成状況のみ表示し、クリックすると担当者・ステータス・期日などの詳細編集が開きます。</div>
+    <div class="board-hint">期日の月ごとに小さなパネルへ分かれます（最低12ヶ月分は常に表示）。カードはタスク名/期日/達成状況のみ表示し、クリックすると担当者・ステータス・期日などの詳細編集が開きます。</div>
 
     <div id="boardView">
       <div class="board-toolbar">
@@ -325,6 +357,9 @@
       <tbody id="contactBody"></tbody>
     </table>
   </section>
+
+    </div>
+  </div>
 
 </main>
 
@@ -381,7 +416,8 @@
       { name: "山田太郎", email: "yamada@example.com", dept: "営業部" },
       { name: "鈴木花子", email: "suzuki@example.com", dept: "経理部" }
     ],
-    nextTaskId: 3
+    nextTaskId: 3,
+    ui: { mainGroupCollapsed: false }
   });
 
   let state = load();
@@ -454,6 +490,7 @@
     while (m < 1) { m += 12; y--; }
     return `${y}-${pad2(m)}`;
   }
+  const BOARD_MIN_MONTHS = 12;
   function getMonthKeys() {
     const nowKey = monthKeyFromDate(new Date());
     const dueKeys = state.tasks.map(monthKeyOfTask).filter(k => k !== "unset");
@@ -461,6 +498,9 @@
     const allKeys = dueKeys.concat([nowKey]);
     let minKey = allKeys.reduce((a, b) => (a < b ? a : b));
     let maxKey = allKeys.reduce((a, b) => (a > b ? a : b));
+    // 縮小版でも常に最低12ヶ月分は表示する（今月起点で11ヶ月先まで確保。既存タスクの月は削らない）
+    const minForwardKey = addMonths(nowKey, BOARD_MIN_MONTHS - 1);
+    if (maxKey < minForwardKey) maxKey = minForwardKey;
     const result = [];
     let k = minKey;
     while (true) {
@@ -471,6 +511,23 @@
     if (hasUnset) result.push("unset");
     return result;
   }
+
+  // ---------------------------------------------------------------
+  // グループ枠（設定/リマインダー/ボード/名簿の一括折りたたみ）
+  // ---------------------------------------------------------------
+  const mainGroup = document.getElementById("mainGroup");
+  const mainGroupIcon = document.getElementById("mainGroupIcon");
+
+  function renderGroupToggle() {
+    const collapsed = !!state.ui.mainGroupCollapsed;
+    mainGroup.classList.toggle("collapsed", collapsed);
+    mainGroupIcon.textContent = collapsed ? "▼ クリックで表示" : "▲ クリックで折りたたむ";
+  }
+  document.getElementById("mainGroupHdr").addEventListener("click", () => {
+    state.ui.mainGroupCollapsed = !state.ui.mainGroupCollapsed;
+    save();
+    renderGroupToggle();
+  });
 
   // ---------------------------------------------------------------
   // 設定パネル
@@ -889,6 +946,7 @@
   });
 
   function renderAll() {
+    renderGroupToggle();
     renderSettings();
     renderPills();
     renderContacts();
