@@ -184,6 +184,15 @@
     position: relative;
     min-height: 0;
     overflow: auto;
+    font-size: calc(11px * var(--kb-font-scale, 1));
+  }
+  .kb-col-tile-icon {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    font-size: 14px;
+    line-height: 1;
+    z-index: 1;
   }
   .kb-col-menu {
     position: absolute;
@@ -255,7 +264,7 @@
     border-left: 4px solid #999;
     border-radius: 4px;
     padding: 5px 7px;
-    font-size: 11px;
+    font-size: 1em;
     line-height: 1.3;
     cursor: grab;
     touch-action: none;
@@ -278,7 +287,7 @@
   .kb-card.selected .t-name { white-space: normal; }
   .kb-card .t-meta { color: var(--muted); display: flex; flex-direction: column; gap: 2px; margin-top: 3px; }
   .kb-card.selected .t-meta { flex-direction: row; justify-content: space-between; align-items: center; }
-  .kb-card .status-badge { align-self: flex-start; }
+  .kb-card .status-badge { align-self: flex-start; font-size: 1em; }
   .kb-card .t-detail {
     margin-top: 6px;
     padding-top: 6px;
@@ -287,14 +296,14 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    font-size: 12px;
+    font-size: 1.09em;
   }
   .kb-card .t-detail label { display: flex; flex-direction: column; gap: 2px; }
   .kb-card .t-detail input, .kb-card .t-detail select {
     padding: 3px 5px;
     border: 1px solid var(--border);
     border-radius: 4px;
-    font-size: 12px;
+    font-size: inherit;
     color: var(--text);
   }
   .kb-card.status-未完了 { border-left-color: var(--blue); }
@@ -753,6 +762,14 @@
   // ---------------------------------------------------------------
   // カードは既定では タスク名/期日/達成状況 の3項目のみを表示する簡易表示。
   // クリックした（選択した）カードだけ、担当者・期日・ステータス・リマインド日数前・送信済み状況の詳細を展開する。
+  const FONT_SIZE_SCALE = { small: 0.85, normal: 1, large: 1.25 };
+  const SHADOW_PRESET = { none: "", normal: "0 2px 6px rgba(0,0,0,0.15)", strong: "0 8px 20px rgba(0,0,0,0.35)" };
+  const TILE_SIZE_PRESET = {
+    small: { tile: 32, badge: 22, font: 11 },
+    normal: { tile: 44, badge: 30, font: 14 },
+    large: { tile: 60, badge: 42, font: 18 }
+  };
+  const ICON_OPTIONS = [["", "なし"], ["📌", "📌"], ["⭐", "⭐"], ["🔥", "🔥"], ["📅", "📅"]];
   let selectedTaskId = null;
   let openMenuMonthKey = null;
   let zCounter = state.tasks.reduce((max, t) => Math.max(max, t.z || 0), 0);
@@ -1038,16 +1055,21 @@
     for (const key of monthKeys) {
       const pos = state.monthPos[key];
       const collapsed = !!pos.collapsed;
+      const tileSize = TILE_SIZE_PRESET[pos.tileSize || "normal"];
       const col = document.createElement("div");
       col.className = "kb-col" + (key === nowKey ? " current-month" : "") + (collapsed ? " collapsed" : "");
       col.dataset.month = key;
       col.style.left = pos.x + "px";
       col.style.top = pos.y + "px";
       col.style.zIndex = pos.z || 0;
-      col.style.width = collapsed ? "44px" : (pos.w || 240) + "px";
+      col.style.width = collapsed ? tileSize.tile + "px" : (pos.w || 240) + "px";
       if (!collapsed && pos.h) col.style.height = pos.h + "px";
       col.style.borderStyle = pos.border === "double" ? "double" : "";
       col.style.borderWidth = pos.border === "double" ? "4px" : "";
+      col.style.setProperty("--kb-font-scale", FONT_SIZE_SCALE[pos.fontSize || "normal"]);
+      const ringShadow = key === nowKey ? "0 0 0 2px #ff8c00" : "";
+      const shadowPreset = SHADOW_PRESET[pos.shadow || "none"];
+      col.style.boxShadow = [ringShadow, shadowPreset].filter(Boolean).join(", ");
 
       const tasks = state.tasks.filter(t => monthKeyOfTask(t) === key);
 
@@ -1068,11 +1090,20 @@
         const monthBadge = document.createElement("span");
         monthBadge.className = "kb-col-count kb-col-count-lg";
         monthBadge.textContent = monthNumberLabel(key);
+        monthBadge.style.width = tileSize.badge + "px";
+        monthBadge.style.height = tileSize.badge + "px";
+        monthBadge.style.fontSize = tileSize.font + "px";
         hdr.appendChild(monthBadge);
+        if (pos.icon) {
+          const iconSpan = document.createElement("span");
+          iconSpan.className = "kb-col-tile-icon";
+          iconSpan.textContent = pos.icon;
+          col.appendChild(iconSpan);
+        }
       } else {
         const hdrLabel = document.createElement("span");
         hdrLabel.className = "kb-col-hdr-label";
-        hdrLabel.textContent = "▼ " + monthLabel(key) + (key === nowKey ? "（今月）" : "");
+        hdrLabel.textContent = (pos.icon ? pos.icon + " " : "") + "▼ " + monthLabel(key) + (key === nowKey ? "（今月）" : "");
         hdr.appendChild(hdrLabel);
         const menuBtn = document.createElement("button");
         menuBtn.type = "button";
@@ -1135,6 +1166,27 @@
             menu.appendChild(item);
           });
 
+          const buildSelectRow = (labelText, options, currentValue, onPick) => {
+            const row = document.createElement("label");
+            row.className = "kb-col-menu-field-row";
+            row.textContent = labelText;
+            const select = document.createElement("select");
+            options.forEach(([val, optLabel]) => {
+              const opt = document.createElement("option");
+              opt.value = val;
+              opt.textContent = optLabel;
+              if (currentValue === val) opt.selected = true;
+              select.appendChild(opt);
+            });
+            select.addEventListener("change", () => {
+              onPick(select.value);
+              save();
+              renderBoard();
+            });
+            row.appendChild(select);
+            return row;
+          };
+
           const colorRow = document.createElement("label");
           colorRow.className = "kb-col-menu-field-row";
           colorRow.textContent = "色";
@@ -1149,43 +1201,23 @@
           colorRow.appendChild(colorInput);
           menu.appendChild(colorRow);
 
-          const shapeRow = document.createElement("label");
-          shapeRow.className = "kb-col-menu-field-row";
-          shapeRow.textContent = "形（折りたたみ時）";
-          const shapeSelect = document.createElement("select");
-          [["square", "四角"], ["circle", "〇"]].forEach(([val, label]) => {
-            const opt = document.createElement("option");
-            opt.value = val;
-            opt.textContent = label;
-            if ((pos.shape || "square") === val) opt.selected = true;
-            shapeSelect.appendChild(opt);
-          });
-          shapeSelect.addEventListener("change", () => {
-            state.monthPos[key].shape = shapeSelect.value;
-            save();
-            renderBoard();
-          });
-          shapeRow.appendChild(shapeSelect);
-          menu.appendChild(shapeRow);
+          menu.appendChild(buildSelectRow("形（折りたたみ時）", [["square", "四角"], ["circle", "〇"]],
+            pos.shape || "square", v => { state.monthPos[key].shape = v; }));
 
-          const borderRow = document.createElement("label");
-          borderRow.className = "kb-col-menu-field-row";
-          borderRow.textContent = "枠線";
-          const borderSelect = document.createElement("select");
-          [["normal", "通常"], ["double", "二重"]].forEach(([val, label]) => {
-            const opt = document.createElement("option");
-            opt.value = val;
-            opt.textContent = label;
-            if ((pos.border || "normal") === val) opt.selected = true;
-            borderSelect.appendChild(opt);
-          });
-          borderSelect.addEventListener("change", () => {
-            state.monthPos[key].border = borderSelect.value;
-            save();
-            renderBoard();
-          });
-          borderRow.appendChild(borderSelect);
-          menu.appendChild(borderRow);
+          menu.appendChild(buildSelectRow("枠線", [["normal", "通常"], ["double", "二重"]],
+            pos.border || "normal", v => { state.monthPos[key].border = v; }));
+
+          menu.appendChild(buildSelectRow("文字サイズ", [["small", "小"], ["normal", "標準"], ["large", "大"]],
+            pos.fontSize || "normal", v => { state.monthPos[key].fontSize = v; }));
+
+          menu.appendChild(buildSelectRow("影の強さ", [["none", "なし"], ["normal", "標準"], ["strong", "強"]],
+            pos.shadow || "none", v => { state.monthPos[key].shadow = v; }));
+
+          menu.appendChild(buildSelectRow("折りたたみの大きさ", [["small", "小"], ["normal", "標準"], ["large", "大"]],
+            pos.tileSize || "normal", v => { state.monthPos[key].tileSize = v; }));
+
+          menu.appendChild(buildSelectRow("アイコン", ICON_OPTIONS,
+            pos.icon || "", v => { state.monthPos[key].icon = v; }));
 
           col.appendChild(menu);
         }
@@ -1309,7 +1341,30 @@
     renderContacts();
   });
 
+  // 日替わりの背景。日付文字列から決定的に選ぶため、同じ日はリロードしても同じ背景になり、日付が変わると自動的に切り替わる。
+  const DAILY_BACKGROUNDS = [
+    "linear-gradient(135deg, #f6d365, #fda085)",
+    "linear-gradient(135deg, #a1c4fd, #c2e9fb)",
+    "linear-gradient(135deg, #d4fc79, #96e6a1)",
+    "linear-gradient(135deg, #fbc2eb, #a6c1ee)",
+    "linear-gradient(135deg, #fddb92, #d1fdff)",
+    "linear-gradient(135deg, #cfd9df, #e2ebf0)",
+    "linear-gradient(135deg, #ffecd2, #fcb69f)",
+    "linear-gradient(135deg, #a8edea, #fed6e3)",
+    "linear-gradient(135deg, #d299c2, #fef9d7)",
+    "linear-gradient(135deg, #89f7fe, #66a6ff)"
+  ];
+  function applyDailyBackground() {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+    let hash = 0;
+    for (let i = 0; i < todayStr.length; i++) hash = (hash * 31 + todayStr.charCodeAt(i)) >>> 0;
+    document.body.style.background = DAILY_BACKGROUNDS[hash % DAILY_BACKGROUNDS.length];
+    document.body.style.backgroundAttachment = "fixed";
+  }
+
   function renderAll() {
+    applyDailyBackground();
     renderSettings();
     renderContacts();
     renderBoard();
