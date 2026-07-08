@@ -6,45 +6,147 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Todoリマインダー（ブラウザ版）</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+JP:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --blue: #4472c4;
-    --orange: #dc7800;
-    --green: #3c9636;
-    --red: #b40000;
-    --bg: #f4f6fa;
-    --panel: #ffffff;
-    --border: #d9dee6;
-    --text: #1f2937;
-    --muted: #6b7280;
+    --blue: #3b82f6;
+    --orange: #f59e0b;
+    --green: #10b981;
+    --red: #ef4444;
+    --bg: #e8edf5;
+    --panel: rgba(255, 255, 255, 0.68);
+    --panel-solid: #ffffff;
+    --border: rgba(15, 23, 42, 0.12);
+    --text: #0f172a;
+    --muted: #5b6472;
+    --accent: #2563eb;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 2px 10px rgba(15, 23, 42, 0.07);
+    --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.10), 0 12px 32px rgba(15, 23, 42, 0.14);
+    --shadow-lg: 0 12px 28px rgba(15, 23, 42, 0.20), 0 24px 64px rgba(15, 23, 42, 0.24);
+    --glass-blur: saturate(1.5) blur(18px);
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    font-family: "Segoe UI", "Meiryo", sans-serif;
+    font-family: "Inter", "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", "Segoe UI", "Meiryo", sans-serif;
     background: var(--bg);
     color: var(--text);
     font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
   }
+
+  /* ---- ネット背景（2枚のレイヤーをクロスフェード） ---- */
+  .bg-layer {
+    position: fixed;
+    inset: 0;
+    z-index: -3;
+    background-size: cover;
+    background-position: center;
+    opacity: 0;
+    transition: opacity 1.4s ease;
+    pointer-events: none;
+  }
+  .bg-layer.visible { opacity: 1; }
+  #bgScrim {
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(15,23,42,0.28), rgba(15,23,42,0.06) 30%, rgba(15,23,42,0.14));
+  }
+
+  /* ---- アプリバー ---- */
+  .appbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.62);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: var(--shadow-sm);
+  }
+  .appbar-title {
+    font-weight: 800;
+    font-size: 16px;
+    letter-spacing: 0.02em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+  .appbar-search {
+    flex: 1;
+    min-width: 160px;
+    max-width: 340px;
+    position: relative;
+  }
+  .appbar-search input {
+    width: 100%;
+    padding: 8px 12px 8px 34px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.85);
+    font-family: inherit;
+    font-size: 13px;
+  }
+  .appbar-search::before {
+    content: "🔍";
+    position: absolute;
+    left: 11px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 13px;
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .appbar-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .appbar-hint {
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
   main {
-    padding: 8px;
+    padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 16px;
   }
   .panel {
     background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: var(--radius);
     padding: 14px 16px;
+    box-shadow: var(--shadow-sm);
   }
   .panel h2 {
     font-size: 14px;
     margin: 0 0 10px;
-    color: #2b3f63;
+    color: #1e2f52;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 
   /* ---- 設定・リマインダーチェック・名簿は画面に常時非表示。各月パネルのリンクから共有モーダルでのみ表示する ---- */
@@ -58,15 +160,17 @@
   }
   .settings-grid label { color: var(--muted); }
   .settings-grid input[type=text], .settings-grid input[type=number] {
-    padding: 4px 6px;
+    padding: 6px 8px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 8px;
     width: 100%;
+    font-family: inherit;
+    font-size: 13px;
   }
   .settings-grid input[type=color] {
     padding: 2px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 8px;
     width: 60px;
     height: 28px;
     cursor: pointer;
@@ -80,19 +184,99 @@
   button {
     cursor: pointer;
     border: none;
-    border-radius: 6px;
-    padding: 6px 12px;
-    font-size: 12px;
-    font-weight: bold;
+    border-radius: 10px;
+    padding: 7px 14px;
+    font-size: 12.5px;
+    font-weight: 600;
+    font-family: inherit;
     color: #fff;
     background: var(--blue);
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease, background 0.15s ease;
+  }
+  button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+    filter: brightness(1.06);
+  }
+  button:active:not(:disabled) { transform: translateY(0); }
+  button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
   button.secondary { background: var(--green); }
   button.danger { background: var(--red); }
   button.plain { background: #6b7280; }
+  button.ghost {
+    background: rgba(255, 255, 255, 0.78);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  button.ghost:hover:not(:disabled) { background: #fff; filter: none; }
   button.small { padding: 3px 8px; font-size: 11px; }
-  button:disabled { opacity: 0.5; cursor: default; }
+  button:disabled { opacity: 0.5; cursor: default; transform: none; box-shadow: none; }
   .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* ---- スクロールバー / モーション設定 ---- */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(15, 23, 42, 0.25);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background-color: rgba(15, 23, 42, 0.4); }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
+
+  /* ---- トースト通知（popover=トップレイヤー表示で、モーダルより手前に出す） ---- */
+  #toasts {
+    position: fixed;
+    inset: auto 16px 16px auto;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-end;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    overflow: visible;
+    pointer-events: none;
+  }
+  #toasts .toast { pointer-events: auto; }
+  #toasts:popover-open { display: flex; }
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: min(420px, 90vw);
+    background: rgba(17, 24, 39, 0.92);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    font-size: 13px;
+    animation: toast-in 0.25s ease;
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+  .toast button {
+    background: rgba(255, 255, 255, 0.16);
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    box-shadow: none;
+    flex: none;
+  }
+  .toast.hide { opacity: 0; transform: translateY(6px); transition: all 0.3s ease; }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: none; }
+  }
 
   .status-badge {
     display: inline-block;
@@ -106,28 +290,29 @@
   .status-完了 { background: var(--green); }
 
   /* ---- kanban board ---- */
-  #boardView { overflow: hidden; cursor: grab; }
+  #boardView { overflow: hidden; cursor: grab; min-height: 62vh; }
   #boardView.panning { cursor: grabbing; }
   .kanban-columns {
     position: relative;
   }
   .kb-col {
     position: absolute;
-    background: #fbfcff;
+    background: rgba(255, 255, 255, 0.92);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 12px;
     display: flex;
     flex-direction: column;
     min-height: 160px;
+    box-shadow: var(--shadow-sm);
   }
   .kb-col.collapsed { min-height: 0; }
   .kb-col.current-month { box-shadow: 0 0 0 2px #ff8c00; }
-  .kb-col.dragging-col { box-shadow: 0 10px 24px rgba(0,0,0,0.3); }
+  .kb-col.dragging-col { box-shadow: 0 12px 28px rgba(0,0,0,0.32); }
   .kb-col-hdr {
-    font-weight: bold;
+    font-weight: 700;
     font-size: 13px;
-    padding: 6px 10px;
-    border-radius: 6px 6px 0 0;
+    padding: 7px 10px;
+    border-radius: 11px 11px 0 0;
     cursor: grab;
     user-select: none;
     display: flex;
@@ -186,7 +371,7 @@
     padding: 0;
   }
   .kb-col-menu-btn:hover { background: rgba(255,255,255,0.4); }
-  .kb-col.collapsed .kb-col-hdr { border-radius: 6px; }
+  .kb-col.collapsed .kb-col-hdr { border-radius: 11px; }
   .kb-col.drop-target { box-shadow: inset 0 0 0 2px #ff8c00; }
   .kb-cards {
     flex: 1;
@@ -206,31 +391,39 @@
   }
   .kb-col-menu {
     position: absolute;
-    top: 34px;
+    top: 36px;
     right: 6px;
     z-index: 50;
-    background: #fff;
+    background: rgba(255, 255, 255, 0.96);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+    border-radius: 12px;
+    box-shadow: var(--shadow-md);
     padding: 6px;
     display: flex;
     flex-direction: column;
     gap: 2px;
-    min-width: 140px;
+    min-width: 150px;
+    animation: menu-in 0.15s ease;
+  }
+  @keyframes menu-in {
+    from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+    to { opacity: 1; transform: none; }
   }
   .kb-col-menu-item {
     text-align: left;
     background: none;
     border: none;
     padding: 6px 8px;
-    border-radius: 4px;
+    border-radius: 8px;
     font-size: 12px;
     font-weight: normal;
     color: var(--text);
     cursor: pointer;
+    box-shadow: none;
   }
-  .kb-col-menu-item:hover { background: #eef1f6; }
+  .kb-col-menu-item:hover { background: #eef1f6; transform: none; filter: none; box-shadow: none; }
   .kb-col-menu-field-row {
     display: flex;
     align-items: center;
@@ -269,24 +462,30 @@
   .kb-card {
     position: absolute;
     width: 128px;
-    background: #fff;
+    background: var(--panel-solid);
     border: 1px solid var(--border);
     border-left: 4px solid #999;
-    border-radius: 4px;
-    padding: 5px 7px;
+    border-radius: 10px;
+    padding: 6px 8px;
     font-size: 1em;
-    line-height: 1.3;
+    line-height: 1.35;
     cursor: grab;
     touch-action: none;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.15s ease, opacity 0.2s ease, filter 0.2s ease;
   }
+  .kb-card:hover { box-shadow: var(--shadow-md); }
+  .kb-card.dimmed { opacity: 0.22; filter: grayscale(0.6); }
   .kb-card.selected {
-    outline: 2px solid #2b3f63;
+    outline: 2px solid var(--accent);
     width: 220px;
+    box-shadow: var(--shadow-md);
   }
   .kb-card.dragging {
     cursor: grabbing;
-    box-shadow: 0 8px 18px rgba(0,0,0,0.25);
+    box-shadow: var(--shadow-lg);
     opacity: 0.95;
+    transition: none;
   }
   .kb-card .t-name {
     font-weight: bold;
@@ -326,26 +525,37 @@
     max-height: 220px;
     overflow-y: auto;
     font-size: 12px;
-    background: #fafafa;
+    background: rgba(248, 250, 252, 0.9);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 8px;
+    border-radius: var(--radius-sm);
+    padding: 10px;
     white-space: pre-wrap;
   }
   #reminderLog:empty::before { content: "（まだチェックを実行していません）"; color: var(--muted); }
 
   dialog {
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius);
     padding: 0;
-    width: 360px;
-    max-width: 90vw;
+    width: 380px;
+    max-width: 92vw;
+    box-shadow: var(--shadow-lg);
   }
-  dialog::backdrop { background: rgba(0,0,0,0.35); }
-  dialog form { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-  dialog h3 { margin: 0 0 4px; font-size: 14px; }
+  dialog::backdrop {
+    background: rgba(15, 23, 42, 0.45);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+  }
+  dialog form { padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+  dialog h3 { margin: 0 0 4px; font-size: 15px; }
   dialog label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
-  dialog input { padding: 5px 6px; border: 1px solid var(--border); border-radius: 4px; }
+  dialog input {
+    padding: 7px 9px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13px;
+  }
   dialog .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
   dialog.panel-modal {
@@ -372,6 +582,26 @@
 </head>
 <body>
 
+<!-- ネット背景（2枚をクロスフェード）＋可読性用スクリム -->
+<div class="bg-layer" id="bgA"></div>
+<div class="bg-layer" id="bgB"></div>
+<div id="bgScrim"></div>
+
+<!-- アプリバー：主要操作へ常時1クリックでアクセス -->
+<header class="appbar">
+  <span class="appbar-title">📋 Todoリマインダー</span>
+  <span class="appbar-search">
+    <input type="search" id="searchInput" placeholder="タスク・担当者を検索（/）" autocomplete="off">
+  </span>
+  <span class="appbar-actions">
+    <button type="button" id="btnAddTaskTop" title="タスクを追加（N）">＋ タスク追加</button>
+    <button type="button" id="btnBgChange" class="ghost" title="背景をランダムに変更（B）">🖼 背景</button>
+    <button type="button" id="btnOpenReminder" class="ghost" title="リマインダーチェックを開く">🔔 リマインダー</button>
+    <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
+    <button type="button" id="btnOpenSettings" class="ghost" title="設定を開く">⚙ 設定</button>
+  </span>
+</header>
+
 <main>
 
   <section class="panel modal-only" id="sectionSettings">
@@ -395,6 +625,15 @@
 
         <label for="cfgColorFar">月別ボード：現在月から遠い色</label>
         <input type="color" id="cfgColorFar" value="#c4ced0">
+
+        <label for="cfgBgOnline">背景：ネット画像を使う</label>
+        <span class="toggle">
+          <input type="checkbox" id="cfgBgOnline" checked>
+          <span id="cfgBgOnlineLabel">ON（ネットからランダム取得）</span>
+        </span>
+
+        <label for="cfgBgInterval">背景の自動切替間隔（分）</label>
+        <input type="number" id="cfgBgInterval" min="1" value="10">
       </div>
     </div>
   </section>
@@ -466,6 +705,9 @@
   </form>
 </dialog>
 
+<!-- トースト通知（popover: モーダルダイアログより手前のトップレイヤーに表示される） -->
+<div id="toasts" popover="manual"></div>
+
 <!-- 担当者追加ダイアログ -->
 <dialog id="contactDialog">
   <form id="contactForm">
@@ -493,7 +735,9 @@
       signature: "Todoリマインダーシステム",
       autoMailOn: false,
       boardColorNear: "#2b3f63",
-      boardColorFar: "#c4ced0"
+      boardColorFar: "#c4ced0",
+      bgOnline: true,
+      bgIntervalMin: 10
     },
     tasks: [
       { id: 1, name: "プロジェクト報告書提出", assignee: "山田太郎", due: "2026-07-15", reminderDays: 3, status: "未完了", sentFlag: "" },
@@ -665,6 +909,9 @@
   const cfgAutoMailLabel = document.getElementById("cfgAutoMailLabel");
   const cfgColorNear = document.getElementById("cfgColorNear");
   const cfgColorFar = document.getElementById("cfgColorFar");
+  const cfgBgOnline = document.getElementById("cfgBgOnline");
+  const cfgBgOnlineLabel = document.getElementById("cfgBgOnlineLabel");
+  const cfgBgInterval = document.getElementById("cfgBgInterval");
 
   function renderSettings() {
     cfgReminderDays.value = state.settings.reminderDays;
@@ -675,6 +922,11 @@
       : "OFF（ブラウザ版は常にドライラン）";
     cfgColorNear.value = state.settings.boardColorNear;
     cfgColorFar.value = state.settings.boardColorFar;
+    cfgBgOnline.checked = state.settings.bgOnline;
+    cfgBgOnlineLabel.textContent = state.settings.bgOnline
+      ? "ON（ネットからランダム取得）"
+      : "OFF（グラデーション背景）";
+    cfgBgInterval.value = state.settings.bgIntervalMin;
   }
   cfgReminderDays.addEventListener("change", () => {
     state.settings.reminderDays = Math.max(0, parseInt(cfgReminderDays.value, 10) || 0);
@@ -698,6 +950,19 @@
     state.settings.boardColorFar = cfgColorFar.value;
     save();
     renderBoard();
+  });
+  cfgBgOnline.addEventListener("change", () => {
+    state.settings.bgOnline = cfgBgOnline.checked;
+    renderSettings();
+    save();
+    changeBackground(false);
+    restartBgTimer();
+  });
+  cfgBgInterval.addEventListener("change", () => {
+    state.settings.bgIntervalMin = Math.max(1, parseInt(cfgBgInterval.value, 10) || 10);
+    renderSettings();
+    save();
+    restartBgTimer();
   });
 
   // ---------------------------------------------------------------
@@ -762,6 +1027,9 @@
       msg = `送信対象のタスクはありませんでした。\n（スキップ済: ${skipCount} 件）\n\n`;
     }
     reminderLog.textContent = msg + (lines.length ? lines.join("\n\n") : "");
+    toast(sentCount > 0
+      ? `${sentCount} 件のリマインド対象を検出しました`
+      : "送信対象のタスクはありませんでした");
   }
 
   function resetSentFlags() {
@@ -794,6 +1062,7 @@
   const ICON_OPTIONS = [["", "なし"], ["📌", "📌"], ["⭐", "⭐"], ["🔥", "🔥"], ["📅", "📅"]];
   let selectedTaskId = null;
   let openMenuMonthKey = null;
+  let searchQuery = "";
   let zCounter = state.tasks.reduce((max, t) => Math.max(max, t.z || 0), 0);
   let colZCounter = Object.values(state.monthPos).reduce((max, p) => Math.max(max, p.z || 0), 0);
   const kanbanColumns = document.getElementById("kanbanColumns");
@@ -1033,8 +1302,12 @@
   function buildCardEl(task) {
     const due = parseDue(task.due);
     const expanded = task.id === selectedTaskId;
+    // 検索クエリに一致しないカードは薄く表示する（一致カードだけが浮かび上がる）
+    const matches = !searchQuery
+      || task.name.toLowerCase().includes(searchQuery)
+      || (task.assignee || "").toLowerCase().includes(searchQuery);
     const card = document.createElement("div");
-    card.className = `kb-card status-${task.status}` + (expanded ? " selected" : "");
+    card.className = `kb-card status-${task.status}` + (expanded ? " selected" : "") + (matches ? "" : " dimmed");
     card.dataset.taskId = task.id;
     card.style.left = task.pos.x + "px";
     card.style.top = task.pos.y + "px";
@@ -1060,6 +1333,7 @@
         </label>
         <span>リマインド日数前: ${task.reminderDays}</span>
         <span>送信済み: ${task.sentFlag ? escapeHtml(task.sentFlag) : "（未判定）"}</span>
+        <button type="button" class="danger small edit-delete">タスクを削除</button>
       </div>` : ""}
     `;
     card.addEventListener("click", e => {
@@ -1087,6 +1361,22 @@
         task.sentFlag = "";
         save();
         renderBoard();
+      });
+      // 削除は即時反映しつつ、トーストの「元に戻す」で復元できる（確認ダイアログで操作を止めない）
+      card.querySelector(".edit-delete").addEventListener("click", () => {
+        const index = state.tasks.indexOf(task);
+        state.tasks.splice(index, 1);
+        selectedTaskId = null;
+        save();
+        renderBoard();
+        toast(`「${task.name}」を削除しました`, {
+          actionLabel: "元に戻す",
+          onAction: () => {
+            state.tasks.splice(Math.min(index, state.tasks.length), 0, task);
+            save();
+            renderBoard();
+          }
+        });
       });
     }
     return card;
@@ -1188,6 +1478,11 @@
       if (!collapsed) {
         const cardsWrap = document.createElement("div");
         cardsWrap.className = "kb-cards";
+        // 空きスペースをダブルクリックすると、その月のタスク追加ダイアログを開く
+        cardsWrap.addEventListener("dblclick", e => {
+          if (e.target !== cardsWrap && !e.target.classList.contains("empty-msg")) return;
+          openTaskDialog({ monthKey: key });
+        });
         if (tasks.length === 0) {
           cardsWrap.innerHTML = `<div class="empty-msg">タスクなし</div>`;
         } else {
@@ -1346,7 +1641,7 @@
     e.preventDefault();
     const due = normalizeDueInput(taskDue.value);
     if (!due) { alert("期日は yyyy/mm/dd 形式で入力してください。"); return; }
-    state.tasks.push({
+    const newTask = {
       id: state.nextTaskId++,
       name: taskName.value.trim(),
       assignee: taskAssignee.value.trim(),
@@ -1354,10 +1649,12 @@
       reminderDays: Math.max(0, parseInt(taskReminderDays.value, 10) || 0),
       status: "未完了",
       sentFlag: ""
-    });
+    };
+    state.tasks.push(newTask);
     save();
     taskDialog.close();
     renderBoard();
+    toast(`「${newTask.name}」を追加しました`);
   });
 
   // ---------------------------------------------------------------
@@ -1405,8 +1702,44 @@
     renderContacts();
   });
 
-  // 日替わりの背景。日付文字列から決定的に選ぶため、同じ日はリロードしても同じ背景になり、日付が変わると自動的に切り替わる。
-  const DAILY_BACKGROUNDS = [
+  // ---------------------------------------------------------------
+  // トースト通知（右下にスライドイン。「元に戻す」などのアクション付きにも対応）
+  // ---------------------------------------------------------------
+  const toastsEl = document.getElementById("toasts");
+  function toast(message, opts = {}) {
+    // popoverとして再表示することで、開いているモーダルダイアログよりも手前（トップレイヤー最上位）に出す
+    if (toastsEl.showPopover) {
+      try { toastsEl.hidePopover(); } catch (e) { /* 未表示なら無視 */ }
+      try { toastsEl.showPopover(); } catch (e) { /* 非対応ブラウザは通常表示 */ }
+    }
+    const el = document.createElement("div");
+    el.className = "toast";
+    const span = document.createElement("span");
+    span.textContent = message;
+    el.appendChild(span);
+    let dismissed = false;
+    function dismiss() {
+      if (dismissed) return;
+      dismissed = true;
+      el.classList.add("hide");
+      setTimeout(() => el.remove(), 300);
+    }
+    if (opts.actionLabel && opts.onAction) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = opts.actionLabel;
+      btn.addEventListener("click", () => { opts.onAction(); dismiss(); });
+      el.appendChild(btn);
+    }
+    toastsEl.appendChild(el);
+    setTimeout(dismiss, opts.duration || 4500);
+  }
+
+  // ---------------------------------------------------------------
+  // 背景：ネットからランダム画像を取得し、2枚のレイヤーでクロスフェード切替。
+  // 設定した間隔で自動ローテーションし、取得失敗・オフライン時はグラデーションにフォールバックする。
+  // ---------------------------------------------------------------
+  const FALLBACK_GRADIENTS = [
     "linear-gradient(135deg, #f6d365, #fda085)",
     "linear-gradient(135deg, #a1c4fd, #c2e9fb)",
     "linear-gradient(135deg, #d4fc79, #96e6a1)",
@@ -1418,17 +1751,103 @@
     "linear-gradient(135deg, #d299c2, #fef9d7)",
     "linear-gradient(135deg, #89f7fe, #66a6ff)"
   ];
-  function applyDailyBackground() {
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
-    let hash = 0;
-    for (let i = 0; i < todayStr.length; i++) hash = (hash * 31 + todayStr.charCodeAt(i)) >>> 0;
-    document.body.style.background = DAILY_BACKGROUNDS[hash % DAILY_BACKGROUNDS.length];
-    document.body.style.backgroundAttachment = "fixed";
+  const bgLayers = [document.getElementById("bgA"), document.getElementById("bgB")];
+  let bgActive = 0;
+  let bgTimer = null;
+
+  function swapBgLayers(image) {
+    const next = bgActive ^ 1;
+    bgLayers[next].style.backgroundImage = image;
+    bgLayers[bgActive].classList.remove("visible");
+    bgLayers[next].classList.add("visible");
+    bgActive = next;
   }
 
+  function showGradientBackground() {
+    swapBgLayers(FALLBACK_GRADIENTS[Math.floor(Math.random() * FALLBACK_GRADIENTS.length)]);
+  }
+
+  function changeBackground(notify) {
+    if (!state.settings.bgOnline) {
+      showGradientBackground();
+      if (notify) toast("背景を変更しました（グラデーション）");
+      return;
+    }
+    // picsum.photos: APIキー不要のランダム写真。seedを毎回変えて重複を避け、読み込み完了後にフェードインする。
+    const seed = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+    const url = `https://picsum.photos/seed/${seed}/1920/1080`;
+    const img = new Image();
+    img.onload = () => {
+      swapBgLayers(`url("${url}")`);
+      if (notify) toast("背景を変更しました");
+    };
+    img.onerror = () => {
+      showGradientBackground();
+      if (notify) toast("画像を取得できないため、グラデーション背景を使用します");
+    };
+    img.src = url;
+  }
+
+  function restartBgTimer() {
+    if (bgTimer) clearInterval(bgTimer);
+    const min = Math.max(1, state.settings.bgIntervalMin || 10);
+    bgTimer = setInterval(() => changeBackground(false), min * 60000);
+  }
+
+  // ---------------------------------------------------------------
+  // アプリバー（検索・クイック操作）とキーボードショートカット
+  // ---------------------------------------------------------------
+  const searchInput = document.getElementById("searchInput");
+  searchInput.addEventListener("input", () => {
+    searchQuery = searchInput.value.trim().toLowerCase();
+    renderBoard();
+  });
+
+  document.getElementById("btnAddTaskTop").addEventListener("click", () => {
+    openTaskDialog({ monthKey: monthKeyFromDate(new Date()) });
+  });
+  document.getElementById("btnBgChange").addEventListener("click", () => changeBackground(true));
+  document.getElementById("btnOpenSettings").addEventListener("click", () => openPanelModal("settings"));
+  document.getElementById("btnOpenReminder").addEventListener("click", () => openPanelModal("reminder"));
+  document.getElementById("btnOpenContacts").addEventListener("click", () => openPanelModal("contacts"));
+
+  // N: タスク追加 / B: 背景変更 / "/": 検索へフォーカス / Esc: 検索クリア・選択解除・メニューを閉じる
+  document.addEventListener("keydown", e => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const anyDialogOpen = !!document.querySelector("dialog[open]");
+    if (e.key === "Escape" && !anyDialogOpen) {
+      if (document.activeElement === searchInput && searchInput.value) {
+        searchInput.value = "";
+        searchQuery = "";
+        searchInput.blur();
+        renderBoard();
+      } else if (selectedTaskId !== null) {
+        selectedTaskId = null;
+        renderBoard();
+      } else if (openMenuMonthKey !== null) {
+        openMenuMonthKey = null;
+        renderBoard();
+      }
+      return;
+    }
+    const tag = document.activeElement && document.activeElement.tagName;
+    const typing = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+    if (typing || anyDialogOpen) return;
+    if (e.key === "n" || e.key === "N") {
+      e.preventDefault();
+      openTaskDialog({ monthKey: monthKeyFromDate(new Date()) });
+    } else if (e.key === "b" || e.key === "B") {
+      e.preventDefault();
+      changeBackground(true);
+    } else if (e.key === "/") {
+      e.preventDefault();
+      searchInput.focus();
+    }
+  });
+
   function renderAll() {
-    applyDailyBackground();
+    changeBackground(false);
+    restartBgTimer();
     renderSettings();
     renderContacts();
     renderBoard();
