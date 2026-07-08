@@ -163,6 +163,15 @@
     height: 30px;
     font-size: 14px;
   }
+  .kb-col-pct-badge {
+    flex: none;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.35);
+    font-size: 10px;
+    font-weight: bold;
+    white-space: nowrap;
+  }
   .kb-col-menu-btn {
     flex: none;
     width: 20px;
@@ -572,6 +581,12 @@
     if (tasks.length === 0) return null;
     const done = tasks.filter(t => t.status === "完了").length;
     return Math.round((done / tasks.length) * 10) * 10;
+  }
+  // その月のタスク達成率（%、整数）。タスクが無い月は null。
+  function monthCompletionPercent(tasks) {
+    if (tasks.length === 0) return null;
+    const done = tasks.filter(t => t.status === "完了").length;
+    return Math.round((done / tasks.length) * 100);
   }
   function hexToRgb(hex) {
     const n = parseInt(hex.replace("#", ""), 16);
@@ -1113,8 +1128,14 @@
         hdr.style.borderRadius = "";
       }
       const { bg, fg } = monthHeaderColor(key, nowKey);
-      hdr.style.background = bg;
       hdr.style.color = fg;
+      const completionStep = collapsed ? monthCompletionStep(tasks) : null;
+      if (completionStep !== null) {
+        hdr.style.background = `linear-gradient(to top, var(--green) 0% ${completionStep}%, ${bg} ${completionStep}% 100%)`;
+        hdr.title = `達成率: ${completionStep}%`;
+      } else {
+        hdr.style.background = bg;
+      }
 
       if (collapsed) {
         const monthBadge = document.createElement("span");
@@ -1123,12 +1144,6 @@
         monthBadge.style.width = tileSize.badge + "px";
         monthBadge.style.height = tileSize.badge + "px";
         monthBadge.style.fontSize = tileSize.font + "px";
-        const completionStep = monthCompletionStep(tasks);
-        if (completionStep !== null) {
-          monthBadge.style.background =
-            `conic-gradient(var(--green) 0% ${completionStep}%, rgba(255,255,255,0.35) ${completionStep}% 100%)`;
-          monthBadge.title = `達成率: ${completionStep}%`;
-        }
         hdr.appendChild(monthBadge);
         if (pos.icon) {
           const iconSpan = document.createElement("span");
@@ -1141,6 +1156,13 @@
         hdrLabel.className = "kb-col-hdr-label";
         hdrLabel.textContent = (pos.icon ? pos.icon + " " : "") + "▼ " + monthLabel(key) + (key === nowKey ? "（今月）" : "");
         hdr.appendChild(hdrLabel);
+        const pct = monthCompletionPercent(tasks);
+        if (pct !== null) {
+          const pctBadge = document.createElement("span");
+          pctBadge.className = "kb-col-pct-badge";
+          pctBadge.textContent = pct + "%";
+          hdr.appendChild(pctBadge);
+        }
         const menuBtn = document.createElement("button");
         menuBtn.type = "button";
         menuBtn.className = "kb-col-menu-btn";
