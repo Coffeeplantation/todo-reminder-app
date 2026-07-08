@@ -212,21 +212,30 @@
     cursor: pointer;
   }
   .kb-col-menu-item:hover { background: #eef1f6; }
-  .kb-col-menu-color-row {
+  .kb-col-menu-field-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     padding: 6px 8px;
     font-size: 12px;
     color: var(--muted);
+    white-space: nowrap;
   }
-  .kb-col-menu-color-row input[type=color] {
+  .kb-col-menu-field-row input[type=color] {
     width: 24px;
     height: 20px;
     padding: 0;
     border: 1px solid var(--border);
     border-radius: 4px;
     cursor: pointer;
+  }
+  .kb-col-menu-field-row select {
+    font-size: 12px;
+    padding: 2px 4px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
   }
   .kb-col-resize {
     position: absolute;
@@ -1037,11 +1046,20 @@
       col.style.zIndex = pos.z || 0;
       col.style.width = collapsed ? "44px" : (pos.w || 240) + "px";
       if (!collapsed && pos.h) col.style.height = pos.h + "px";
+      col.style.borderStyle = pos.border === "double" ? "double" : "";
+      col.style.borderWidth = pos.border === "double" ? "4px" : "";
 
       const tasks = state.tasks.filter(t => monthKeyOfTask(t) === key);
 
       const hdr = document.createElement("div");
       hdr.className = "kb-col-hdr" + (collapsed ? " kb-col-hdr-collapsed" : "");
+      if (collapsed && pos.shape === "circle") {
+        col.style.borderRadius = "50%";
+        hdr.style.borderRadius = "50%";
+      } else {
+        col.style.borderRadius = "";
+        hdr.style.borderRadius = "";
+      }
       const { bg, fg } = monthHeaderColor(key, nowKey);
       hdr.style.background = bg;
       hdr.style.color = fg;
@@ -1118,7 +1136,7 @@
           });
 
           const colorRow = document.createElement("label");
-          colorRow.className = "kb-col-menu-color-row";
+          colorRow.className = "kb-col-menu-field-row";
           colorRow.textContent = "色";
           const colorInput = document.createElement("input");
           colorInput.type = "color";
@@ -1130,6 +1148,44 @@
           });
           colorRow.appendChild(colorInput);
           menu.appendChild(colorRow);
+
+          const shapeRow = document.createElement("label");
+          shapeRow.className = "kb-col-menu-field-row";
+          shapeRow.textContent = "形（折りたたみ時）";
+          const shapeSelect = document.createElement("select");
+          [["square", "四角"], ["circle", "〇"]].forEach(([val, label]) => {
+            const opt = document.createElement("option");
+            opt.value = val;
+            opt.textContent = label;
+            if ((pos.shape || "square") === val) opt.selected = true;
+            shapeSelect.appendChild(opt);
+          });
+          shapeSelect.addEventListener("change", () => {
+            state.monthPos[key].shape = shapeSelect.value;
+            save();
+            renderBoard();
+          });
+          shapeRow.appendChild(shapeSelect);
+          menu.appendChild(shapeRow);
+
+          const borderRow = document.createElement("label");
+          borderRow.className = "kb-col-menu-field-row";
+          borderRow.textContent = "枠線";
+          const borderSelect = document.createElement("select");
+          [["normal", "通常"], ["double", "二重"]].forEach(([val, label]) => {
+            const opt = document.createElement("option");
+            opt.value = val;
+            opt.textContent = label;
+            if ((pos.border || "normal") === val) opt.selected = true;
+            borderSelect.appendChild(opt);
+          });
+          borderSelect.addEventListener("change", () => {
+            state.monthPos[key].border = borderSelect.value;
+            save();
+            renderBoard();
+          });
+          borderRow.appendChild(borderSelect);
+          menu.appendChild(borderRow);
 
           col.appendChild(menu);
         }
