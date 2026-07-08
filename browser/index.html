@@ -252,6 +252,21 @@
     cursor: pointer;
   }
   .kb-link:hover { color: #2b3f63; }
+  .kb-col-color-input {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    cursor: pointer;
+    background: none;
+    overflow: hidden;
+  }
+  .kb-col-color-input::-webkit-color-swatch-wrapper { padding: 0; }
+  .kb-col-color-input::-webkit-color-swatch { border: none; border-radius: 50%; }
+  .kb-col-color-input::-moz-color-swatch { border: none; border-radius: 50%; }
   .empty-msg { color: var(--muted); font-size: 12px; padding: 10px; text-align: center; }
 
   /* ---- reminder log ---- */
@@ -505,12 +520,20 @@
     const now = new Date();
     return (y === now.getFullYear()) ? `${m}月` : `${y}年${m}月`;
   }
+  function monthNumberLabel(key) {
+    if (key === "unset") return "-";
+    return String(Number(key.split("-")[1]));
+  }
   function hexToRgb(hex) {
     const n = parseInt(hex.replace("#", ""), 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
-  // 現在月に近いほど濃く、遠いほど薄い見出し色を返す（期日未設定は最も薄い扱い）。色は設定でカスタマイズ可能。
-  function monthHeaderColor(key, nowKey) {
+  function rgbToHex(rgb) {
+    return "#" + rgb.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+  }
+  // 現在月に近いほど濃く、遠いほど薄い見出し色を返す（期日未設定は最も薄い扱い）。近い/遠い色は設定でカスタマイズ可能。
+  // 個別の月に色が指定されている場合（state.monthPos[key].color）は、そちらを優先する。
+  function autoMonthColor(key, nowKey) {
     const dark = hexToRgb(state.settings.boardColorNear);
     const light = hexToRgb(state.settings.boardColorFar);
     let t = 1;
@@ -521,8 +544,14 @@
       t = Math.min(1, dist / 11);
     }
     const rgb = dark.map((d, i) => Math.round(d + (light[i] - d) * t));
+    return rgbToHex(rgb);
+  }
+  function monthHeaderColor(key, nowKey) {
+    const custom = state.monthPos[key] && state.monthPos[key].color;
+    const hex = custom || autoMonthColor(key, nowKey);
+    const rgb = hexToRgb(hex);
     const brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
-    return { bg: `rgb(${rgb.join(",")})`, fg: brightness > 150 ? "#1f2937" : "#ffffff" };
+    return { bg: hex, fg: brightness > 150 ? "#1f2937" : "#ffffff" };
   }
   function getMonthKeys() {
     // インターフェースは常に「今年の1月〜12月」の固定カレンダー年のみを表示する
@@ -987,19 +1016,19 @@
       hdr.style.color = fg;
 
       if (collapsed) {
-        const countBadge = document.createElement("span");
-        countBadge.className = "kb-col-count kb-col-count-lg";
-        countBadge.textContent = tasks.length;
-        hdr.appendChild(countBadge);
+        const monthBadge = document.createElement("span");
+        monthBadge.className = "kb-col-count kb-col-count-lg";
+        monthBadge.textContent = monthNumberLabel(key);
+        hdr.appendChild(monthBadge);
       } else {
         const hdrLabel = document.createElement("span");
         hdrLabel.className = "kb-col-hdr-label";
         hdrLabel.textContent = "▼ " + monthLabel(key) + (key === nowKey ? "（今月）" : "");
         hdr.appendChild(hdrLabel);
-        const countBadge = document.createElement("span");
-        countBadge.className = "kb-col-count";
-        countBadge.textContent = tasks.length;
-        hdr.appendChild(countBadge);
+        const monthBadge = document.createElement("span");
+        monthBadge.className = "kb-col-count";
+        monthBadge.textContent = monthNumberLabel(key);
+        hdr.appendChild(monthBadge);
       }
       col.appendChild(hdr);
       attachColDrag(col, key);
@@ -1028,6 +1057,17 @@
 
         const links = document.createElement("div");
         links.className = "kb-col-links";
+        const colorInput = document.createElement("input");
+        colorInput.type = "color";
+        colorInput.className = "kb-col-color-input";
+        colorInput.title = "このパネルの色";
+        colorInput.value = bg;
+        colorInput.addEventListener("input", () => {
+          state.monthPos[key].color = colorInput.value;
+          save();
+          renderBoard();
+        });
+        links.appendChild(colorInput);
         [["settings", "設定"], ["reminder", "リマインダー"], ["contacts", "名簿"]].forEach(([panelKey, label]) => {
           const link = document.createElement("span");
           link.className = "kb-link";
