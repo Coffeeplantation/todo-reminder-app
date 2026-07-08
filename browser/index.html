@@ -106,7 +106,8 @@
   .status-完了 { background: var(--green); }
 
   /* ---- kanban board ---- */
-  #boardView { overflow: auto; }
+  #boardView { overflow: hidden; cursor: grab; }
+  #boardView.panning { cursor: grabbing; }
   .kanban-columns {
     position: relative;
   }
@@ -780,6 +781,29 @@
       openMenuMonthKey = null;
       renderBoard();
     }
+  });
+
+  // ボード背景の空きスペースをドラッグして、スクロールバーを出さずにパン移動する（カード/パネル自体のドラッグとは競合しないよう対象要素を限定）。
+  const boardView = document.getElementById("boardView");
+  boardView.addEventListener("mousedown", e => {
+    if (e.button !== 0) return;
+    if (e.target !== boardView && e.target !== kanbanColumns) return;
+    e.preventDefault();
+    const startX = e.clientX, startY = e.clientY;
+    const startScrollLeft = boardView.scrollLeft, startScrollTop = boardView.scrollTop;
+    boardView.classList.add("panning");
+
+    function onMove(ev) {
+      boardView.scrollLeft = startScrollLeft - (ev.clientX - startX);
+      boardView.scrollTop = startScrollTop - (ev.clientY - startY);
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      boardView.classList.remove("panning");
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
   });
 
   function clampPos(wrap, x, y) {
