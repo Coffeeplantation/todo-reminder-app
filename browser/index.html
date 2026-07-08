@@ -1056,10 +1056,6 @@
         hdrLabel.className = "kb-col-hdr-label";
         hdrLabel.textContent = "▼ " + monthLabel(key) + (key === nowKey ? "（今月）" : "");
         hdr.appendChild(hdrLabel);
-        const monthBadge = document.createElement("span");
-        monthBadge.className = "kb-col-count";
-        monthBadge.textContent = monthNumberLabel(key);
-        hdr.appendChild(monthBadge);
         const menuBtn = document.createElement("button");
         menuBtn.type = "button";
         menuBtn.className = "kb-col-menu-btn";
@@ -1127,7 +1123,7 @@
           const colorInput = document.createElement("input");
           colorInput.type = "color";
           colorInput.value = bg;
-          colorInput.addEventListener("input", () => {
+          colorInput.addEventListener("change", () => {
             state.monthPos[key].color = colorInput.value;
             save();
             renderBoard();
