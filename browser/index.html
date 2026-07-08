@@ -1129,12 +1129,18 @@
       }
       const { bg, fg } = monthHeaderColor(key, nowKey);
       hdr.style.color = fg;
+      hdr.style.background = bg;
+      // 折りたたみタイルの外枠を、達成率10段階ぶん時計回りに描く進捗リングにする（padding分の隙間にcolの背景=conic-gradientを覗かせる）。
       const completionStep = collapsed ? monthCompletionStep(tasks) : null;
       if (completionStep !== null) {
-        hdr.style.background = `linear-gradient(to top, var(--green) 0% ${completionStep}%, ${bg} ${completionStep}% 100%)`;
-        hdr.title = `達成率: ${completionStep}%`;
+        const angle = completionStep * 3.6;
+        col.style.padding = "3px";
+        col.style.background = `conic-gradient(var(--green) 0deg ${angle}deg, var(--border) ${angle}deg 360deg)`;
+        col.title = `達成率: ${completionStep}%`;
       } else {
-        hdr.style.background = bg;
+        col.style.padding = "";
+        col.style.background = "";
+        col.title = "";
       }
 
       if (collapsed) {
