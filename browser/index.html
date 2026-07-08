@@ -145,12 +145,12 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 20px;
+    width: 20px;
     height: 20px;
-    padding: 0 5px;
-    border-radius: 999px;
+    border-radius: 50%;
     background: rgba(255,255,255,0.35);
-    font-size: 11px;
+    font-size: 10px;
+    line-height: 1;
     font-weight: bold;
   }
   .kb-col.collapsed .kb-col-hdr { border-radius: 6px; }
@@ -979,7 +979,7 @@
       hdr.appendChild(hdrLabel);
       const countBadge = document.createElement("span");
       countBadge.className = "kb-col-count";
-      countBadge.textContent = "○" + tasks.length;
+      countBadge.textContent = tasks.length;
       hdr.appendChild(countBadge);
       const { bg, fg } = monthHeaderColor(key, nowKey);
       hdr.style.background = bg;
