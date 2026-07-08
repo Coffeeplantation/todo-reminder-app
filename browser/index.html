@@ -154,22 +154,13 @@
     font-weight: bold;
   }
   .kb-col-hdr-collapsed {
-    flex-direction: column;
     justify-content: center;
-    padding: 10px 4px;
-    gap: 4px;
+    padding: 8px;
   }
   .kb-col-count-lg {
-    width: 32px;
-    height: 32px;
-    font-size: 13px;
-  }
-  .kb-col-month-label {
-    font-size: 10px;
-    font-weight: normal;
-    text-align: center;
-    line-height: 1.2;
-    max-width: 100%;
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
   }
   .kb-col.collapsed .kb-col-hdr { border-radius: 6px; }
   .kb-col.drop-target { box-shadow: inset 0 0 0 2px #ff8c00; }
@@ -984,7 +975,7 @@
       col.style.left = pos.x + "px";
       col.style.top = pos.y + "px";
       col.style.zIndex = pos.z || 0;
-      col.style.width = collapsed ? "72px" : (pos.w || 240) + "px";
+      col.style.width = collapsed ? "44px" : (pos.w || 240) + "px";
       if (!collapsed && pos.h) col.style.height = pos.h + "px";
 
       const tasks = state.tasks.filter(t => monthKeyOfTask(t) === key);
@@ -1000,10 +991,6 @@
         countBadge.className = "kb-col-count kb-col-count-lg";
         countBadge.textContent = tasks.length;
         hdr.appendChild(countBadge);
-        const monthTiny = document.createElement("span");
-        monthTiny.className = "kb-col-month-label";
-        monthTiny.textContent = monthLabel(key);
-        hdr.appendChild(monthTiny);
       } else {
         const hdrLabel = document.createElement("span");
         hdrLabel.className = "kb-col-hdr-label";
