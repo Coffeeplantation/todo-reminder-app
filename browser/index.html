@@ -129,9 +129,29 @@
     border-radius: 6px 6px 0 0;
     cursor: grab;
     user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .kb-col-hdr-label {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .kb-col-count {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.35);
+    font-size: 11px;
+    font-weight: bold;
   }
   .kb-col.collapsed .kb-col-hdr { border-radius: 6px; }
   .kb-col.drop-target { box-shadow: inset 0 0 0 2px #ff8c00; }
@@ -949,9 +969,18 @@
       col.style.width = (pos.w || 240) + "px";
       if (!collapsed && pos.h) col.style.height = pos.h + "px";
 
+      const tasks = state.tasks.filter(t => monthKeyOfTask(t) === key);
+
       const hdr = document.createElement("div");
       hdr.className = "kb-col-hdr";
-      hdr.textContent = (collapsed ? "▶ " : "▼ ") + monthLabel(key) + (key === nowKey ? "（今月）" : "");
+      const hdrLabel = document.createElement("span");
+      hdrLabel.className = "kb-col-hdr-label";
+      hdrLabel.textContent = (collapsed ? "▶ " : "▼ ") + monthLabel(key) + (key === nowKey ? "（今月）" : "");
+      hdr.appendChild(hdrLabel);
+      const countBadge = document.createElement("span");
+      countBadge.className = "kb-col-count";
+      countBadge.textContent = "○" + tasks.length;
+      hdr.appendChild(countBadge);
       const { bg, fg } = monthHeaderColor(key, nowKey);
       hdr.style.background = bg;
       hdr.style.color = fg;
@@ -961,7 +990,6 @@
       if (!collapsed) {
         const cardsWrap = document.createElement("div");
         cardsWrap.className = "kb-cards";
-        const tasks = state.tasks.filter(t => monthKeyOfTask(t) === key);
         if (tasks.length === 0) {
           cardsWrap.innerHTML = `<div class="empty-msg">タスクなし</div>`;
         } else {
