@@ -567,6 +567,12 @@
     if (key === "unset") return "-";
     return String(Number(key.split("-")[1]));
   }
+  // その月のタスク達成率を10%刻み（10段階）に丸めて返す。タスクが無い月は null（達成率表示なし）。
+  function monthCompletionStep(tasks) {
+    if (tasks.length === 0) return null;
+    const done = tasks.filter(t => t.status === "完了").length;
+    return Math.round((done / tasks.length) * 10) * 10;
+  }
   function hexToRgb(hex) {
     const n = parseInt(hex.replace("#", ""), 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
@@ -1117,6 +1123,12 @@
         monthBadge.style.width = tileSize.badge + "px";
         monthBadge.style.height = tileSize.badge + "px";
         monthBadge.style.fontSize = tileSize.font + "px";
+        const completionStep = monthCompletionStep(tasks);
+        if (completionStep !== null) {
+          monthBadge.style.background =
+            `conic-gradient(var(--green) 0% ${completionStep}%, rgba(255,255,255,0.35) ${completionStep}% 100%)`;
+          monthBadge.title = `達成率: ${completionStep}%`;
+        }
         hdr.appendChild(monthBadge);
         if (pos.icon) {
           const iconSpan = document.createElement("span");
