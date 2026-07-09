@@ -781,11 +781,13 @@
         <label for="cfgApiKey">AI：Anthropic APIキー</label>
         <span>
           <input type="password" id="cfgApiKey" placeholder="sk-ant-..." autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
+          <button type="button" id="btnPasteApiKey" class="ghost small" style="margin-top:4px;">📋 コピーしたキーを貼り付け</button>
         </span>
 
         <label for="cfgGeminiKey">AI：Gemini APIキー</label>
         <span>
           <input type="password" id="cfgGeminiKey" placeholder="AIza..." autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
+          <button type="button" id="btnPasteGeminiKey" class="ghost small" style="margin-top:4px;">📋 コピーしたキーを貼り付け</button>
           <small style="color:var(--muted); display:block; margin-top:2px;">キーは https://aistudio.google.com/apikey で無料発行できます。入力すると自動でGeminiに切り替わります。<br>キーはこのブラウザの localStorage にのみ保存されます（外部送信は選択したAIのAPIのみ）</small>
         </span>
       </div>
@@ -1262,6 +1264,29 @@
     if (state.settings.geminiApiKey) state.settings.aiProvider = "gemini";
     renderSettings();
     save();
+  });
+  // Ctrl+V が使えない環境向けのフォールバック：ボタン1つでクリップボードのキーを貼り付ける
+  function wirePasteButton(btnId, apply) {
+    document.getElementById(btnId).addEventListener("click", async () => {
+      try {
+        const text = (await navigator.clipboard.readText()).trim();
+        if (!text) { toast("クリップボードが空です。先にキーをコピーしてください"); return; }
+        apply(text);
+        save();
+        renderSettings();
+        toast("APIキーを貼り付けました");
+      } catch (e) {
+        alert("クリップボードを読み取れませんでした。\nブラウザの許可ダイアログで「許可」を選ぶか、入力欄をクリックして Ctrl+V（右クリック→貼り付け）を試してください。");
+      }
+    });
+  }
+  wirePasteButton("btnPasteApiKey", v => {
+    state.settings.anthropicApiKey = v;
+    state.settings.aiProvider = "anthropic";
+  });
+  wirePasteButton("btnPasteGeminiKey", v => {
+    state.settings.geminiApiKey = v;
+    state.settings.aiProvider = "gemini";
   });
 
   // ---------------------------------------------------------------
