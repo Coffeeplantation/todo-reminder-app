@@ -16,3 +16,6 @@ desktop.ini
 
 # Playwright MCP verification artifacts
 .playwright-mcp/
+
+# APIキー等のローカル設定（コミット禁止）
+browser/config.local.js

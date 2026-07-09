@@ -895,6 +895,8 @@
   </form>
 </dialog>
 
+<!-- ローカル設定（git管理外の browser/config.local.js。無ければ404で単に無視される） -->
+<script src="config.local.js"></script>
 <script>
 (function () {
   "use strict";
@@ -930,6 +932,22 @@
   });
 
   let state = load();
+
+  // ローカル設定ファイル（config.local.js、git管理外）からAPIキーの初期値を取り込む。
+  // 設定画面でキーが未入力のときだけ適用するので、手入力したキーが上書きされることはない。
+  if (window.LOCAL_CONFIG) {
+    let lcChanged = false;
+    if (window.LOCAL_CONFIG.geminiApiKey && !state.settings.geminiApiKey) {
+      state.settings.geminiApiKey = window.LOCAL_CONFIG.geminiApiKey;
+      state.settings.aiProvider = "gemini";
+      lcChanged = true;
+    }
+    if (window.LOCAL_CONFIG.anthropicApiKey && !state.settings.anthropicApiKey) {
+      state.settings.anthropicApiKey = window.LOCAL_CONFIG.anthropicApiKey;
+      lcChanged = true;
+    }
+    if (lcChanged) save();
+  }
 
   function load() {
     try {
