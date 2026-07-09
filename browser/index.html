@@ -770,10 +770,21 @@
         <label for="cfgBgInterval">背景の自動切替間隔（分）</label>
         <input type="number" id="cfgBgInterval" min="1" value="10">
 
+        <label for="cfgAiProvider">AI：プロバイダ</label>
+        <select id="cfgAiProvider" style="padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; max-width:240px;">
+          <option value="anthropic">Claude（Anthropic）</option>
+          <option value="gemini">Gemini（Google）</option>
+        </select>
+
         <label for="cfgApiKey">AI：Anthropic APIキー</label>
         <span>
           <input type="password" id="cfgApiKey" placeholder="sk-ant-..." autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
-          <small style="color:var(--muted); display:block; margin-top:2px;">このブラウザの localStorage にのみ保存されます（外部送信は Anthropic API のみ）</small>
+        </span>
+
+        <label for="cfgGeminiKey">AI：Gemini APIキー</label>
+        <span>
+          <input type="password" id="cfgGeminiKey" placeholder="AIza..." autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
+          <small style="color:var(--muted); display:block; margin-top:2px;">キーは https://aistudio.google.com/apikey で無料発行できます。入力すると自動でGeminiに切り替わります。<br>キーはこのブラウザの localStorage にのみ保存されます（外部送信は選択したAIのAPIのみ）</small>
         </span>
       </div>
     </div>
@@ -896,7 +907,9 @@
       boardColorFar: "#c4ced0",
       bgOnline: true,
       bgIntervalMin: 10,
-      anthropicApiKey: ""
+      aiProvider: "anthropic",
+      anthropicApiKey: "",
+      geminiApiKey: ""
     },
     tasks: [
       { id: 1, name: "プロジェクト報告書提出", assignee: "山田太郎", due: "2026-07-15", reminderDays: 3, status: "未完了", sentFlag: "" },
@@ -1173,6 +1186,8 @@
   const cfgBgOnlineLabel = document.getElementById("cfgBgOnlineLabel");
   const cfgBgInterval = document.getElementById("cfgBgInterval");
   const cfgApiKey = document.getElementById("cfgApiKey");
+  const cfgAiProvider = document.getElementById("cfgAiProvider");
+  const cfgGeminiKey = document.getElementById("cfgGeminiKey");
 
   function renderSettings() {
     cfgReminderDays.value = state.settings.reminderDays;
@@ -1189,6 +1204,8 @@
       : "OFF（グラデーション背景）";
     cfgBgInterval.value = state.settings.bgIntervalMin;
     cfgApiKey.value = state.settings.anthropicApiKey || "";
+    cfgAiProvider.value = state.settings.aiProvider || "anthropic";
+    cfgGeminiKey.value = state.settings.geminiApiKey || "";
   }
   cfgReminderDays.addEventListener("change", () => {
     state.settings.reminderDays = Math.max(0, parseInt(cfgReminderDays.value, 10) || 0);
@@ -1228,6 +1245,19 @@
   });
   cfgApiKey.addEventListener("change", () => {
     state.settings.anthropicApiKey = cfgApiKey.value.trim();
+    // キーを入力したらそのプロバイダに自動で切り替える（手順を減らす）
+    if (state.settings.anthropicApiKey) state.settings.aiProvider = "anthropic";
+    renderSettings();
+    save();
+  });
+  cfgAiProvider.addEventListener("change", () => {
+    state.settings.aiProvider = cfgAiProvider.value;
+    save();
+  });
+  cfgGeminiKey.addEventListener("change", () => {
+    state.settings.geminiApiKey = cfgGeminiKey.value.trim();
+    if (state.settings.geminiApiKey) state.settings.aiProvider = "gemini";
+    renderSettings();
     save();
   });
 
@@ -2192,6 +2222,7 @@
   // タスクの追加・更新・削除はツール（tool use）としてAIに公開し、手動ループで実行する。
   // ---------------------------------------------------------------
   const AI_MODEL = "claude-opus-4-8";
+  const GEMINI_MODEL = "gemini-2.5-flash";
   const aiPanel = document.getElementById("aiPanel");
   const aiMessages = document.getElementById("aiMessages");
   const aiForm = document.getElementById("aiForm");
@@ -2200,7 +2231,8 @@
   let AnthropicSDK = null;
   let aiClient = null;
   let aiClientKey = null;
-  let aiHistory = [];   // Claude API に渡す messages（tool_use/tool_result ブロックを含む）
+  let aiHistory = [];   // 会話履歴（形式は選択中プロバイダのAPI形式。切り替えるとリセット）
+  let aiHistoryProvider = null;
   let aiBusy = false;
 
   const AI_TOOLS = [
@@ -2405,48 +2437,115 @@ ${state.monthGroups.length ? JSON.stringify(state.monthGroups) : "（なし）"}
     }
   }
 
+  // Claude でのターン処理：ストリーミング＋ツール実行の手動ループ
+  async function aiTurnClaude(text, waitEl) {
+    const client = await ensureAiClient();
+    aiHistory.push({ role: "user", content: text });
+    for (let iter = 0; iter < 8; iter++) {
+      const stream = client.messages.stream({
+        model: AI_MODEL,
+        max_tokens: 16000,
+        thinking: { type: "adaptive" },
+        system: buildAiSystemPrompt(),
+        tools: AI_TOOLS,
+        messages: aiHistory
+      });
+      let bubble = null;
+      stream.on("text", delta => {
+        if (!bubble) {
+          waitEl.remove();
+          bubble = aiAddMsg("assistant", "");
+        }
+        bubble.textContent += delta;
+        aiMessages.scrollTop = aiMessages.scrollHeight;
+      });
+      const msg = await stream.finalMessage();
+      aiHistory.push({ role: "assistant", content: msg.content });
+
+      if (msg.stop_reason !== "tool_use") break;
+      const results = [];
+      for (const block of msg.content) {
+        if (block.type !== "tool_use") continue;
+        aiAddMsg("info", `🔧 ${block.name} を実行`);
+        const { content, isError } = execAiTool(block.name, block.input);
+        const result = { type: "tool_result", tool_use_id: block.id, content };
+        if (isError) result.is_error = true;
+        results.push(result);
+      }
+      aiHistory.push({ role: "user", content: results });
+    }
+  }
+
+  // Gemini でのターン処理：generateContent（REST・非ストリーミング）＋ function calling の手動ループ
+  function geminiToolDecls() {
+    // Gemini のスキーマは JSON Schema のサブセット。未対応の minimum/maximum は落とす
+    return AI_TOOLS.map(t => ({
+      name: t.name,
+      description: t.description,
+      parameters: JSON.parse(JSON.stringify(t.input_schema, (k, v) =>
+        (k === "minimum" || k === "maximum") ? undefined : v))
+    }));
+  }
+  async function aiTurnGemini(text, waitEl) {
+    const key = (state.settings.geminiApiKey || "").trim();
+    if (!key) throw new Error("Gemini APIキーが未設定です。⚙設定の「AI：Gemini APIキー」に入力してください（https://aistudio.google.com/apikey で発行できます）。");
+    aiHistory.push({ role: "user", parts: [{ text }] });
+    for (let iter = 0; iter < 8; iter++) {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: buildAiSystemPrompt() }] },
+            contents: aiHistory,
+            tools: [{ functionDeclarations: geminiToolDecls() }]
+          })
+        }
+      );
+      if (!res.ok) {
+        let detail = "";
+        try { const err = await res.json(); detail = err.error && err.error.message ? ": " + err.error.message : ""; } catch (_) { /* JSONでない場合は無視 */ }
+        const hint = (res.status === 400 || res.status === 403) ? "\nAPIキーが正しいか確認してください。" : (res.status === 429 ? "\nレート制限です。少し待って再試行してください。" : "");
+        throw new Error(`Gemini APIエラー（${res.status}）${detail}${hint}`);
+      }
+      const data = await res.json();
+      const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+      aiHistory.push({ role: "model", parts });
+
+      const textOut = parts.filter(p => p.text).map(p => p.text).join("");
+      if (textOut) {
+        waitEl.remove();
+        aiAddMsg("assistant", textOut);
+      }
+      const calls = parts.filter(p => p.functionCall);
+      if (calls.length === 0) break;
+      const resParts = calls.map(p => {
+        aiAddMsg("info", `🔧 ${p.functionCall.name} を実行`);
+        const { content, isError } = execAiTool(p.functionCall.name, p.functionCall.args || {});
+        return { functionResponse: { name: p.functionCall.name, response: { result: content, is_error: !!isError } } };
+      });
+      aiHistory.push({ role: "user", parts: resParts });
+    }
+  }
+
   async function aiSend(text) {
     aiBusy = true;
     aiSendBtn.disabled = true;
     aiAddMsg("user", text);
+    const provider = state.settings.aiProvider || "anthropic";
+    // プロバイダを切り替えたら履歴の形式が変わるためリセットする
+    if (aiHistoryProvider !== provider) {
+      aiHistory = [];
+      aiHistoryProvider = provider;
+    }
     const historyLenBefore = aiHistory.length;
-    aiHistory.push({ role: "user", content: text });
     const waitEl = aiAddMsg("info thinking-dots", "考え中");
     try {
-      const client = await ensureAiClient();
-      // ツール実行を挟む手動ループ：Claude がツールを呼ばなくなるまで繰り返す
-      for (let iter = 0; iter < 8; iter++) {
-        const stream = client.messages.stream({
-          model: AI_MODEL,
-          max_tokens: 16000,
-          thinking: { type: "adaptive" },
-          system: buildAiSystemPrompt(),
-          tools: AI_TOOLS,
-          messages: aiHistory
-        });
-        let bubble = null;
-        stream.on("text", delta => {
-          if (!bubble) {
-            waitEl.remove();
-            bubble = aiAddMsg("assistant", "");
-          }
-          bubble.textContent += delta;
-          aiMessages.scrollTop = aiMessages.scrollHeight;
-        });
-        const msg = await stream.finalMessage();
-        aiHistory.push({ role: "assistant", content: msg.content });
-
-        if (msg.stop_reason !== "tool_use") break;
-        const results = [];
-        for (const block of msg.content) {
-          if (block.type !== "tool_use") continue;
-          aiAddMsg("info", `🔧 ${block.name} を実行`);
-          const { content, isError } = execAiTool(block.name, block.input);
-          const result = { type: "tool_result", tool_use_id: block.id, content };
-          if (isError) result.is_error = true;
-          results.push(result);
-        }
-        aiHistory.push({ role: "user", content: results });
+      if (provider === "gemini") {
+        await aiTurnGemini(text, waitEl);
+      } else {
+        await aiTurnClaude(text, waitEl);
       }
       waitEl.remove();
     } catch (e) {
@@ -2475,9 +2574,15 @@ ${state.monthGroups.length ? JSON.stringify(state.monthGroups) : "（なし）"}
     aiPanel.hidden = !aiPanel.hidden;
     if (!aiPanel.hidden) {
       if (aiMessages.children.length === 0) {
-        aiAddMsg("assistant", "こんにちは！タスクについて何でも聞いてください。\n例:「今週締め切りのタスクは？」「来週金曜までに資料作成のタスクを追加して」「報告書のタスクを完了にして」");
-        if (!(state.settings.anthropicApiKey || "").trim()) {
-          aiAddMsg("error", "利用には Anthropic APIキーが必要です。⚙設定の「AI：Anthropic APIキー」に入力してください。");
+        aiAddMsg("assistant", "こんにちは！タスクについて何でも聞いてください。\n例:「今週締め切りのタスクは？」「来週金曜までに資料作成のタスクを追加して」「7月と8月を結合して」");
+        const provider = state.settings.aiProvider || "anthropic";
+        const hasKey = provider === "gemini"
+          ? !!(state.settings.geminiApiKey || "").trim()
+          : !!(state.settings.anthropicApiKey || "").trim();
+        if (!hasKey) {
+          aiAddMsg("error", provider === "gemini"
+            ? "利用には Gemini APIキーが必要です。⚙設定の「AI：Gemini APIキー」に入力してください（https://aistudio.google.com/apikey で無料発行）。"
+            : "利用には Anthropic APIキーが必要です。⚙設定の「AI：Anthropic APIキー」に入力してください。（GeminiのAPIキーでも利用できます。設定でGeminiキーを入力すると自動で切り替わります）");
         }
       }
       aiInput.focus();
