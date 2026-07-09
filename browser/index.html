@@ -472,8 +472,30 @@
     line-height: 1.35;
     cursor: grab;
     touch-action: none;
+    overflow: hidden;
     box-shadow: var(--shadow-sm);
     transition: box-shadow 0.15s ease, opacity 0.2s ease, filter 0.2s ease;
+  }
+  .kb-card-resize {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 12px;
+    height: 12px;
+    cursor: nwse-resize;
+    background: linear-gradient(135deg, transparent 0 48%, var(--muted) 48% 58%, transparent 58% 100%);
+    border-radius: 0 0 8px 0;
+    opacity: 0.65;
+  }
+  .kb-card .t-month {
+    display: inline-block;
+    flex: none;
+    padding: 0 6px;
+    border-radius: 8px;
+    font-size: 0.92em;
+    font-weight: bold;
+    margin-right: 4px;
+    white-space: nowrap;
   }
   .kb-card:hover { box-shadow: var(--shadow-md); }
   .kb-card.dimmed { opacity: 0.22; filter: grayscale(0.6); }
@@ -1550,6 +1572,38 @@
     });
   }
 
+  // カード右下のハンドルをドラッグして、カードの大きさを自由に変更する。サイズは task.size に保存。
+  function attachCardResize(card, task, onResized) {
+    const handle = document.createElement("div");
+    handle.className = "kb-card-resize";
+    handle.addEventListener("mousedown", e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX, startY = e.clientY;
+      const startW = card.offsetWidth, startH = card.offsetHeight;
+      let moved = false;
+
+      function onMove(ev) {
+        moved = true;
+        card.style.width = Math.max(90, startW + (ev.clientX - startX)) + "px";
+        card.style.height = Math.max(44, startH + (ev.clientY - startY)) + "px";
+      }
+      function onUp() {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        if (!moved) return;
+        onResized();
+        task.size = { w: parseFloat(card.style.width), h: parseFloat(card.style.height) };
+        save();
+        renderBoard();
+      }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+    card.appendChild(handle);
+  }
+
   function buildCardEl(task) {
     const due = parseDue(task.due);
     const expanded = task.id === selectedTaskId;
@@ -1563,10 +1617,22 @@
     card.style.left = task.pos.x + "px";
     card.style.top = task.pos.y + "px";
     card.style.zIndex = (expanded ? 1000 : 0) + (task.z || 0);
+    // ユーザーがリサイズしたカードは保存済みサイズで表示する（展開時は詳細が収まる既定レイアウトを優先）
+    if (!expanded && task.size) {
+      card.style.width = task.size.w + "px";
+      card.style.height = task.size.h + "px";
+    }
+    // 結合ボードでもどの月のタスクか分かるよう、月バッジをカードに表示する（色は月見出しと同じ）
+    const mKey = monthKeyOfTask(task);
+    let monthBadge = "";
+    if (mKey !== "unset") {
+      const mc = monthHeaderColor(mKey, monthKeyFromDate(new Date()));
+      monthBadge = `<span class="t-month" style="background:${mc.bg}; color:${mc.fg};">${escapeHtml(monthLabel(mKey))}</span>`;
+    }
     card.innerHTML = `
       <div class="t-name">${escapeHtml(task.name)}</div>
       <div class="t-meta">
-        <span>${due ? formatDate(due) : escapeHtml(task.due || "未設定")}</span>
+        <span>${monthBadge}${due ? formatDate(due) : escapeHtml(task.due || "未設定")}</span>
         <span class="status-badge status-${task.status}">${task.status}</span>
       </div>
       ${expanded ? `
@@ -1587,12 +1653,16 @@
         <button type="button" class="danger small edit-delete">タスクを削除</button>
       </div>` : ""}
     `;
+    let cardResized = false;
     card.addEventListener("click", e => {
       if (e.target.closest("[data-detail]")) return;
+      // リサイズ操作の直後や、ハンドル自体のクリックでは選択トグルしない
+      if (cardResized || e.target.classList.contains("kb-card-resize")) return;
       selectedTaskId = expanded ? null : task.id;
       renderBoard();
     });
     attachCardDrag(card, task);
+    if (!expanded) attachCardResize(card, task, () => { cardResized = true; });
     if (expanded) {
       card.querySelector(".edit-assignee").addEventListener("change", e => {
         task.assignee = e.target.value.trim();
