@@ -138,6 +138,15 @@
     padding: 14px 16px;
     box-shadow: var(--shadow-sm);
   }
+  /* タスクボードのセクションは透明にして、背景画像がそのまま見えるようにする（各月パネル自体は白背景で可読性を保つ） */
+  .board-panel {
+    background: none;
+    border: none;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    padding: 0;
+  }
   .panel h2 {
     font-size: 14px;
     margin: 0 0 10px;
@@ -783,7 +792,7 @@
     </div>
   </section>
 
-  <section class="panel">
+  <section class="panel board-panel">
     <div id="boardView">
       <div class="kanban-columns" id="kanbanColumns"></div>
     </div>
@@ -1643,6 +1652,15 @@
         <label>期日（yyyy/mm/dd）
           <input type="text" class="edit-due" value="${due ? formatDate(due) : escapeHtml(task.due || "")}">
         </label>
+        <label>対応月（変更するとその月のボードへ移動）
+          <select class="edit-month">
+            ${(() => {
+              const keys = getMonthKeys();
+              if (!keys.includes("unset")) keys.push("unset");
+              return keys.map(k => `<option value="${k}" ${k === mKey ? "selected" : ""}>${monthLabel(k)}</option>`).join("");
+            })()}
+          </select>
+        </label>
         <label>ステータス
           <select class="edit-status">
             ${STATUSES.map(s => `<option value="${s}" ${s === task.status ? "selected" : ""}>${s}</option>`).join("")}
@@ -1676,6 +1694,10 @@
         task.sentFlag = "";
         save();
         renderBoard();
+      });
+      // 対応月の変更：期日の「日」は維持したまま年月だけ移動（moveTaskToMonth が末日クランプ等を処理）
+      card.querySelector(".edit-month").addEventListener("change", e => {
+        moveTaskToMonth(task.id, e.target.value);
       });
       card.querySelector(".edit-status").addEventListener("change", e => {
         task.status = e.target.value;
@@ -2221,6 +2243,32 @@
         },
         required: ["id"]
       }
+    },
+    {
+      name: "merge_boards",
+      description: "複数の月ボードを1枚の結合ボードにまとめる（例:「7月と8月を結合して」）。指定した月がすでに結合済みの場合はその結合ごとまとめる。",
+      input_schema: {
+        type: "object",
+        properties: {
+          months: {
+            type: "array",
+            items: { type: "integer", minimum: 1, maximum: 12 },
+            description: "結合する月の番号（1〜12）。2つ以上指定する"
+          }
+        },
+        required: ["months"]
+      }
+    },
+    {
+      name: "unmerge_board",
+      description: "結合済みの月ボードを解除して各月のボードに戻す。month にはその結合に含まれる月のどれか1つを指定する。",
+      input_schema: {
+        type: "object",
+        properties: {
+          month: { type: "integer", minimum: 1, maximum: 12, description: "結合に含まれる月の番号" }
+        },
+        required: ["month"]
+      }
     }
   ];
 
@@ -2242,6 +2290,9 @@ ${JSON.stringify(tasks, null, 1)}
 
 名簿（担当者一覧）:
 ${JSON.stringify(contacts, null, 1)}
+
+結合中の月ボード:
+${state.monthGroups.length ? JSON.stringify(state.monthGroups) : "（なし）"}
 
 アプリの仕様:
 - タスクは期日の月ごとのボードに表示される（ステータス: ${STATUSES.join("/")}）
@@ -2293,6 +2344,34 @@ ${JSON.stringify(contacts, null, 1)}
         renderBoard();
         toast(`AI: 「${task.name}」を追加しました`);
         return { content: `追加しました（id: ${task.id}）` };
+      }
+      if (name === "merge_boards") {
+        const year = new Date().getFullYear();
+        const months = [...new Set(input.months || [])].filter(m => m >= 1 && m <= 12);
+        if (months.length < 2) return { content: "エラー: 結合する月を2つ以上指定してください", isError: true };
+        // 指定月が既存の結合に含まれていれば、その結合ごと取り込む
+        const all = new Set(months.map(m => `${year}-${pad2(m)}`));
+        for (const key of [...all]) {
+          const g = findGroup(key);
+          if (g) g.forEach(x => all.add(x));
+        }
+        const list = [...all].sort();
+        const newKey = groupKeyOf(list);
+        state.monthGroups = state.monthGroups.filter(g => !g.some(m => all.has(m)));
+        state.monthGroups.push(list);
+        if (!state.monthPos[newKey]) state.monthPos[newKey] = Object.assign({}, state.monthPos[list[0]]);
+        save();
+        renderBoard();
+        toast(`AI: 「${boardLabel(newKey)}」ボードに結合しました`);
+        return { content: `「${boardLabel(newKey)}」ボードに結合しました` };
+      }
+      if (name === "unmerge_board") {
+        const year = new Date().getFullYear();
+        const g = findGroup(`${year}-${pad2(input.month)}`);
+        if (!g) return { content: `エラー: ${input.month}月は結合されていません`, isError: true };
+        const label = boardLabel(groupKeyOf(g));
+        unmergeBoard(groupKeyOf(g)); // 内部で save・再描画・トーストまで行う
+        return { content: `「${label}」ボードの結合を解除しました` };
       }
       const task = state.tasks.find(t => t.id === Number(input.id));
       if (!task) return { content: `エラー: id ${input.id} のタスクが見つかりません`, isError: true };
