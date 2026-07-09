@@ -621,6 +621,8 @@
     font-size: 13px;
     background: #2b3f63;
     color: #fff;
+    cursor: move;
+    user-select: none;
   }
   .ai-panel-hdr button {
     background: rgba(255,255,255,0.18);
@@ -921,7 +923,8 @@
     ],
     nextTaskId: 3,
     monthPos: {},
-    monthGroups: []
+    monthGroups: [],
+    aiPanelPos: null
   });
 
   let state = load();
@@ -2570,9 +2573,50 @@ ${state.monthGroups.length ? JSON.stringify(state.monthGroups) : "（なし）"}
     }
   }
 
+  // AIパネルのドラッグ移動：ヘッダー（ボタン以外）をつかんで好きな位置へ。位置は保存され次回も維持。
+  function applyAiPanelPos() {
+    if (!state.aiPanelPos) return;
+    const x = Math.max(0, Math.min(state.aiPanelPos.x, window.innerWidth - 80));
+    const y = Math.max(0, Math.min(state.aiPanelPos.y, window.innerHeight - 60));
+    aiPanel.style.left = x + "px";
+    aiPanel.style.top = y + "px";
+    aiPanel.style.right = "auto";
+    aiPanel.style.bottom = "auto";
+  }
+  aiPanel.querySelector(".ai-panel-hdr").addEventListener("mousedown", e => {
+    if (e.button !== 0 || e.target.closest("button")) return;
+    e.preventDefault();
+    const rect = aiPanel.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+    let moved = false;
+
+    function onMove(ev) {
+      moved = true;
+      const x = Math.max(0, Math.min(ev.clientX - offsetX, window.innerWidth - 80));
+      const y = Math.max(0, Math.min(ev.clientY - offsetY, window.innerHeight - 60));
+      aiPanel.style.left = x + "px";
+      aiPanel.style.top = y + "px";
+      aiPanel.style.right = "auto";
+      aiPanel.style.bottom = "auto";
+    }
+    function onUp() {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      if (!moved) return;
+      state.aiPanelPos = { x: parseFloat(aiPanel.style.left) || 0, y: parseFloat(aiPanel.style.top) || 0 };
+      save();
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+  // ウィンドウリサイズ時も画面外に出ないようクランプし直す
+  window.addEventListener("resize", applyAiPanelPos);
+
   document.getElementById("btnOpenAi").addEventListener("click", () => {
     aiPanel.hidden = !aiPanel.hidden;
     if (!aiPanel.hidden) {
+      applyAiPanelPos();
       if (aiMessages.children.length === 0) {
         aiAddMsg("assistant", "こんにちは！タスクについて何でも聞いてください。\n例:「今週締め切りのタスクは？」「来週金曜までに資料作成のタスクを追加して」「7月と8月を結合して」");
         const provider = state.settings.aiProvider || "anthropic";
