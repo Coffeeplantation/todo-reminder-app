@@ -496,6 +496,35 @@
     border-radius: 0 0 8px 0;
     opacity: 0.65;
   }
+  .kb-card .t-detail .edit-months {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+  .kb-card .t-detail .edit-months .em-btn {
+    padding: 2px 0;
+    min-width: 26px;
+    font-size: 0.95em;
+    font-weight: normal;
+    border-radius: 7px;
+    background: #e8ecf2;
+    color: var(--text);
+    border: 1px solid var(--border);
+    box-shadow: none;
+  }
+  .kb-card .t-detail .edit-months .em-btn.on {
+    background: var(--blue);
+    color: #fff;
+    border-color: var(--blue);
+    font-weight: bold;
+  }
+  .kb-card .t-detail .edit-months .em-btn.primary-month {
+    background: #2b3f63;
+    color: #fff;
+    border-color: #2b3f63;
+    cursor: default;
+    font-weight: bold;
+  }
   .kb-card .t-month {
     display: inline-block;
     flex: none;
@@ -1005,6 +1034,13 @@
   function monthKeyOfTask(task) {
     const d = parseDue(task.due);
     return d ? monthKeyFromDate(d) : "unset";
+  }
+  // タスクが対応する全ての月キー。先頭は期日から決まる「主の月」、以降は追加選択された月（task.extraMonths）。
+  // 複数の月を選ぶと、その全ての月のボードに同じタスク（共有情報）が表示される。
+  function taskMonthKeys(task) {
+    const primary = monthKeyOfTask(task);
+    const extras = (task.extraMonths || []).filter(k => k !== primary);
+    return [primary, ...extras];
   }
   function monthLabel(key) {
     if (key === "unset") return "期日未設定";
@@ -1643,8 +1679,8 @@
         const wrapRect = targetWrap.getBoundingClientRect();
         task.pos = clampPos(targetWrap, ev.clientX - wrapRect.left - offsetX, ev.clientY - wrapRect.top - offsetY);
 
-        // 結合ボード内にタスクの月が含まれていれば移動不要。含まれない場合は先頭月へ移す。
-        if (targetCol && !monthsOfBoard(targetCol.dataset.month).includes(monthKeyOfTask(task))) {
+        // タスクの対応月のいずれかがドロップ先ボードに含まれていれば移動不要。含まれない場合は先頭月へ移す。
+        if (targetCol && !taskMonthKeys(task).some(k => monthsOfBoard(targetCol.dataset.month).includes(k))) {
           moveTaskToMonth(task.id, monthsOfBoard(targetCol.dataset.month)[0]);
         } else {
           save();
@@ -1707,13 +1743,16 @@
       card.style.width = task.size.w + "px";
       card.style.height = task.size.h + "px";
     }
-    // 結合ボードでもどの月のタスクか分かるよう、月バッジをカードに表示する（色は月見出しと同じ）
+    // 結合ボードでもどの月のタスクか分かるよう、対応月のバッジを全て表示する（色は各月の見出しと同じ）
     const mKey = monthKeyOfTask(task);
-    let monthBadge = "";
-    if (mKey !== "unset") {
-      const mc = monthHeaderColor(mKey, monthKeyFromDate(new Date()));
-      monthBadge = `<span class="t-month" style="background:${mc.bg}; color:${mc.fg};">${escapeHtml(monthLabel(mKey))}</span>`;
-    }
+    const nowKeyForBadge = monthKeyFromDate(new Date());
+    const monthBadge = taskMonthKeys(task)
+      .filter(k => k !== "unset")
+      .map(k => {
+        const mc = monthHeaderColor(k, nowKeyForBadge);
+        return `<span class="t-month" style="background:${mc.bg}; color:${mc.fg};">${escapeHtml(monthLabel(k))}</span>`;
+      })
+      .join("");
     card.innerHTML = `
       <div class="t-name">${escapeHtml(task.name)}</div>
       <div class="t-meta">
@@ -1728,14 +1767,15 @@
         <label>期日（yyyy/mm/dd）
           <input type="text" class="edit-due" value="${due ? formatDate(due) : escapeHtml(task.due || "")}">
         </label>
-        <label>対応月（変更するとその月のボードへ移動）
-          <select class="edit-month">
-            ${(() => {
-              const keys = getMonthKeys();
-              if (!keys.includes("unset")) keys.push("unset");
-              return keys.map(k => `<option value="${k}" ${k === mKey ? "selected" : ""}>${monthLabel(k)}</option>`).join("");
-            })()}
-          </select>
+        <label>対応月（クリックで複数選択。濃紺は期日の月＝期日欄で変更）
+          <span class="edit-months">
+            ${getMonthKeys().filter(k => k !== "unset").map(k => {
+              const on = taskMonthKeys(task).includes(k);
+              const primary = k === mKey;
+              return `<button type="button" class="em-btn${on ? " on" : ""}${primary ? " primary-month" : ""}" data-mkey="${k}"
+                title="${primary ? "期日の月（期日を変更すると移動）" : (on ? "クリックで対応月から外す" : "クリックで対応月に追加")}">${monthNumberLabel(k)}</button>`;
+            }).join("")}
+          </span>
         </label>
         <label>ステータス
           <select class="edit-status">
@@ -1771,9 +1811,19 @@
         save();
         renderBoard();
       });
-      // 対応月の変更：期日の「日」は維持したまま年月だけ移動（moveTaskToMonth が末日クランプ等を処理）
-      card.querySelector(".edit-month").addEventListener("change", e => {
-        moveTaskToMonth(task.id, e.target.value);
+      // 対応月チップ：期日の月（primary）以外はクリックで追加/解除。追加分は task.extraMonths に保存され、
+      // 選択した全ての月のボードに同じタスク（共有情報）が表示される。
+      card.querySelectorAll(".em-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const k = btn.dataset.mkey;
+          if (k === monthKeyOfTask(task)) return; // 期日の月は外せない
+          task.extraMonths = task.extraMonths || [];
+          const i = task.extraMonths.indexOf(k);
+          if (i >= 0) task.extraMonths.splice(i, 1);
+          else task.extraMonths.push(k);
+          save();
+          renderBoard();
+        });
       });
       card.querySelector(".edit-status").addEventListener("change", e => {
         task.status = e.target.value;
@@ -1830,7 +1880,10 @@
       const shadowPreset = SHADOW_PRESET[pos.shadow || "none"];
       col.style.boxShadow = [ringShadow, shadowPreset].filter(Boolean).join(", ");
 
-      const tasks = state.tasks.filter(t => boardMonths.includes(monthKeyOfTask(t)));
+      // 対応月のいずれかがこのボードに含まれるタスクを表示する。
+      // 結合ボードでは各月のタスクを足し合わせた一覧になり（同一タスクは1枚）、
+      // 分離時は複数月対応のタスクが双方の月ボードに同じ情報（共有）で表示される。
+      const tasks = state.tasks.filter(t => taskMonthKeys(t).some(k => boardMonths.includes(k)));
 
       const hdr = document.createElement("div");
       hdr.className = "kb-col-hdr" + (collapsed ? " kb-col-hdr-collapsed" : "");
@@ -2052,6 +2105,10 @@
       task.due = `${y}-${pad2(m)}-${pad2(Math.min(day, lastDay))}`;
     }
     task.sentFlag = ""; // spec.md 5.4: 移動のたびに送信済みフラグはリセットされる
+    // 移動先が追加対応月に含まれていたら重複を解消する（主の月に昇格した形）
+    if (task.extraMonths) {
+      task.extraMonths = task.extraMonths.filter(k => k !== monthKeyOfTask(task));
+    }
     save();
     renderBoard();
   }
@@ -2355,6 +2412,7 @@
     const tasks = state.tasks.map(t => ({
       id: t.id, name: t.name, assignee: t.assignee || null,
       due: t.due || null, status: t.status,
+      months: taskMonthKeys(t),
       reminderDays: t.reminderDays, sentFlag: t.sentFlag || null
     }));
     const contacts = state.contacts.map(c => ({ name: c.name, dept: c.dept || null }));
