@@ -559,6 +559,108 @@
   }
   dialog .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 
+  /* ---- AIアシスタントパネル ---- */
+  #aiPanel {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 500;
+    width: 380px;
+    max-width: calc(100vw - 32px);
+    height: 520px;
+    max-height: calc(100vh - 90px);
+    display: flex;
+    flex-direction: column;
+    background: rgba(255, 255, 255, 0.92);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+  }
+  #aiPanel[hidden] { display: none; }
+  .ai-panel-hdr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
+    font-weight: 700;
+    font-size: 13px;
+    background: #2b3f63;
+    color: #fff;
+  }
+  .ai-panel-hdr button {
+    background: rgba(255,255,255,0.18);
+    padding: 2px 8px;
+    font-size: 12px;
+    box-shadow: none;
+  }
+  #aiMessages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .ai-msg {
+    max-width: 88%;
+    padding: 8px 11px;
+    border-radius: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .ai-msg.user {
+    align-self: flex-end;
+    background: var(--blue);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .ai-msg.assistant {
+    align-self: flex-start;
+    background: #eef1f6;
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+  }
+  .ai-msg.info {
+    align-self: center;
+    background: none;
+    color: var(--muted);
+    font-size: 11.5px;
+    padding: 2px 6px;
+  }
+  .ai-msg.error {
+    align-self: flex-start;
+    background: #fee2e2;
+    color: #991b1b;
+  }
+  .ai-msg.thinking-dots::after {
+    content: "…";
+    animation: ai-dots 1.2s steps(4) infinite;
+  }
+  @keyframes ai-dots {
+    0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; }
+  }
+  #aiForm {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+    background: rgba(255,255,255,0.7);
+  }
+  #aiInput {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 13px;
+  }
+
   dialog.panel-modal {
     width: 480px;
     max-width: 92vw;
@@ -596,6 +698,7 @@
   </span>
   <span class="appbar-actions">
     <button type="button" id="btnAddTaskTop" title="タスクを追加（N）">＋ タスク追加</button>
+    <button type="button" id="btnOpenAi" class="ghost" title="AIアシスタントを開く">🤖 AI</button>
     <button type="button" id="btnBgChange" class="ghost" title="背景をランダムに変更（B）">🖼 背景</button>
     <button type="button" id="btnOpenReminder" class="ghost" title="リマインダーチェックを開く">🔔 リマインダー</button>
     <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
@@ -635,6 +738,12 @@
 
         <label for="cfgBgInterval">背景の自動切替間隔（分）</label>
         <input type="number" id="cfgBgInterval" min="1" value="10">
+
+        <label for="cfgApiKey">AI：Anthropic APIキー</label>
+        <span>
+          <input type="password" id="cfgApiKey" placeholder="sk-ant-..." autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
+          <small style="color:var(--muted); display:block; margin-top:2px;">このブラウザの localStorage にのみ保存されます（外部送信は Anthropic API のみ）</small>
+        </span>
       </div>
     </div>
   </section>
@@ -707,6 +816,22 @@
   </form>
 </dialog>
 
+<!-- AIアシスタントパネル（ヘッダーの🤖AIボタンで開閉） -->
+<div id="aiPanel" hidden>
+  <div class="ai-panel-hdr">
+    <span>🤖 AIアシスタント</span>
+    <span style="display:flex; gap:6px;">
+      <button type="button" id="aiClear" title="会話をクリア">クリア</button>
+      <button type="button" id="aiClose" title="閉じる">✕</button>
+    </span>
+  </div>
+  <div id="aiMessages"></div>
+  <form id="aiForm">
+    <input type="text" id="aiInput" placeholder="タスクについて質問・依頼…" autocomplete="off">
+    <button type="submit" id="aiSendBtn">送信</button>
+  </form>
+</div>
+
 <!-- トースト通知（popover: モーダルダイアログより手前のトップレイヤーに表示される） -->
 <div id="toasts" popover="manual"></div>
 
@@ -739,7 +864,8 @@
       boardColorNear: "#2b3f63",
       boardColorFar: "#c4ced0",
       bgOnline: true,
-      bgIntervalMin: 10
+      bgIntervalMin: 10,
+      anthropicApiKey: ""
     },
     tasks: [
       { id: 1, name: "プロジェクト報告書提出", assignee: "山田太郎", due: "2026-07-15", reminderDays: 3, status: "未完了", sentFlag: "" },
@@ -1015,6 +1141,7 @@
   const cfgBgOnline = document.getElementById("cfgBgOnline");
   const cfgBgOnlineLabel = document.getElementById("cfgBgOnlineLabel");
   const cfgBgInterval = document.getElementById("cfgBgInterval");
+  const cfgApiKey = document.getElementById("cfgApiKey");
 
   function renderSettings() {
     cfgReminderDays.value = state.settings.reminderDays;
@@ -1030,6 +1157,7 @@
       ? "ON（ネットからランダム取得）"
       : "OFF（グラデーション背景）";
     cfgBgInterval.value = state.settings.bgIntervalMin;
+    cfgApiKey.value = state.settings.anthropicApiKey || "";
   }
   cfgReminderDays.addEventListener("change", () => {
     state.settings.reminderDays = Math.max(0, parseInt(cfgReminderDays.value, 10) || 0);
@@ -1066,6 +1194,10 @@
     renderSettings();
     save();
     restartBgTimer();
+  });
+  cfgApiKey.addEventListener("change", () => {
+    state.settings.anthropicApiKey = cfgApiKey.value.trim();
+    save();
   });
 
   // ---------------------------------------------------------------
@@ -1960,6 +2092,261 @@
     toastsEl.appendChild(el);
     setTimeout(dismiss, opts.duration || 4500);
   }
+
+  // ---------------------------------------------------------------
+  // AIアシスタント（ヘッダーの🤖AIボタン）
+  // 公式SDK（@anthropic-ai/sdk）をCDNから動的importし、ブラウザから直接 Claude API を呼ぶ。
+  // APIキーは設定パネルで入力し localStorage に保存（dangerouslyAllowBrowser で明示的に許可）。
+  // タスクの追加・更新・削除はツール（tool use）としてAIに公開し、手動ループで実行する。
+  // ---------------------------------------------------------------
+  const AI_MODEL = "claude-opus-4-8";
+  const aiPanel = document.getElementById("aiPanel");
+  const aiMessages = document.getElementById("aiMessages");
+  const aiForm = document.getElementById("aiForm");
+  const aiInput = document.getElementById("aiInput");
+  const aiSendBtn = document.getElementById("aiSendBtn");
+  let AnthropicSDK = null;
+  let aiClient = null;
+  let aiClientKey = null;
+  let aiHistory = [];   // Claude API に渡す messages（tool_use/tool_result ブロックを含む）
+  let aiBusy = false;
+
+  const AI_TOOLS = [
+    {
+      name: "add_task",
+      description: "新しいタスクをボードに追加する。ユーザーがタスクの追加・登録を依頼したときに使う。",
+      input_schema: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "タスク名" },
+          due: { type: "string", description: "期日（yyyy-mm-dd 形式）" },
+          assignee: { type: "string", description: "担当者名（名簿と一致させる。不明なら省略）" },
+          reminderDays: { type: "integer", description: "リマインド日数前（省略時は3）" }
+        },
+        required: ["name", "due"]
+      }
+    },
+    {
+      name: "update_task",
+      description: "既存タスクを更新する（ステータス変更・期日変更・担当者変更・名前変更）。id はシステムプロンプトのタスク一覧にある id を使う。",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: { type: "integer", description: "タスクの id" },
+          status: { type: "string", enum: STATUSES, description: "新しいステータス" },
+          due: { type: "string", description: "新しい期日（yyyy-mm-dd）" },
+          assignee: { type: "string", description: "新しい担当者名" },
+          name: { type: "string", description: "新しいタスク名" }
+        },
+        required: ["id"]
+      }
+    },
+    {
+      name: "delete_task",
+      description: "タスクを削除する。ユーザーが明確に削除を依頼したときのみ使う。",
+      input_schema: {
+        type: "object",
+        properties: {
+          id: { type: "integer", description: "削除するタスクの id" }
+        },
+        required: ["id"]
+      }
+    }
+  ];
+
+  function buildAiSystemPrompt() {
+    const today = formatDate(todayDate());
+    const tasks = state.tasks.map(t => ({
+      id: t.id, name: t.name, assignee: t.assignee || null,
+      due: t.due || null, status: t.status,
+      reminderDays: t.reminderDays, sentFlag: t.sentFlag || null
+    }));
+    const contacts = state.contacts.map(c => ({ name: c.name, dept: c.dept || null }));
+    return `あなたは「Todoリマインダー」アプリに組み込まれたAIアシスタントです。
+ユーザーのタスク管理を日本語で手伝います。回答は簡潔に。
+
+今日の日付: ${today}
+
+現在のタスク一覧（JSON）:
+${JSON.stringify(tasks, null, 1)}
+
+名簿（担当者一覧）:
+${JSON.stringify(contacts, null, 1)}
+
+アプリの仕様:
+- タスクは期日の月ごとのボードに表示される（ステータス: ${STATUSES.join("/")}）
+- 期日が近づくと担当者へリマインドメールを送る想定（このブラウザ版はドライラン）
+- タスクの追加・更新・削除はツールで実行できる。実行後は何をしたか短く報告する
+- 変更を伴わない質問（集計・期限チェック・提案など）はタスク一覧から直接答える`;
+  }
+
+  async function ensureAiClient() {
+    const key = (state.settings.anthropicApiKey || "").trim();
+    if (!key) throw Object.assign(new Error("APIキーが未設定です"), { code: "NO_KEY" });
+    if (!AnthropicSDK) {
+      const mod = await import("https://esm.run/@anthropic-ai/sdk");
+      AnthropicSDK = mod.default;
+    }
+    if (!aiClient || aiClientKey !== key) {
+      aiClient = new AnthropicSDK({ apiKey: key, dangerouslyAllowBrowser: true });
+      aiClientKey = key;
+    }
+    return aiClient;
+  }
+
+  function aiAddMsg(cls, text) {
+    const el = document.createElement("div");
+    el.className = "ai-msg " + cls;
+    el.textContent = text;
+    aiMessages.appendChild(el);
+    aiMessages.scrollTop = aiMessages.scrollHeight;
+    return el;
+  }
+
+  // ツール実行：state を直接更新して保存・再描画する。結果はAIへ文字列で返す。
+  function execAiTool(name, input) {
+    try {
+      if (name === "add_task") {
+        const due = normalizeDueInput(String(input.due || "").replace(/-/g, "/"));
+        if (!due) return { content: "エラー: 期日は yyyy-mm-dd 形式で指定してください", isError: true };
+        const task = {
+          id: state.nextTaskId++,
+          name: String(input.name).trim(),
+          assignee: (input.assignee || "").trim(),
+          due,
+          reminderDays: Math.max(0, parseInt(input.reminderDays, 10) || 3),
+          status: "未完了",
+          sentFlag: ""
+        };
+        state.tasks.push(task);
+        save();
+        renderBoard();
+        toast(`AI: 「${task.name}」を追加しました`);
+        return { content: `追加しました（id: ${task.id}）` };
+      }
+      const task = state.tasks.find(t => t.id === Number(input.id));
+      if (!task) return { content: `エラー: id ${input.id} のタスクが見つかりません`, isError: true };
+      if (name === "update_task") {
+        const changed = [];
+        if (input.status && STATUSES.includes(input.status)) { task.status = input.status; task.sentFlag = ""; changed.push("ステータス→" + input.status); }
+        if (input.due) {
+          const due = normalizeDueInput(String(input.due).replace(/-/g, "/"));
+          if (!due) return { content: "エラー: 期日は yyyy-mm-dd 形式で指定してください", isError: true };
+          task.due = due; task.sentFlag = ""; changed.push("期日→" + due);
+        }
+        if (input.assignee !== undefined) { task.assignee = String(input.assignee).trim(); changed.push("担当者→" + task.assignee); }
+        if (input.name) { task.name = String(input.name).trim(); changed.push("名前→" + task.name); }
+        if (changed.length === 0) return { content: "エラー: 更新内容が指定されていません", isError: true };
+        save();
+        renderBoard();
+        toast(`AI: 「${task.name}」を更新しました`);
+        return { content: `更新しました: ${changed.join("、")}` };
+      }
+      if (name === "delete_task") {
+        state.tasks = state.tasks.filter(t => t !== task);
+        if (selectedTaskId === task.id) selectedTaskId = null;
+        save();
+        renderBoard();
+        toast(`AI: 「${task.name}」を削除しました`);
+        return { content: `「${task.name}」を削除しました` };
+      }
+      return { content: `エラー: 不明なツール ${name}`, isError: true };
+    } catch (e) {
+      return { content: "エラー: " + e.message, isError: true };
+    }
+  }
+
+  async function aiSend(text) {
+    aiBusy = true;
+    aiSendBtn.disabled = true;
+    aiAddMsg("user", text);
+    const historyLenBefore = aiHistory.length;
+    aiHistory.push({ role: "user", content: text });
+    const waitEl = aiAddMsg("info thinking-dots", "考え中");
+    try {
+      const client = await ensureAiClient();
+      // ツール実行を挟む手動ループ：Claude がツールを呼ばなくなるまで繰り返す
+      for (let iter = 0; iter < 8; iter++) {
+        const stream = client.messages.stream({
+          model: AI_MODEL,
+          max_tokens: 16000,
+          thinking: { type: "adaptive" },
+          system: buildAiSystemPrompt(),
+          tools: AI_TOOLS,
+          messages: aiHistory
+        });
+        let bubble = null;
+        stream.on("text", delta => {
+          if (!bubble) {
+            waitEl.remove();
+            bubble = aiAddMsg("assistant", "");
+          }
+          bubble.textContent += delta;
+          aiMessages.scrollTop = aiMessages.scrollHeight;
+        });
+        const msg = await stream.finalMessage();
+        aiHistory.push({ role: "assistant", content: msg.content });
+
+        if (msg.stop_reason !== "tool_use") break;
+        const results = [];
+        for (const block of msg.content) {
+          if (block.type !== "tool_use") continue;
+          aiAddMsg("info", `🔧 ${block.name} を実行`);
+          const { content, isError } = execAiTool(block.name, block.input);
+          const result = { type: "tool_result", tool_use_id: block.id, content };
+          if (isError) result.is_error = true;
+          results.push(result);
+        }
+        aiHistory.push({ role: "user", content: results });
+      }
+      waitEl.remove();
+    } catch (e) {
+      waitEl.remove();
+      if (e.code === "NO_KEY") {
+        aiAddMsg("error", "Anthropic APIキーが未設定です。⚙設定の「AI：Anthropic APIキー」に入力してください。");
+      } else if (AnthropicSDK && e instanceof AnthropicSDK.AuthenticationError) {
+        aiAddMsg("error", "APIキーが無効です。設定で正しいキーを入力してください。");
+      } else if (AnthropicSDK && e instanceof AnthropicSDK.RateLimitError) {
+        aiAddMsg("error", "レート制限に達しました。しばらく待ってから再試行してください。");
+      } else if (AnthropicSDK && e instanceof AnthropicSDK.APIError) {
+        aiAddMsg("error", `APIエラー（${e.status}）: ${e.message}`);
+      } else {
+        aiAddMsg("error", "エラー: " + e.message);
+      }
+      // 失敗したターンを丸ごと巻き戻す（tool_use と tool_result が対にならない不整合な履歴を残さない）
+      aiHistory.length = historyLenBefore;
+    } finally {
+      aiBusy = false;
+      aiSendBtn.disabled = false;
+      aiInput.focus();
+    }
+  }
+
+  document.getElementById("btnOpenAi").addEventListener("click", () => {
+    aiPanel.hidden = !aiPanel.hidden;
+    if (!aiPanel.hidden) {
+      if (aiMessages.children.length === 0) {
+        aiAddMsg("assistant", "こんにちは！タスクについて何でも聞いてください。\n例:「今週締め切りのタスクは？」「来週金曜までに資料作成のタスクを追加して」「報告書のタスクを完了にして」");
+        if (!(state.settings.anthropicApiKey || "").trim()) {
+          aiAddMsg("error", "利用には Anthropic APIキーが必要です。⚙設定の「AI：Anthropic APIキー」に入力してください。");
+        }
+      }
+      aiInput.focus();
+    }
+  });
+  document.getElementById("aiClose").addEventListener("click", () => { aiPanel.hidden = true; });
+  document.getElementById("aiClear").addEventListener("click", () => {
+    aiHistory = [];
+    aiMessages.innerHTML = "";
+    aiAddMsg("info", "会話をクリアしました");
+  });
+  aiForm.addEventListener("submit", e => {
+    e.preventDefault();
+    const text = aiInput.value.trim();
+    if (!text || aiBusy) return;
+    aiInput.value = "";
+    aiSend(text);
+  });
 
   // ---------------------------------------------------------------
   // 背景：ネットからランダム画像を取得し、2枚のレイヤーでクロスフェード切替。
