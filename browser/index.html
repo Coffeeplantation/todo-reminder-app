@@ -393,7 +393,8 @@
     position: absolute;
     top: 36px;
     right: 6px;
-    z-index: 50;
+    /* 選択中カード（z-index: 1000+連番）より常に手前に出す */
+    z-index: 100000;
     background: rgba(255, 255, 255, 0.96);
     -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
@@ -659,7 +660,7 @@
 
   <section class="panel modal-only" id="sectionContacts">
     <h2>
-      名簿
+      <span id="contactsTitle">名簿</span>
       <span class="btn-row"><button id="btnAddContact" class="secondary small">担当者を追加</button></span>
     </h2>
     <div class="panel-body" id="contactsPanelBody">
@@ -669,6 +670,7 @@
             <th style="text-align:left; padding:6px 8px;">名前</th>
             <th style="text-align:left; padding:6px 8px;">メールアドレス</th>
             <th style="text-align:left; padding:6px 8px;">部署</th>
+            <th style="text-align:left; padding:6px 8px;">関与タスク</th>
             <th style="padding:6px 8px;"></th>
           </tr>
         </thead>
@@ -887,13 +889,32 @@
       }
     });
   }
+  // 解除時は結合ボードの内容（色・形・サイズ等の見た目設定と折りたたみ状態）を各月ボードへ引き継ぎ、
+  // 結合ボードのあった位置から横に並べて配置する。タスクは期日の月に従ってそれぞれの月ボードへ戻る。
+  const INHERIT_POS_KEYS = ["color", "shape", "border", "fontSize", "shadow", "tileSize", "icon", "w", "h", "collapsed"];
   function unmergeBoard(boardKey) {
     const label = boardLabel(boardKey);
+    const months = monthsOfBoard(boardKey);
+    const groupPos = state.monthPos[boardKey] || {};
     state.monthGroups = state.monthGroups.filter(g => groupKeyOf(g) !== boardKey);
+    const baseX = groupPos.x || 0, baseY = groupPos.y || 0;
+    const stepX = groupPos.collapsed
+      ? TILE_SIZE_PRESET[groupPos.tileSize || "normal"].tile + 24
+      : (groupPos.w || 240) + 16;
+    months.forEach((m, i) => {
+      const pos = state.monthPos[m] || {};
+      INHERIT_POS_KEYS.forEach(k => {
+        if (groupPos[k] !== undefined) pos[k] = groupPos[k];
+      });
+      pos.x = baseX + i * stepX;
+      pos.y = baseY;
+      pos.z = ++colZCounter;
+      state.monthPos[m] = pos;
+    });
     delete state.monthPos[boardKey];
     save();
     renderBoard();
-    toast(`「${label}」ボードの結合を解除しました`);
+    toast(`「${label}」ボードの結合を解除しました（設定は各月に引き継ぎ）`);
   }
   // その月のタスク達成率を10%刻み（10段階）に丸めて返す。タスクが無い月は null（達成率表示なし）。
   function monthCompletionStep(tasks) {
@@ -974,6 +995,12 @@
     const { el, parent, nextSibling } = modalReturn;
     if (nextSibling) parent.insertBefore(el, nextSibling); else parent.appendChild(el);
     modalReturn = null;
+    // 名簿の月スコープ・展開状態は開いている間だけ有効
+    if (contactsScopeKey !== null || expandedContactName !== null) {
+      contactsScopeKey = null;
+      expandedContactName = null;
+      renderContacts();
+    }
   });
 
   // ---------------------------------------------------------------
@@ -1637,6 +1664,11 @@
             item.addEventListener("click", () => {
               openMenuMonthKey = null;
               renderBoard();
+              // 月メニューからの名簿は、そのボードのタスク参加者のみに絞った名簿を表示する
+              if (panelKey === "contacts") {
+                contactsScopeKey = key;
+                renderContacts();
+              }
               openPanelModal(panelKey);
             });
             menu.appendChild(item);
@@ -1778,18 +1810,72 @@
   // 名簿
   // ---------------------------------------------------------------
   const contactBody = document.getElementById("contactBody");
+  const contactsTitle = document.getElementById("contactsTitle");
+  const btnAddContact = document.getElementById("btnAddContact");
+  // 名簿の表示スコープ。null=総合名簿（全員）、ボードキー=その月（結合ボード）のタスク参加者のみ
+  let contactsScopeKey = null;
+  // 名前をクリックして担当タスク一覧を展開中の担当者名
+  let expandedContactName = null;
+
+  function tasksOfContact(c) {
+    const months = contactsScopeKey ? monthsOfBoard(contactsScopeKey) : null;
+    return state.tasks.filter(t =>
+      (t.assignee || "").trim() === c.name.trim() &&
+      (!months || months.includes(monthKeyOfTask(t))));
+  }
+
+  // 名簿から選んだタスクへジャンプ：該当ボードを展開・最前面にし、カードを選択状態にする
+  function jumpToTask(task) {
+    panelModal.close();
+    selectedTaskId = task.id;
+    const mk = monthKeyOfTask(task);
+    const g = findGroup(mk);
+    const boardKey = g ? groupKeyOf(g) : mk;
+    if (state.monthPos[boardKey]) {
+      state.monthPos[boardKey].collapsed = false;
+      state.monthPos[boardKey].z = ++colZCounter;
+    }
+    save();
+    renderBoard();
+    const col = kanbanColumns.querySelector(`.kb-col[data-month="${boardKey}"]`);
+    if (col) col.scrollIntoView({ block: "nearest", inline: "nearest" });
+    toast(`「${task.name}」を選択しました`);
+  }
+
   function renderContacts() {
+    const scoped = contactsScopeKey !== null;
+    contactsTitle.textContent = scoped ? `名簿（${boardLabel(contactsScopeKey)}の参加者）` : "名簿（総合）";
+    // 月別の参加者名簿では総合名簿への追加操作は出さない
+    btnAddContact.style.display = scoped ? "none" : "";
     contactBody.innerHTML = "";
-    for (const c of state.contacts) {
+    const list = scoped ? state.contacts.filter(c => tasksOfContact(c).length > 0) : state.contacts;
+    if (list.length === 0) {
       const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="5" style="padding:10px 8px; color:var(--muted);">${
+        scoped ? "この月のタスクに参加している担当者はいません" : "担当者が登録されていません"}</td>`;
+      contactBody.appendChild(tr);
+      return;
+    }
+    for (const c of list) {
+      const tasks = tasksOfContact(c);
+      const expanded = expandedContactName === c.name;
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      tr.title = "クリックで担当タスクを表示";
       tr.innerHTML = `
-        <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${escapeHtml(c.name)}</td>
+        <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${expanded ? "▾" : "▸"} ${escapeHtml(c.name)}</td>
         <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${escapeHtml(c.email)}</td>
         <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${escapeHtml(c.dept || "")}</td>
+        <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${tasks.length} 件</td>
         <td style="padding:6px 8px; border-bottom:1px solid var(--border); text-align:right;">
           <button class="danger small btn-del-contact">削除</button>
         </td>
       `;
+      tr.addEventListener("click", e => {
+        if (e.target.closest(".btn-del-contact")) return;
+        expandedContactName = expanded ? null : c.name;
+        renderContacts();
+      });
       tr.querySelector(".btn-del-contact").addEventListener("click", () => {
         if (!confirm(`「${c.name}」を名簿から削除しますか？`)) return;
         state.contacts = state.contacts.filter(x => x !== c);
@@ -1797,6 +1883,29 @@
         renderContacts();
       });
       contactBody.appendChild(tr);
+
+      if (expanded) {
+        const detailTr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 5;
+        td.style.cssText = "padding:6px 8px 10px 24px; border-bottom:1px solid var(--border); background:rgba(248,250,252,0.9);";
+        if (tasks.length === 0) {
+          td.innerHTML = `<span style="color:var(--muted); font-size:12px;">担当タスクはありません</span>`;
+        } else {
+          for (const task of tasks) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "ghost small";
+            btn.style.margin = "2px 6px 2px 0";
+            const due = parseDue(task.due);
+            btn.textContent = `${task.name}（${due ? formatDate(due) : "期日未設定"}・${task.status}）`;
+            btn.addEventListener("click", () => jumpToTask(task));
+            td.appendChild(btn);
+          }
+        }
+        detailTr.appendChild(td);
+        contactBody.appendChild(detailTr);
+      }
     }
   }
 
@@ -1926,7 +2035,12 @@
   document.getElementById("btnBgChange").addEventListener("click", () => changeBackground(true));
   document.getElementById("btnOpenSettings").addEventListener("click", () => openPanelModal("settings"));
   document.getElementById("btnOpenReminder").addEventListener("click", () => openPanelModal("reminder"));
-  document.getElementById("btnOpenContacts").addEventListener("click", () => openPanelModal("contacts"));
+  document.getElementById("btnOpenContacts").addEventListener("click", () => {
+    // ヘッダーからの名簿は常に総合名簿（全員）
+    contactsScopeKey = null;
+    renderContacts();
+    openPanelModal("contacts");
+  });
 
   // N: タスク追加 / B: 背景変更 / "/": 検索へフォーカス / Esc: 検索クリア・選択解除・メニューを閉じる
   document.addEventListener("keydown", e => {
