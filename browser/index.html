@@ -748,7 +748,8 @@
       { name: "鈴木花子", email: "suzuki@example.com", dept: "経理部" }
     ],
     nextTaskId: 3,
-    monthPos: {}
+    monthPos: {},
+    monthGroups: []
   });
 
   let state = load();
@@ -820,6 +821,80 @@
     if (key === "unset") return "-";
     return String(Number(key.split("-")[1]));
   }
+
+  // ---- 月ボードの結合（複数月を1枚のボードにまとめる） ----
+  // 結合ボードのキーは対象月キーをソートして "+" で連結したもの（例: "2026-07+2026-08"）。
+  // state.monthGroups には結合中の月キー配列を保持する（例: [["2026-07","2026-08"]]）。
+  const GROUP_SEP = "+";
+  function isGroupKey(key) { return key.includes(GROUP_SEP); }
+  function monthsOfBoard(key) { return key.split(GROUP_SEP); }
+  function groupKeyOf(months) { return months.slice().sort().join(GROUP_SEP); }
+  function findGroup(monthKey) {
+    return state.monthGroups.find(g => g.includes(monthKey)) || null;
+  }
+  // 表示するボードのキー一覧（結合中の月は1枚の結合ボードにまとめる）
+  function getBoardKeys() {
+    const seen = new Set();
+    const result = [];
+    for (const key of getMonthKeys()) {
+      const g = findGroup(key);
+      if (g) {
+        const gk = groupKeyOf(g);
+        if (!seen.has(gk)) { seen.add(gk); result.push(gk); }
+      } else {
+        result.push(key);
+      }
+    }
+    return result;
+  }
+  function boardLabel(key) {
+    if (!isGroupKey(key)) return monthLabel(key);
+    const months = monthsOfBoard(key);
+    const nowYear = new Date().getFullYear();
+    const parts = months.map(k => k.split("-").map(Number));
+    if (parts.every(([y]) => y === nowYear)) {
+      return parts.map(([, m]) => m).join(",") + "月";
+    }
+    return months.map(monthLabel).join(",");
+  }
+  function boardNumberLabel(key) {
+    return monthsOfBoard(key).map(monthNumberLabel).join(",");
+  }
+  // 期日未設定ボードは結合対象外
+  function canMergeBoards(a, b) {
+    if (!a || !b || a === b) return false;
+    return ![...monthsOfBoard(a), ...monthsOfBoard(b)].includes("unset");
+  }
+  function mergeBoards(sourceKey, targetKey) {
+    if (!canMergeBoards(sourceKey, targetKey)) return;
+    const months = [...new Set([...monthsOfBoard(sourceKey), ...monthsOfBoard(targetKey)])].sort();
+    const newKey = groupKeyOf(months);
+    const prevGroups = state.monthGroups.map(g => g.slice());
+    const hadPos = Object.prototype.hasOwnProperty.call(state.monthPos, newKey);
+    state.monthGroups = state.monthGroups.filter(g => !g.some(m => months.includes(m)));
+    state.monthGroups.push(months);
+    // 結合後のボードは、結合先（ドロップされた側）の位置・見た目を引き継ぐ
+    state.monthPos[newKey] = Object.assign({}, state.monthPos[targetKey]);
+    save();
+    renderBoard();
+    toast(`「${boardLabel(newKey)}」ボードに結合しました`, {
+      actionLabel: "元に戻す",
+      onAction: () => {
+        state.monthGroups = prevGroups;
+        if (!hadPos) delete state.monthPos[newKey];
+        save();
+        renderBoard();
+      }
+    });
+  }
+  function unmergeBoard(boardKey) {
+    const label = boardLabel(boardKey);
+    state.monthGroups = state.monthGroups.filter(g => groupKeyOf(g) !== boardKey);
+    delete state.monthPos[boardKey];
+    save();
+    renderBoard();
+    toast(`「${label}」ボードの結合を解除しました`);
+  }
   // その月のタスク達成率を10%刻み（10段階）に丸めて返す。タスクが無い月は null（達成率表示なし）。
   function monthCompletionStep(tasks) {
     if (tasks.length === 0) return null;
@@ -856,7 +931,8 @@
   }
   function monthHeaderColor(key, nowKey) {
     const custom = state.monthPos[key] && state.monthPos[key].color;
-    const hex = custom || autoMonthColor(key, nowKey);
+    // 結合ボードの自動色は先頭（最も早い）月を基準にする
+    const hex = custom || autoMonthColor(monthsOfBoard(key)[0], nowKey);
     const rgb = hexToRgb(hex);
     const brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
     return { bg: hex, fg: brightness > 150 ? "#1f2937" : "#ffffff" };
@@ -1161,17 +1237,26 @@
       const offsetX = startX - colRect.left;
       const offsetY = startY - colRect.top;
       let moved = false;
+      let mergeTarget = null;
 
       function onMove(ev) {
         if (!moved && (Math.abs(ev.clientX - startX) > 3 || Math.abs(ev.clientY - startY) > 3)) {
           moved = true;
           col.classList.add("dragging-col");
+          // ドラッグ中は自分を素通しにして、真下のボードを elementFromPoint で検出できるようにする
+          col.style.pointerEvents = "none";
         }
         if (!moved) return;
         const x = Math.max(0, ev.clientX - containerRect.left - offsetX);
         const y = Math.max(0, ev.clientY - containerRect.top - offsetY);
         col.style.left = x + "px";
         col.style.top = y + "px";
+        // 別ボードに重ねたら結合候補としてハイライト
+        document.querySelectorAll(".kb-col.drop-target").forEach(c => c.classList.remove("drop-target"));
+        const under = document.elementFromPoint(ev.clientX, ev.clientY);
+        const target = under && under.closest(".kb-col");
+        mergeTarget = (target && target !== col && canMergeBoards(key, target.dataset.month)) ? target : null;
+        if (mergeTarget) mergeTarget.classList.add("drop-target");
         resizeBoardCanvas();
       }
       function onUp() {
@@ -1180,6 +1265,12 @@
         if (!moved) return;
         suppressClick = true;
         col.classList.remove("dragging-col");
+        col.style.pointerEvents = "";
+        document.querySelectorAll(".kb-col.drop-target").forEach(c => c.classList.remove("drop-target"));
+        if (mergeTarget) {
+          mergeBoards(key, mergeTarget.dataset.month);
+          return;
+        }
         state.monthPos[key].x = parseFloat(col.style.left);
         state.monthPos[key].y = parseFloat(col.style.top);
         save();
@@ -1286,8 +1377,9 @@
         const wrapRect = targetWrap.getBoundingClientRect();
         task.pos = clampPos(targetWrap, ev.clientX - wrapRect.left - offsetX, ev.clientY - wrapRect.top - offsetY);
 
-        if (targetCol && targetCol.dataset.month !== monthKeyOfTask(task)) {
-          moveTaskToMonth(task.id, targetCol.dataset.month);
+        // 結合ボード内にタスクの月が含まれていれば移動不要。含まれない場合は先頭月へ移す。
+        if (targetCol && !monthsOfBoard(targetCol.dataset.month).includes(monthKeyOfTask(task))) {
+          moveTaskToMonth(task.id, monthsOfBoard(targetCol.dataset.month)[0]);
         } else {
           save();
           renderBoard();
@@ -1385,28 +1477,33 @@
   function renderBoard() {
     kanbanColumns.innerHTML = "";
     const nowKey = monthKeyFromDate(new Date());
-    const monthKeys = getMonthKeys();
-    let needsSave = ensureColPos(monthKeys);
-    for (const key of monthKeys) {
+    const boardKeys = getBoardKeys();
+    let needsSave = ensureColPos(boardKeys);
+    for (const key of boardKeys) {
+      const boardMonths = monthsOfBoard(key);
+      const isCurrent = boardMonths.includes(nowKey);
       const pos = state.monthPos[key];
       const collapsed = !!pos.collapsed;
       const tileSize = TILE_SIZE_PRESET[pos.tileSize || "normal"];
       const col = document.createElement("div");
-      col.className = "kb-col" + (key === nowKey ? " current-month" : "") + (collapsed ? " collapsed" : "");
+      col.className = "kb-col" + (isCurrent ? " current-month" : "") + (collapsed ? " collapsed" : "");
       col.dataset.month = key;
       col.style.left = pos.x + "px";
       col.style.top = pos.y + "px";
       col.style.zIndex = pos.z || 0;
-      col.style.width = collapsed ? tileSize.tile + "px" : (pos.w || 240) + "px";
+      // 結合ボードの折りたたみタイルは「7,8」のようにラベルが長くなるため幅を内容に合わせる
+      col.style.width = collapsed
+        ? (isGroupKey(key) ? "auto" : tileSize.tile + "px")
+        : (pos.w || 240) + "px";
       if (!collapsed && pos.h) col.style.height = pos.h + "px";
       col.style.borderStyle = pos.border === "double" ? "double" : "";
       col.style.borderWidth = pos.border === "double" ? "4px" : "";
       col.style.setProperty("--kb-font-scale", FONT_SIZE_SCALE[pos.fontSize || "normal"]);
-      const ringShadow = key === nowKey ? "0 0 0 2px #ff8c00" : "";
+      const ringShadow = isCurrent ? "0 0 0 2px #ff8c00" : "";
       const shadowPreset = SHADOW_PRESET[pos.shadow || "none"];
       col.style.boxShadow = [ringShadow, shadowPreset].filter(Boolean).join(", ");
 
-      const tasks = state.tasks.filter(t => monthKeyOfTask(t) === key);
+      const tasks = state.tasks.filter(t => boardMonths.includes(monthKeyOfTask(t)));
 
       const hdr = document.createElement("div");
       hdr.className = "kb-col-hdr" + (collapsed ? " kb-col-hdr-collapsed" : "");
@@ -1436,8 +1533,16 @@
       if (collapsed) {
         const monthBadge = document.createElement("span");
         monthBadge.className = "kb-col-count kb-col-count-lg";
-        monthBadge.textContent = monthNumberLabel(key);
-        monthBadge.style.width = tileSize.badge + "px";
+        monthBadge.textContent = boardNumberLabel(key);
+        if (isGroupKey(key)) {
+          // "7,8" のような複数月表記は丸に収まらないため、横に伸びるピル型にする
+          monthBadge.style.minWidth = tileSize.badge + "px";
+          monthBadge.style.width = "auto";
+          monthBadge.style.padding = "0 8px";
+          monthBadge.style.borderRadius = "999px";
+        } else {
+          monthBadge.style.width = tileSize.badge + "px";
+        }
         monthBadge.style.height = tileSize.badge + "px";
         monthBadge.style.fontSize = tileSize.font + "px";
         hdr.appendChild(monthBadge);
@@ -1450,7 +1555,7 @@
       } else {
         const hdrLabel = document.createElement("span");
         hdrLabel.className = "kb-col-hdr-label";
-        hdrLabel.textContent = (pos.icon ? pos.icon + " " : "") + "▼ " + monthLabel(key) + (key === nowKey ? "（今月）" : "");
+        hdrLabel.textContent = (pos.icon ? pos.icon + " " : "") + "▼ " + boardLabel(key) + (isCurrent ? "（今月）" : "");
         hdr.appendChild(hdrLabel);
         const pct = monthCompletionPercent(tasks);
         if (pct !== null) {
@@ -1481,7 +1586,7 @@
         // 空きスペースをダブルクリックすると、その月のタスク追加ダイアログを開く
         cardsWrap.addEventListener("dblclick", e => {
           if (e.target !== cardsWrap && !e.target.classList.contains("empty-msg")) return;
-          openTaskDialog({ monthKey: key });
+          openTaskDialog({ monthKey: boardMonths[0] });
         });
         if (tasks.length === 0) {
           cardsWrap.innerHTML = `<div class="empty-msg">タスクなし</div>`;
@@ -1508,9 +1613,21 @@
           addBtn.addEventListener("click", () => {
             openMenuMonthKey = null;
             renderBoard();
-            openTaskDialog({ monthKey: key });
+            openTaskDialog({ monthKey: boardMonths[0] });
           });
           menu.appendChild(addBtn);
+
+          if (isGroupKey(key)) {
+            const unmergeBtn = document.createElement("button");
+            unmergeBtn.type = "button";
+            unmergeBtn.className = "kb-col-menu-item";
+            unmergeBtn.textContent = "結合を解除";
+            unmergeBtn.addEventListener("click", () => {
+              openMenuMonthKey = null;
+              unmergeBoard(key);
+            });
+            menu.appendChild(unmergeBtn);
+          }
 
           [["settings", "設定"], ["reminder", "リマインダー"], ["contacts", "名簿"]].forEach(([panelKey, label]) => {
             const item = document.createElement("button");
