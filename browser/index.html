@@ -1032,6 +1032,7 @@
   </span>
   <span class="appbar-actions">
     <button type="button" id="btnAddTaskTop" title="タスクを追加（N）">＋ タスク追加</button>
+    <button type="button" id="btnAddBoardTop" class="secondary" title="ボードを追加">▦ ボード追加</button>
     <button type="button" id="btnOpenAi" class="ghost" title="AIアシスタントを開く">🤖 AI</button>
     <button type="button" id="btnBgChange" class="ghost" title="背景をランダムに変更（B）">🖼 背景</button>
     <button type="button" id="btnOpenReminder" class="ghost" title="リマインダーチェックを開く">🔔 リマインダー</button>
@@ -1057,12 +1058,6 @@
           <input type="checkbox" id="cfgAutoMail">
           <span id="cfgAutoMailLabel">OFF（ブラウザ版は常にドライラン）</span>
         </span>
-
-        <label for="cfgColorNear">月別ボード：現在月に近い色</label>
-        <input type="color" id="cfgColorNear" value="#2b3f63">
-
-        <label for="cfgColorFar">月別ボード：現在月から遠い色</label>
-        <input type="color" id="cfgColorFar" value="#c4ced0">
 
         <label for="cfgBgOnline">背景：ネット画像を使う</label>
         <span class="toggle">
@@ -1210,8 +1205,6 @@
       reminderDays: 3,
       signature: "Todoリマインダーシステム",
       autoMailOn: false,
-      boardColorNear: "#2b3f63",
-      boardColorFar: "#c4ced0",
       bgOnline: true,
       bgIntervalMin: 10,
       aiProvider: "anthropic",
@@ -1219,16 +1212,18 @@
       geminiApiKey: ""
     },
     tasks: [
-      { id: 1, name: "プロジェクト報告書提出", assignee: "山田太郎", due: "2026-07-15", reminderDays: 3, status: "未完了", sentFlag: "" },
-      { id: 2, name: "請求書チェック", assignee: "鈴木花子", due: "2026-07-13", reminderDays: 1, status: "進行中", sentFlag: "" }
+      { id: 1, name: "プロジェクト報告書提出", assignee: "山田太郎", due: "2026-07-15", reminderDays: 3, status: "未完了", sentFlag: "", boards: ["b1"] },
+      { id: 2, name: "請求書チェック", assignee: "鈴木花子", due: "2026-07-13", reminderDays: 1, status: "進行中", sentFlag: "", boards: ["b1"] }
     ],
     contacts: [
       { name: "山田太郎", email: "yamada@example.com", dept: "営業部" },
       { name: "鈴木花子", email: "suzuki@example.com", dept: "経理部" }
     ],
     nextTaskId: 3,
-    monthPos: {},
-    monthGroups: [],
+    boards: [{ id: "b1", name: "ボード1" }],
+    nextBoardId: 2,
+    boardPos: {},
+    boardGroups: [],
     aiPanelPos: null
   });
 
@@ -1257,7 +1252,7 @@
       const parsed = JSON.parse(raw);
       const merged = Object.assign(defaultState(), parsed);
       merged.settings = Object.assign(defaultState().settings, parsed.settings || {});
-      return merged;
+      return migrateToFreeBoards(merged, parsed);
     } catch (e) {
       console.error("localStorage の読み込みに失敗しました。初期データを使用します。", e);
       return defaultState();
@@ -1266,6 +1261,71 @@
 
   function save() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  // 旧形式（1〜12月の固定月ボード＋期日から所属を導出）からの移行。
+  // タスクが存在する月（＋結合に含まれる月）だけを同名の自由ボードに変換し、
+  // 位置・見た目・結合状態・タスクの所属を引き継ぐ。extraMonths は task.boards に統合される。
+  function migrateToFreeBoards(s, parsed) {
+    if (Array.isArray(s.tasks)) s.tasks.forEach(t => { if (!Array.isArray(t.boards)) t.boards = null; });
+    const isOld = s.monthPos !== undefined || s.monthGroups !== undefined ||
+      (s.tasks || []).some(t => t.boards === null);
+    if (!isOld) return s;
+    // 保存データが旧形式のときは、defaultState 由来のボード（「ボード1」）は捨ててゼロから構築する
+    const hadBoards = parsed && Array.isArray(parsed.boards) && parsed.boards.length > 0;
+    if (!hadBoards) {
+      s.boards = [];
+      s.nextBoardId = 1;
+      s.boardPos = {};
+      s.boardGroups = [];
+    }
+    const oldPos = s.monthPos || {};
+    const oldGroups = (s.monthGroups || []).map(g => g.slice());
+    const monthKeyOfT = t => {
+      const d = parseDue(t.due);
+      return d ? `${d.getFullYear()}-${pad2(d.getMonth() + 1)}` : "unset";
+    };
+    const monthsOfTask = t => {
+      const p = monthKeyOfT(t);
+      return [p, ...(t.extraMonths || []).filter(k => k !== p)];
+    };
+    const monthSet = new Set();
+    (s.tasks || []).forEach(t => monthsOfTask(t).forEach(k => monthSet.add(k)));
+    oldGroups.forEach(g => g.forEach(k => monthSet.add(k)));
+    const labelOf = k => {
+      if (k === "unset") return "期日未設定";
+      const [y, m] = k.split("-").map(Number);
+      return (y === new Date().getFullYear()) ? `${m}月` : `${y}年${m}月`;
+    };
+    const idOf = {};
+    let n = Math.max(1, s.nextBoardId || 1);
+    const boards = Array.isArray(s.boards) ? s.boards.slice() : [];
+    [...monthSet].sort().forEach(k => {
+      const id = "b" + (n++);
+      idOf[k] = id;
+      boards.push({ id, name: labelOf(k) });
+    });
+    if (!boards.length) boards.push({ id: "b" + (n++), name: "ボード1" });
+    s.boards = boards;
+    s.nextBoardId = n;
+    s.boardPos = s.boardPos || {};
+    Object.keys(oldPos).forEach(k => {
+      const parts = k.split("+");
+      const ids = parts.map(m => idOf[m]).filter(Boolean);
+      if (ids.length === parts.length) s.boardPos[ids.slice().sort().join("+")] = oldPos[k];
+    });
+    s.boardGroups = (s.boardGroups || []).concat(
+      oldGroups.map(g => g.map(m => idOf[m]).filter(Boolean)).filter(g => g.length >= 2));
+    (s.tasks || []).forEach(t => {
+      if (!Array.isArray(t.boards) || !t.boards.length) {
+        t.boards = [...new Set(monthsOfTask(t).map(m => idOf[m]).filter(Boolean))];
+      }
+      if (!t.boards.length) t.boards = [s.boards[0].id];
+      delete t.extraMonths;
+    });
+    delete s.monthPos;
+    delete s.monthGroups;
+    return s;
   }
 
   // ---------------------------------------------------------------
@@ -1302,122 +1362,186 @@
     return `${y}-${mo.padStart(2, "0")}-${da.padStart(2, "0")}`;
   }
   function pad2(n) { return String(n).padStart(2, "0"); }
-  function monthKeyFromDate(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`; }
-  function monthKeyOfTask(task) {
-    const d = parseDue(task.due);
-    return d ? monthKeyFromDate(d) : "unset";
-  }
-  // タスクが対応する全ての月キー。先頭は期日から決まる「主の月」、以降は追加選択された月（task.extraMonths）。
-  // 複数の月を選ぶと、その全ての月のボードに同じタスク（共有情報）が表示される。
-  function taskMonthKeys(task) {
-    const primary = monthKeyOfTask(task);
-    const extras = (task.extraMonths || []).filter(k => k !== primary);
-    return [primary, ...extras];
-  }
-  function monthLabel(key) {
-    if (key === "unset") return "期日未設定";
-    const [y, m] = key.split("-").map(Number);
-    const now = new Date();
-    return (y === now.getFullYear()) ? `${m}月` : `${y}年${m}月`;
-  }
-  function monthNumberLabel(key) {
-    if (key === "unset") return "-";
-    return String(Number(key.split("-")[1]));
+
+  // ---- 自由ボード（ユーザーが好きな数だけ作成できる名前付きボード） ----
+  function boardById(id) { return state.boards.find(b => b.id === id) || null; }
+  // タスクが所属するボードid一覧。存在しないボードへの参照は除外し、空になったら先頭ボードへ割り当てる。
+  function taskBoardIds(task) {
+    let ids = (task.boards || []).filter(id => boardById(id));
+    if (!ids.length && state.boards.length) {
+      ids = [state.boards[0].id];
+      task.boards = ids;
+    }
+    return ids;
   }
 
-  // ---- 月ボードの結合（複数月を1枚のボードにまとめる） ----
-  // 結合ボードのキーは対象月キーをソートして "+" で連結したもの（例: "2026-07+2026-08"）。
-  // state.monthGroups には結合中の月キー配列を保持する（例: [["2026-07","2026-08"]]）。
+  // ---- ボードの結合（複数ボードを1枚にまとめる） ----
+  // 結合ボードのキーは対象ボードidをソートして "+" で連結したもの（例: "b1+b3"）。
+  // state.boardGroups には結合中のボードid配列を保持する（例: [["b1","b3"]]）。
   const GROUP_SEP = "+";
   function isGroupKey(key) { return key.includes(GROUP_SEP); }
-  function monthsOfBoard(key) { return key.split(GROUP_SEP); }
-  function groupKeyOf(months) { return months.slice().sort().join(GROUP_SEP); }
-  function findGroup(monthKey) {
-    return state.monthGroups.find(g => g.includes(monthKey)) || null;
+  function boardsOfKey(key) { return key.split(GROUP_SEP); }
+  function groupKeyOf(ids) { return ids.slice().sort().join(GROUP_SEP); }
+  function findGroup(boardId) {
+    return state.boardGroups.find(g => g.includes(boardId)) || null;
   }
-  // 表示するボードのキー一覧（結合中の月は1枚の結合ボードにまとめる）
+  // 表示するボードのキー一覧（結合中のボードは1枚の結合ボードにまとめる）
   function getBoardKeys() {
     const seen = new Set();
     const result = [];
-    for (const key of getMonthKeys()) {
-      const g = findGroup(key);
+    for (const b of state.boards) {
+      const g = findGroup(b.id);
       if (g) {
         const gk = groupKeyOf(g);
         if (!seen.has(gk)) { seen.add(gk); result.push(gk); }
       } else {
-        result.push(key);
+        result.push(b.id);
       }
     }
     return result;
   }
   function boardLabel(key) {
-    if (!isGroupKey(key)) return monthLabel(key);
-    const months = monthsOfBoard(key);
-    const nowYear = new Date().getFullYear();
-    const parts = months.map(k => k.split("-").map(Number));
-    if (parts.every(([y]) => y === nowYear)) {
-      return parts.map(([, m]) => m).join(",") + "月";
-    }
-    return months.map(monthLabel).join(",");
+    return boardsOfKey(key).map(id => (boardById(id) || { name: "?" }).name).join("＋");
   }
-  function boardNumberLabel(key) {
-    return monthsOfBoard(key).map(monthNumberLabel).join(",");
+  // 折りたたみタイル用の短縮ラベル。単独ボードは名前の先頭2文字、結合ボードは各名の頭文字を","区切りで。
+  function boardShortLabel(key) {
+    const ids = boardsOfKey(key);
+    if (ids.length === 1) return [...(boardById(ids[0]) || { name: "?" }).name].slice(0, 2).join("");
+    return ids.map(id => [...(boardById(id) || { name: "?" }).name][0] || "?").join(",");
   }
-  // 期日未設定ボードは結合対象外
   function canMergeBoards(a, b) {
-    if (!a || !b || a === b) return false;
-    return ![...monthsOfBoard(a), ...monthsOfBoard(b)].includes("unset");
+    return !!a && !!b && a !== b;
   }
   function mergeBoards(sourceKey, targetKey) {
     if (!canMergeBoards(sourceKey, targetKey)) return;
-    const months = [...new Set([...monthsOfBoard(sourceKey), ...monthsOfBoard(targetKey)])].sort();
-    const newKey = groupKeyOf(months);
-    const prevGroups = state.monthGroups.map(g => g.slice());
-    const hadPos = Object.prototype.hasOwnProperty.call(state.monthPos, newKey);
-    state.monthGroups = state.monthGroups.filter(g => !g.some(m => months.includes(m)));
-    state.monthGroups.push(months);
+    const ids = [...new Set([...boardsOfKey(sourceKey), ...boardsOfKey(targetKey)])].sort();
+    const newKey = groupKeyOf(ids);
+    const prevGroups = state.boardGroups.map(g => g.slice());
+    const hadPos = Object.prototype.hasOwnProperty.call(state.boardPos, newKey);
+    state.boardGroups = state.boardGroups.filter(g => !g.some(m => ids.includes(m)));
+    state.boardGroups.push(ids);
     // 結合後のボードは、結合先（ドロップされた側）の位置・見た目を引き継ぐ
-    state.monthPos[newKey] = Object.assign({}, state.monthPos[targetKey]);
+    state.boardPos[newKey] = Object.assign({}, state.boardPos[targetKey]);
     save();
     renderBoard();
     // 結合されたボードが軽くポップして、どこに合体したか一目で分かるようにする
-    popAnimate(kanbanColumns.querySelector(`.kb-col[data-month="${newKey}"]`));
+    popAnimate(kanbanColumns.querySelector(`.kb-col[data-board="${newKey}"]`));
     toast(`「${boardLabel(newKey)}」ボードに結合しました`, {
       actionLabel: "元に戻す",
       onAction: () => {
-        state.monthGroups = prevGroups;
-        if (!hadPos) delete state.monthPos[newKey];
+        state.boardGroups = prevGroups;
+        if (!hadPos) delete state.boardPos[newKey];
         save();
         renderBoard();
       }
     });
   }
-  // 解除時は結合ボードの内容（色・形・サイズ等の見た目設定と折りたたみ状態）を各月ボードへ引き継ぎ、
-  // 結合ボードのあった位置から横に並べて配置する。タスクは期日の月に従ってそれぞれの月ボードへ戻る。
+  // 解除時は結合ボードの内容（色・形・サイズ等の見た目設定と折りたたみ状態）を各ボードへ引き継ぎ、
+  // 結合ボードのあった位置から横に並べて配置する。タスクの所属（task.boards）は変わらない。
   const INHERIT_POS_KEYS = ["color", "shape", "border", "fontSize", "shadow", "tileSize", "icon", "w", "h", "collapsed"];
-  function unmergeBoard(boardKey) {
-    const label = boardLabel(boardKey);
-    const months = monthsOfBoard(boardKey);
-    const groupPos = state.monthPos[boardKey] || {};
-    state.monthGroups = state.monthGroups.filter(g => groupKeyOf(g) !== boardKey);
-    const baseX = groupPos.x || 0, baseY = groupPos.y || 0;
-    const stepX = groupPos.collapsed
+  function groupStepX(groupPos) {
+    return groupPos.collapsed
       ? TILE_SIZE_PRESET[groupPos.tileSize || "normal"].tile + 24
       : (groupPos.w || 240) + 16;
-    months.forEach((m, i) => {
-      const pos = state.monthPos[m] || {};
+  }
+  function unmergeBoard(boardKey) {
+    const label = boardLabel(boardKey);
+    const ids = boardsOfKey(boardKey);
+    const groupPos = state.boardPos[boardKey] || {};
+    state.boardGroups = state.boardGroups.filter(g => groupKeyOf(g) !== boardKey);
+    const baseX = groupPos.x || 0, baseY = groupPos.y || 0;
+    const stepX = groupStepX(groupPos);
+    ids.forEach((m, i) => {
+      const pos = state.boardPos[m] || {};
       INHERIT_POS_KEYS.forEach(k => {
         if (groupPos[k] !== undefined) pos[k] = groupPos[k];
       });
       pos.x = baseX + i * stepX;
       pos.y = baseY;
       pos.z = ++colZCounter;
-      state.monthPos[m] = pos;
+      state.boardPos[m] = pos;
     });
-    delete state.monthPos[boardKey];
+    delete state.boardPos[boardKey];
     save();
     renderBoard();
-    toast(`「${label}」ボードの結合を解除しました（設定は各月に引き継ぎ）`);
+    toast(`「${label}」ボードの結合をすべて解除しました`);
+  }
+  // 結合ボードから指定した1枚だけを分離する（残りは結合されたまま）。
+  // 分離したボードは結合ボードの右隣に、見た目設定を引き継いで置く。
+  function detachBoardFromGroup(groupKey, boardId) {
+    const ids = boardsOfKey(groupKey);
+    if (!ids.includes(boardId)) return;
+    if (ids.length <= 2) { unmergeBoard(groupKey); return; }
+    const groupPos = state.boardPos[groupKey] || {};
+    const rest = ids.filter(i => i !== boardId);
+    const newKey = groupKeyOf(rest);
+    state.boardGroups = state.boardGroups.filter(g => groupKeyOf(g) !== groupKey);
+    state.boardGroups.push(rest);
+    state.boardPos[newKey] = Object.assign({}, groupPos);
+    delete state.boardPos[groupKey];
+    const pos = state.boardPos[boardId] || {};
+    INHERIT_POS_KEYS.forEach(k => {
+      if (groupPos[k] !== undefined) pos[k] = groupPos[k];
+    });
+    pos.x = (groupPos.x || 0) + groupStepX(groupPos);
+    pos.y = groupPos.y || 0;
+    pos.z = ++colZCounter;
+    state.boardPos[boardId] = pos;
+    save();
+    renderBoard();
+    popAnimate(kanbanColumns.querySelector(`.kb-col[data-board="${boardId}"]`));
+    toast(`「${(boardById(boardId) || { name: "?" }).name}」を結合から分離しました`);
+  }
+
+  // ---- ボードの作成・名前変更・削除 ----
+  function createBoard(name, pos) {
+    const id = "b" + state.nextBoardId++;
+    state.boards.push({ id, name: (name || "").trim() || `ボード${state.boards.length + 1}` });
+    const openCount = getBoardKeys().length;
+    state.boardPos[id] = Object.assign(
+      { x: 24 + (openCount % 6) * 40, y: 24 + (openCount % 6) * 32, z: ++colZCounter, collapsed: false },
+      pos || {});
+    save();
+    renderBoard();
+    popAnimate(kanbanColumns.querySelector(`.kb-col[data-board="${id}"]`));
+    return id;
+  }
+  function renameBoard(id) {
+    const board = boardById(id);
+    if (!board) return;
+    const name = prompt("ボード名を入力してください", board.name);
+    if (name === null || !name.trim()) return;
+    board.name = name.trim();
+    save();
+    renderBoard();
+  }
+  function deleteBoard(id) {
+    const board = boardById(id);
+    if (!board) return;
+    if (state.boards.length <= 1) { toast("最後のボードは削除できません"); return; }
+    const orphanCount = state.tasks.filter(t => {
+      const ids = taskBoardIds(t);
+      return ids.includes(id) && ids.length === 1;
+    }).length;
+    const msg = orphanCount
+      ? `「${board.name}」を削除しますか？\nこのボードだけに属するタスク ${orphanCount} 件は、残りの先頭ボードへ移動します。`
+      : `「${board.name}」を削除しますか？`;
+    if (!confirm(msg)) return;
+    state.boards = state.boards.filter(b => b.id !== id);
+    state.boardGroups = state.boardGroups
+      .map(g => g.filter(i => i !== id))
+      .filter(g => g.length >= 2);
+    Object.keys(state.boardPos).forEach(k => {
+      if (boardsOfKey(k).includes(id)) delete state.boardPos[k];
+    });
+    const fallback = state.boards[0].id;
+    state.tasks.forEach(t => {
+      t.boards = (t.boards || []).filter(i => i !== id);
+      if (!t.boards.length) t.boards = [fallback];
+    });
+    save();
+    renderBoard();
+    toast(`「${board.name}」ボードを削除しました`);
   }
   // その月のタスク達成率を10%刻み（10段階）に丸めて返す。タスクが無い月は null（達成率表示なし）。
   function monthCompletionStep(tasks) {
@@ -1435,40 +1559,20 @@
     const n = parseInt(hex.replace("#", ""), 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
-  function rgbToHex(rgb) {
-    return "#" + rgb.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+  // ボードの自動見出し色：id から安定して決まるパレット色（同じボードは常に同じ色）。
+  // 個別に色が指定されている場合（state.boardPos[key].color）は、そちらを優先する。
+  const BOARD_COLOR_PALETTE = ["#2563eb", "#7c3aed", "#059669", "#d97706", "#dc2626", "#0891b2", "#c026d3", "#4d7c0f", "#0f766e", "#475569"];
+  function boardAutoColor(id) {
+    const n = parseInt(String(id).replace(/\D/g, ""), 10) || 0;
+    return BOARD_COLOR_PALETTE[n % BOARD_COLOR_PALETTE.length];
   }
-  // 現在月に近いほど濃く、遠いほど薄い見出し色を返す（期日未設定は最も薄い扱い）。近い/遠い色は設定でカスタマイズ可能。
-  // 個別の月に色が指定されている場合（state.monthPos[key].color）は、そちらを優先する。
-  function autoMonthColor(key, nowKey) {
-    const dark = hexToRgb(state.settings.boardColorNear);
-    const light = hexToRgb(state.settings.boardColorFar);
-    let t = 1;
-    if (key !== "unset") {
-      const [y, m] = key.split("-").map(Number);
-      const [ny, nm] = nowKey.split("-").map(Number);
-      const dist = Math.abs((y - ny) * 12 + (m - nm));
-      t = Math.min(1, dist / 11);
-    }
-    const rgb = dark.map((d, i) => Math.round(d + (light[i] - d) * t));
-    return rgbToHex(rgb);
-  }
-  function monthHeaderColor(key, nowKey) {
-    const custom = state.monthPos[key] && state.monthPos[key].color;
-    // 結合ボードの自動色は先頭（最も早い）月を基準にする
-    const hex = custom || autoMonthColor(monthsOfBoard(key)[0], nowKey);
+  function boardHeaderColor(key) {
+    const custom = state.boardPos[key] && state.boardPos[key].color;
+    // 結合ボードの自動色は先頭ボードを基準にする
+    const hex = custom || boardAutoColor(boardsOfKey(key)[0]);
     const rgb = hexToRgb(hex);
     const brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
     return { bg: hex, fg: brightness > 150 ? "#1f2937" : "#ffffff" };
-  }
-  function getMonthKeys() {
-    // インターフェースは常に「今年の1月〜12月」の固定カレンダー年のみを表示する
-    const year = new Date().getFullYear();
-    const hasUnset = state.tasks.some(t => monthKeyOfTask(t) === "unset");
-    const result = [];
-    for (let m = 1; m <= 12; m++) result.push(`${year}-${pad2(m)}`);
-    if (hasUnset) result.push("unset");
-    return result;
   }
 
   // ---------------------------------------------------------------
@@ -1513,8 +1617,6 @@
   const cfgSignature = document.getElementById("cfgSignature");
   const cfgAutoMail = document.getElementById("cfgAutoMail");
   const cfgAutoMailLabel = document.getElementById("cfgAutoMailLabel");
-  const cfgColorNear = document.getElementById("cfgColorNear");
-  const cfgColorFar = document.getElementById("cfgColorFar");
   const cfgBgOnline = document.getElementById("cfgBgOnline");
   const cfgBgOnlineLabel = document.getElementById("cfgBgOnlineLabel");
   const cfgBgInterval = document.getElementById("cfgBgInterval");
@@ -1529,8 +1631,6 @@
     cfgAutoMailLabel.textContent = state.settings.autoMailOn
       ? "ON（ブラウザ版は実送信できないためドライランのまま判定のみ行います）"
       : "OFF（ブラウザ版は常にドライラン）";
-    cfgColorNear.value = state.settings.boardColorNear;
-    cfgColorFar.value = state.settings.boardColorFar;
     cfgBgOnline.checked = state.settings.bgOnline;
     cfgBgOnlineLabel.textContent = state.settings.bgOnline
       ? "ON（ネットからランダム取得）"
@@ -1552,16 +1652,6 @@
     state.settings.autoMailOn = cfgAutoMail.checked;
     renderSettings();
     save();
-  });
-  cfgColorNear.addEventListener("input", () => {
-    state.settings.boardColorNear = cfgColorNear.value;
-    save();
-    renderBoard();
-  });
-  cfgColorFar.addEventListener("input", () => {
-    state.settings.boardColorFar = cfgColorFar.value;
-    save();
-    renderBoard();
   });
   cfgBgOnline.addEventListener("change", () => {
     state.settings.bgOnline = cfgBgOnline.checked;
@@ -1716,7 +1806,7 @@
   let openMenuMonthKey = null;
   let searchQuery = "";
   let zCounter = state.tasks.reduce((max, t) => Math.max(max, t.z || 0), 0);
-  let colZCounter = Object.values(state.monthPos).reduce((max, p) => Math.max(max, p.z || 0), 0);
+  let colZCounter = Object.values(state.boardPos).reduce((max, p) => Math.max(max, p.z || 0), 0);
   const kanbanColumns = document.getElementById("kanbanColumns");
   document.addEventListener("click", () => {
     if (openMenuMonthKey !== null) {
@@ -1774,9 +1864,9 @@
     let assigned = false;
     const perRow = 4, colW = 260, rowH = 320;
     keys.forEach((key, i) => {
-      if (!state.monthPos[key]) {
+      if (!state.boardPos[key]) {
         assigned = true;
-        state.monthPos[key] = { x: (i % perRow) * colW, y: Math.floor(i / perRow) * rowH, z: 0, collapsed: true };
+        state.boardPos[key] = { x: (i % perRow) * colW, y: Math.floor(i / perRow) * rowH, z: 0, collapsed: false };
       }
     });
     return assigned;
@@ -1821,8 +1911,8 @@
       if (e.target.closest("button")) return; // メニューボタン等はドラッグ対象にしない
       e.preventDefault();
 
-      state.monthPos[key].z = ++colZCounter;
-      col.style.zIndex = state.monthPos[key].z;
+      state.boardPos[key].z = ++colZCounter;
+      col.style.zIndex = state.boardPos[key].z;
       save();
 
       const startX = e.clientX, startY = e.clientY;
@@ -1850,7 +1940,7 @@
         document.querySelectorAll(".kb-col.drop-target").forEach(c => c.classList.remove("drop-target"));
         const under = document.elementFromPoint(ev.clientX, ev.clientY);
         const target = under && under.closest(".kb-col");
-        mergeTarget = (target && target !== col && canMergeBoards(key, target.dataset.month)) ? target : null;
+        mergeTarget = (target && target !== col && canMergeBoards(key, target.dataset.board)) ? target : null;
         if (mergeTarget) mergeTarget.classList.add("drop-target");
         resizeBoardCanvas();
       }
@@ -1868,11 +1958,11 @@
         col.style.pointerEvents = "";
         document.querySelectorAll(".kb-col.drop-target").forEach(c => c.classList.remove("drop-target"));
         if (mergeTarget) {
-          mergeBoards(key, mergeTarget.dataset.month);
+          mergeBoards(key, mergeTarget.dataset.board);
           return;
         }
-        state.monthPos[key].x = parseFloat(col.style.left);
-        state.monthPos[key].y = parseFloat(col.style.top);
+        state.boardPos[key].x = parseFloat(col.style.left);
+        state.boardPos[key].y = parseFloat(col.style.top);
         save();
         resizeBoardCanvas();
         // 着地：ドラッグ中の発光がふわっと消える
@@ -1885,7 +1975,7 @@
 
     hdr.addEventListener("click", () => {
       if (suppressClick) { suppressClick = false; return; }
-      state.monthPos[key].collapsed = !state.monthPos[key].collapsed;
+      state.boardPos[key].collapsed = !state.boardPos[key].collapsed;
       save();
       renderBoard();
     });
@@ -1918,9 +2008,9 @@
         document.removeEventListener("mouseup", onUp);
         // flexboxの子要素は内容サイズより縮まないため、実測値ではなく要求値で折りたたみ判定する
         const isMin = requestedH <= COL_HEADER_H + 6;
-        state.monthPos[key].w = requestedW;
-        if (!isMin) state.monthPos[key].h = requestedH;
-        state.monthPos[key].collapsed = isMin;
+        state.boardPos[key].w = requestedW;
+        if (!isMin) state.boardPos[key].h = requestedH;
+        state.boardPos[key].collapsed = isMin;
         save();
         renderBoard();
       }
@@ -1945,6 +2035,8 @@
 
       const startX = e.clientX, startY = e.clientY;
       const originWrap = card.parentElement;
+      const originCol = card.closest(".kb-col");
+      const originKey = originCol ? originCol.dataset.board : null;
       const cardRect = card.getBoundingClientRect();
       const offsetX = startX - cardRect.left;
       const offsetY = startY - cardRect.top;
@@ -2010,9 +2102,10 @@
         const wrapRect = targetWrap.getBoundingClientRect();
         task.pos = clampPos(targetWrap, ev.clientX - wrapRect.left - offsetX, ev.clientY - wrapRect.top - offsetY);
 
-        // タスクの対応月のいずれかがドロップ先ボードに含まれていれば移動不要。含まれない場合は先頭月へ移す。
-        if (targetCol && !taskMonthKeys(task).some(k => monthsOfBoard(targetCol.dataset.month).includes(k))) {
-          moveTaskToMonth(task.id, monthsOfBoard(targetCol.dataset.month)[0]);
+        // タスクの所属ボードのいずれかがドロップ先に含まれていれば移動不要（位置変更のみ）。
+        // 含まれない場合は、元ボードの所属を外してドロップ先へ移す。
+        if (targetCol && !taskBoardIds(task).some(id => boardsOfKey(targetCol.dataset.board).includes(id))) {
+          moveTaskToBoard(task.id, originKey, targetCol.dataset.board);
         } else {
           save();
           renderBoard();
@@ -2078,7 +2171,7 @@
     return `<span class="t-due${cls}" title="${escapeHtml(formatDate(due))}">📅 ${due.getMonth() + 1}/${due.getDate()}${extra}</span>`;
   }
 
-  function buildCardEl(task) {
+  function buildCardEl(task, colKey) {
     const due = parseDue(task.due);
     const expanded = task.id === selectedTaskId;
     // 検索クエリに一致しないカードは薄く表示する（一致カードだけが浮かび上がる）
@@ -2096,20 +2189,19 @@
       card.style.width = task.size.w + "px";
       card.style.height = task.size.h + "px";
     }
-    // 結合ボードでもどの月のタスクか分かるよう、対応月のバッジを全て表示する（色は各月の見出しと同じ）
-    const mKey = monthKeyOfTask(task);
-    const nowKeyForBadge = monthKeyFromDate(new Date());
-    const monthBadge = taskMonthKeys(task)
-      .filter(k => k !== "unset")
-      .map(k => {
-        const mc = monthHeaderColor(k, nowKeyForBadge);
-        return `<span class="t-month" style="background:${mc.bg}; color:${mc.fg};">${escapeHtml(monthLabel(k))}</span>`;
+    // 結合ボード上や複数ボード所属のタスクでは、どのボードのタスクか分かるよう所属バッジを表示する
+    const memberBoardIds = taskBoardIds(task);
+    const showBoardBadge = memberBoardIds.length > 1 || (colKey && isGroupKey(colKey));
+    const boardBadge = !showBoardBadge ? "" : memberBoardIds
+      .map(id => {
+        const bc = boardHeaderColor(id);
+        return `<span class="t-month" style="background:${bc.bg}; color:${bc.fg};">${escapeHtml((boardById(id) || { name: "?" }).name)}</span>`;
       })
       .join("");
     const assignee = (task.assignee || "").trim();
     card.innerHTML = `
       <div class="t-name">${escapeHtml(task.name)}</div>
-      <div class="t-chips">${monthBadge}${dueChipHtml(task, due)}</div>
+      <div class="t-chips">${boardBadge}${dueChipHtml(task, due)}</div>
       <div class="t-foot">
         <span class="status-badge status-${task.status}">${task.status}</span>
         <span class="t-foot-right">
@@ -2125,13 +2217,12 @@
         <label><span class="f-label">📅 期日 <span class="f-hint">yyyy/mm/dd</span></span>
           <input type="text" class="edit-due" value="${due ? formatDate(due) : escapeHtml(task.due || "")}">
         </label>
-        <label><span class="f-label">🗓 対応月 <span class="f-hint">複数選択可・濃紺は期日の月</span></span>
+        <label><span class="f-label">📌 所属ボード <span class="f-hint">複数選択可</span></span>
           <span class="edit-months">
-            ${getMonthKeys().filter(k => k !== "unset").map(k => {
-              const on = taskMonthKeys(task).includes(k);
-              const primary = k === mKey;
-              return `<button type="button" class="em-btn${on ? " on" : ""}${primary ? " primary-month" : ""}" data-mkey="${k}"
-                title="${primary ? "期日の月（期日を変更すると移動）" : (on ? "クリックで対応月から外す" : "クリックで対応月に追加")}">${monthNumberLabel(k)}</button>`;
+            ${state.boards.map(b => {
+              const on = memberBoardIds.includes(b.id);
+              return `<button type="button" class="em-btn${on ? " on" : ""}" data-bid="${b.id}"
+                title="${on ? "クリックで所属から外す" : "クリックで所属に追加"}">${escapeHtml(b.name)}</button>`;
             }).join("")}
           </span>
         </label>
@@ -2180,16 +2271,20 @@
         save();
         renderBoard();
       });
-      // 対応月チップ：期日の月（primary）以外はクリックで追加/解除。追加分は task.extraMonths に保存され、
-      // 選択した全ての月のボードに同じタスク（共有情報）が表示される。
+      // 所属ボードチップ：クリックで所属の追加/解除。選択した全ボードに同じタスク（共有情報）が表示される。
+      // 最後の1つは外せない（タスクは必ずどこかのボードに属する）。
       card.querySelectorAll(".em-btn").forEach(btn => {
         btn.addEventListener("click", () => {
-          const k = btn.dataset.mkey;
-          if (k === monthKeyOfTask(task)) return; // 期日の月は外せない
-          task.extraMonths = task.extraMonths || [];
-          const i = task.extraMonths.indexOf(k);
-          if (i >= 0) task.extraMonths.splice(i, 1);
-          else task.extraMonths.push(k);
+          const id = btn.dataset.bid;
+          const ids = taskBoardIds(task);
+          const i = ids.indexOf(id);
+          if (i >= 0) {
+            if (ids.length === 1) { toast("最後の所属ボードは外せません"); return; }
+            ids.splice(i, 1);
+          } else {
+            ids.push(id);
+          }
+          task.boards = ids;
           save();
           renderBoard();
         });
@@ -2229,18 +2324,16 @@
 
   function renderBoard() {
     kanbanColumns.innerHTML = "";
-    const nowKey = monthKeyFromDate(new Date());
     const boardKeys = getBoardKeys();
     let needsSave = ensureColPos(boardKeys);
     for (const key of boardKeys) {
-      const boardMonths = monthsOfBoard(key);
-      const isCurrent = boardMonths.includes(nowKey);
-      const pos = state.monthPos[key];
+      const memberIds = boardsOfKey(key);
+      const pos = state.boardPos[key];
       const collapsed = !!pos.collapsed;
       const tileSize = TILE_SIZE_PRESET[pos.tileSize || "normal"];
       const col = document.createElement("div");
-      col.className = "kb-col" + (isCurrent ? " current-month" : "") + (collapsed ? " collapsed" : "");
-      col.dataset.month = key;
+      col.className = "kb-col" + (collapsed ? " collapsed" : "");
+      col.dataset.board = key;
       col.style.left = pos.x + "px";
       col.style.top = pos.y + "px";
       col.style.zIndex = pos.z || 0;
@@ -2252,14 +2345,12 @@
       col.style.borderStyle = pos.border === "double" ? "double" : "";
       col.style.borderWidth = pos.border === "double" ? "4px" : "";
       col.style.setProperty("--kb-font-scale", FONT_SIZE_SCALE[pos.fontSize || "normal"]);
-      const ringShadow = isCurrent ? "0 0 0 2px #ff8c00" : "";
-      const shadowPreset = SHADOW_PRESET[pos.shadow || "none"];
-      col.style.boxShadow = [ringShadow, shadowPreset].filter(Boolean).join(", ");
+      col.style.boxShadow = SHADOW_PRESET[pos.shadow || "none"] || "";
 
-      // 対応月のいずれかがこのボードに含まれるタスクを表示する。
-      // 結合ボードでは各月のタスクを足し合わせた一覧になり（同一タスクは1枚）、
-      // 分離時は複数月対応のタスクが双方の月ボードに同じ情報（共有）で表示される。
-      const tasks = state.tasks.filter(t => taskMonthKeys(t).some(k => boardMonths.includes(k)));
+      // 所属ボードのいずれかがこのボードに含まれるタスクを表示する。
+      // 結合ボードでは各ボードのタスクを足し合わせた一覧になり（同一タスクは1枚）、
+      // 分離時は複数ボード所属のタスクが双方のボードに同じ情報（共有）で表示される。
+      const tasks = state.tasks.filter(t => taskBoardIds(t).some(id => memberIds.includes(id)));
 
       const hdr = document.createElement("div");
       hdr.className = "kb-col-hdr" + (collapsed ? " kb-col-hdr-collapsed" : "");
@@ -2270,7 +2361,7 @@
         col.style.borderRadius = "";
         hdr.style.borderRadius = "";
       }
-      const { bg, fg } = monthHeaderColor(key, nowKey);
+      const { bg, fg } = boardHeaderColor(key);
       hdr.style.color = fg;
       // 単色の上に上端の光沢グラデーションを重ねて、立体感のあるヘッダーにする
       hdr.style.background = `linear-gradient(180deg, rgba(255,255,255,0.20), rgba(255,255,255,0.02) 60%), ${bg}`;
@@ -2288,21 +2379,21 @@
       }
 
       if (collapsed) {
-        const monthBadge = document.createElement("span");
-        monthBadge.className = "kb-col-count kb-col-count-lg";
-        monthBadge.textContent = boardNumberLabel(key);
-        if (isGroupKey(key)) {
-          // "7,8" のような複数月表記は丸に収まらないため、横に伸びるピル型にする
-          monthBadge.style.minWidth = tileSize.badge + "px";
-          monthBadge.style.width = "auto";
-          monthBadge.style.padding = "0 8px";
-          monthBadge.style.borderRadius = "999px";
+        const nameBadge = document.createElement("span");
+        nameBadge.className = "kb-col-count kb-col-count-lg";
+        nameBadge.textContent = boardShortLabel(key);
+        if (isGroupKey(key) || [...nameBadge.textContent].length > 1) {
+          // 2文字以上のラベルは丸に収まらないため、横に伸びるピル型にする
+          nameBadge.style.minWidth = tileSize.badge + "px";
+          nameBadge.style.width = "auto";
+          nameBadge.style.padding = "0 8px";
+          nameBadge.style.borderRadius = "999px";
         } else {
-          monthBadge.style.width = tileSize.badge + "px";
+          nameBadge.style.width = tileSize.badge + "px";
         }
-        monthBadge.style.height = tileSize.badge + "px";
-        monthBadge.style.fontSize = tileSize.font + "px";
-        hdr.appendChild(monthBadge);
+        nameBadge.style.height = tileSize.badge + "px";
+        nameBadge.style.fontSize = tileSize.font + "px";
+        hdr.appendChild(nameBadge);
         if (pos.icon) {
           const iconSpan = document.createElement("span");
           iconSpan.className = "kb-col-tile-icon";
@@ -2312,7 +2403,7 @@
       } else {
         const hdrLabel = document.createElement("span");
         hdrLabel.className = "kb-col-hdr-label";
-        hdrLabel.textContent = (pos.icon ? pos.icon + " " : "") + "▼ " + boardLabel(key) + (isCurrent ? "（今月）" : "");
+        hdrLabel.textContent = (pos.icon ? pos.icon + " " : "") + "▼ " + boardLabel(key);
         hdr.appendChild(hdrLabel);
         if (tasks.length > 0) {
           const countBadge = document.createElement("span");
@@ -2356,10 +2447,10 @@
       if (!collapsed) {
         const cardsWrap = document.createElement("div");
         cardsWrap.className = "kb-cards";
-        // 空きスペースをダブルクリックすると、その月のタスク追加ダイアログを開く
+        // 空きスペースをダブルクリックすると、このボードのタスク追加ダイアログを開く
         cardsWrap.addEventListener("dblclick", e => {
           if (e.target !== cardsWrap && !e.target.classList.contains("empty-msg")) return;
-          openTaskDialog({ monthKey: boardMonths[0] });
+          openTaskDialog({ boardId: memberIds[0] });
         });
         if (tasks.length === 0) {
           cardsWrap.innerHTML = `<div class="empty-msg">タスクなし<br>ダブルクリックで追加</div>`;
@@ -2369,7 +2460,7 @@
             const maxY = Math.max(...tasks.map(t => t.pos.y + 90));
             cardsWrap.style.minHeight = Math.max(220, maxY) + "px";
           }
-          for (const task of tasks) cardsWrap.appendChild(buildCardEl(task));
+          for (const task of tasks) cardsWrap.appendChild(buildCardEl(task, key));
         }
         col.appendChild(cardsWrap);
 
@@ -2386,20 +2477,63 @@
           addBtn.addEventListener("click", () => {
             openMenuMonthKey = null;
             renderBoard();
-            openTaskDialog({ monthKey: boardMonths[0] });
+            openTaskDialog({ boardId: memberIds[0] });
           });
           menu.appendChild(addBtn);
 
+          if (!isGroupKey(key)) {
+            const renameBtn = document.createElement("button");
+            renameBtn.type = "button";
+            renameBtn.className = "kb-col-menu-item";
+            renameBtn.textContent = "✏ 名前を変更";
+            renameBtn.addEventListener("click", () => {
+              openMenuMonthKey = null;
+              renameBoard(key);
+            });
+            menu.appendChild(renameBtn);
+
+            const delBtn = document.createElement("button");
+            delBtn.type = "button";
+            delBtn.className = "kb-col-menu-item";
+            delBtn.textContent = "🗑 ボードを削除";
+            delBtn.addEventListener("click", () => {
+              openMenuMonthKey = null;
+              deleteBoard(key);
+            });
+            menu.appendChild(delBtn);
+          }
+
           if (isGroupKey(key)) {
-            const unmergeBtn = document.createElement("button");
-            unmergeBtn.type = "button";
-            unmergeBtn.className = "kb-col-menu-item";
-            unmergeBtn.textContent = "結合を解除";
-            unmergeBtn.addEventListener("click", () => {
+            // 結合解除：どのボードを分離するか選べる（1枚ずつ分離 or すべて解除）
+            const unmergeLabel = document.createElement("div");
+            unmergeLabel.className = "kb-col-menu-label";
+            unmergeLabel.textContent = "結合を解除（分離するボードを選択）";
+            unmergeLabel.style.cssText = "padding:6px 8px 2px; font-size:0.9em; color:var(--muted); font-weight:600;";
+            menu.appendChild(unmergeLabel);
+
+            memberIds.forEach(id => {
+              const b = boardById(id);
+              if (!b) return;
+              const item = document.createElement("button");
+              item.type = "button";
+              item.className = "kb-col-menu-item";
+              item.textContent = `↳ 「${b.name}」を分離`;
+              item.addEventListener("click", () => {
+                openMenuMonthKey = null;
+                detachBoardFromGroup(key, id);
+              });
+              menu.appendChild(item);
+            });
+
+            const unmergeAllBtn = document.createElement("button");
+            unmergeAllBtn.type = "button";
+            unmergeAllBtn.className = "kb-col-menu-item";
+            unmergeAllBtn.textContent = "↳ すべて解除";
+            unmergeAllBtn.addEventListener("click", () => {
               openMenuMonthKey = null;
               unmergeBoard(key);
             });
-            menu.appendChild(unmergeBtn);
+            menu.appendChild(unmergeAllBtn);
           }
 
           [["settings", "設定"], ["reminder", "リマインダー"], ["contacts", "名簿"]].forEach(([panelKey, label]) => {
@@ -2448,7 +2582,7 @@
           colorInput.type = "color";
           colorInput.value = bg;
           colorInput.addEventListener("change", () => {
-            state.monthPos[key].color = colorInput.value;
+            state.boardPos[key].color = colorInput.value;
             save();
             renderBoard();
           });
@@ -2456,22 +2590,22 @@
           menu.appendChild(colorRow);
 
           menu.appendChild(buildSelectRow("形（折りたたみ時）", [["square", "四角"], ["circle", "〇"]],
-            pos.shape || "square", v => { state.monthPos[key].shape = v; }));
+            pos.shape || "square", v => { state.boardPos[key].shape = v; }));
 
           menu.appendChild(buildSelectRow("枠線", [["normal", "通常"], ["double", "二重"]],
-            pos.border || "normal", v => { state.monthPos[key].border = v; }));
+            pos.border || "normal", v => { state.boardPos[key].border = v; }));
 
           menu.appendChild(buildSelectRow("文字サイズ", [["small", "小"], ["normal", "標準"], ["large", "大"]],
-            pos.fontSize || "normal", v => { state.monthPos[key].fontSize = v; }));
+            pos.fontSize || "normal", v => { state.boardPos[key].fontSize = v; }));
 
           menu.appendChild(buildSelectRow("影の強さ", [["none", "なし"], ["normal", "標準"], ["strong", "強"]],
-            pos.shadow || "none", v => { state.monthPos[key].shadow = v; }));
+            pos.shadow || "none", v => { state.boardPos[key].shadow = v; }));
 
           menu.appendChild(buildSelectRow("折りたたみの大きさ", [["small", "小"], ["normal", "標準"], ["large", "大"]],
-            pos.tileSize || "normal", v => { state.monthPos[key].tileSize = v; }));
+            pos.tileSize || "normal", v => { state.boardPos[key].tileSize = v; }));
 
           menu.appendChild(buildSelectRow("アイコン", ICON_OPTIONS,
-            pos.icon || "", v => { state.monthPos[key].icon = v; }));
+            pos.icon || "", v => { state.boardPos[key].icon = v; }));
 
           col.appendChild(menu);
         }
@@ -2485,23 +2619,16 @@
     resizeBoardCanvas();
   }
 
-  function moveTaskToMonth(taskId, monthKey) {
+  // タスクを別ボードへ移す：移動元ボード（結合中なら全メンバー）の所属を外し、移動先の先頭ボードへ加える。
+  // ボードと期日は独立しているため、期日は変更しない。
+  function moveTaskToBoard(taskId, fromKey, toKey) {
     const task = state.tasks.find(t => t.id === taskId);
-    if (!task || monthKeyOfTask(task) === monthKey) return;
-    if (monthKey === "unset") {
-      task.due = "";
-    } else {
-      const [y, m] = monthKey.split("-").map(Number);
-      const oldDue = parseDue(task.due);
-      const day = oldDue ? oldDue.getDate() : 15;
-      const lastDay = new Date(y, m, 0).getDate();
-      task.due = `${y}-${pad2(m)}-${pad2(Math.min(day, lastDay))}`;
-    }
-    task.sentFlag = ""; // spec.md 5.4: 移動のたびに送信済みフラグはリセットされる
-    // 移動先が追加対応月に含まれていたら重複を解消する（主の月に昇格した形）
-    if (task.extraMonths) {
-      task.extraMonths = task.extraMonths.filter(k => k !== monthKeyOfTask(task));
-    }
+    if (!task || !toKey) return;
+    const fromIds = fromKey ? boardsOfKey(fromKey) : [];
+    const toIds = boardsOfKey(toKey);
+    let ids = taskBoardIds(task).filter(id => !fromIds.includes(id));
+    if (!ids.some(id => toIds.includes(id))) ids.push(toIds[0]);
+    task.boards = ids;
     save();
     renderBoard();
   }
@@ -2515,22 +2642,20 @@
   const taskReminderDays = document.getElementById("taskReminderDays");
   const assigneeList = document.getElementById("assigneeList");
 
-  function openTaskDialog({ monthKey }) {
+  // 追加先ボード。指定がなければ先頭ボード（ボードが無ければ自動作成）に入る。
+  let dialogBoardId = null;
+  function openTaskDialog({ boardId } = {}) {
     taskForm.reset();
     taskName.value = "";
     taskAssignee.value = "";
-    let d;
-    if (monthKey && monthKey !== "unset") {
-      const [y, m] = monthKey.split("-").map(Number);
-      d = new Date(y, m - 1, 15);
-    } else {
-      d = new Date();
-      d.setDate(d.getDate() + 7);
-    }
+    if (!state.boards.length) createBoard("ボード1");
+    dialogBoardId = (boardId && boardById(boardId)) ? boardId : state.boards[0].id;
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
     taskDue.value = formatDate(d);
     taskReminderDays.value = 3;
     assigneeList.innerHTML = state.contacts.map(c => `<option value="${escapeHtml(c.name)}">`).join("");
-    document.getElementById("taskDialogTitle").textContent = `タスク追加（${monthLabel(monthKey || monthKeyFromDate(new Date()))}）`;
+    document.getElementById("taskDialogTitle").textContent = `タスク追加（${boardById(dialogBoardId).name}）`;
     taskDialog.showModal();
   }
 
@@ -2547,7 +2672,8 @@
       due,
       reminderDays: Math.max(0, parseInt(taskReminderDays.value, 10) || 0),
       status: "未完了",
-      sentFlag: ""
+      sentFlag: "",
+      boards: [dialogBoardId && boardById(dialogBoardId) ? dialogBoardId : state.boards[0].id]
     };
     state.tasks.push(newTask);
     save();
@@ -2568,26 +2694,26 @@
   let expandedContactName = null;
 
   function tasksOfContact(c) {
-    const months = contactsScopeKey ? monthsOfBoard(contactsScopeKey) : null;
+    const scopeIds = contactsScopeKey ? boardsOfKey(contactsScopeKey) : null;
     return state.tasks.filter(t =>
       (t.assignee || "").trim() === c.name.trim() &&
-      (!months || months.includes(monthKeyOfTask(t))));
+      (!scopeIds || taskBoardIds(t).some(id => scopeIds.includes(id))));
   }
 
   // 名簿から選んだタスクへジャンプ：該当ボードを展開・最前面にし、カードを選択状態にする
   function jumpToTask(task) {
     panelModal.close();
     selectedTaskId = task.id;
-    const mk = monthKeyOfTask(task);
-    const g = findGroup(mk);
-    const boardKey = g ? groupKeyOf(g) : mk;
-    if (state.monthPos[boardKey]) {
-      state.monthPos[boardKey].collapsed = false;
-      state.monthPos[boardKey].z = ++colZCounter;
+    const first = taskBoardIds(task)[0];
+    const g = findGroup(first);
+    const boardKey = g ? groupKeyOf(g) : first;
+    if (state.boardPos[boardKey]) {
+      state.boardPos[boardKey].collapsed = false;
+      state.boardPos[boardKey].z = ++colZCounter;
     }
     save();
     renderBoard();
-    const col = kanbanColumns.querySelector(`.kb-col[data-month="${boardKey}"]`);
+    const col = kanbanColumns.querySelector(`.kb-col[data-board="${boardKey}"]`);
     if (col) col.scrollIntoView({ block: "nearest", inline: "nearest" });
     toast(`「${task.name}」を選択しました`);
   }
@@ -2602,7 +2728,7 @@
     if (list.length === 0) {
       const tr = document.createElement("tr");
       tr.innerHTML = `<td colspan="5" style="padding:10px 8px; color:var(--muted);">${
-        scoped ? "この月のタスクに参加している担当者はいません" : "担当者が登録されていません"}</td>`;
+        scoped ? "このボードのタスクに参加している担当者はいません" : "担当者が登録されていません"}</td>`;
       contactBody.appendChild(tr);
       return;
     }
@@ -2741,7 +2867,8 @@
           name: { type: "string", description: "タスク名" },
           due: { type: "string", description: "期日（yyyy-mm-dd 形式）" },
           assignee: { type: "string", description: "担当者名（名簿と一致させる。不明なら省略）" },
-          reminderDays: { type: "integer", description: "リマインド日数前（省略時は3）" }
+          reminderDays: { type: "integer", description: "リマインド日数前（省略時は3）" },
+          board: { type: "string", description: "追加先のボード名（省略時は先頭のボード）" }
         },
         required: ["name", "due"]
       }
@@ -2773,29 +2900,41 @@
       }
     },
     {
-      name: "merge_boards",
-      description: "複数の月ボードを1枚の結合ボードにまとめる（例:「7月と8月を結合して」）。指定した月がすでに結合済みの場合はその結合ごとまとめる。",
+      name: "create_board",
+      description: "新しいタスクボードを作成する（例:「営業ボードを作って」）。",
       input_schema: {
         type: "object",
         properties: {
-          months: {
+          name: { type: "string", description: "作成するボードの名前" }
+        },
+        required: ["name"]
+      }
+    },
+    {
+      name: "merge_boards",
+      description: "複数のボードを1枚の結合ボードにまとめる（例:「営業と経理を結合して」）。指定したボードがすでに結合済みの場合はその結合ごとまとめる。",
+      input_schema: {
+        type: "object",
+        properties: {
+          boards: {
             type: "array",
-            items: { type: "integer", minimum: 1, maximum: 12 },
-            description: "結合する月の番号（1〜12）。2つ以上指定する"
+            items: { type: "string" },
+            description: "結合するボード名。2つ以上指定する"
           }
         },
-        required: ["months"]
+        required: ["boards"]
       }
     },
     {
       name: "unmerge_board",
-      description: "結合済みの月ボードを解除して各月のボードに戻す。month にはその結合に含まれる月のどれか1つを指定する。",
+      description: "結合済みボードから指定した1枚を分離する。board を省略（または結合内の全ボードを指定）すると結合をすべて解除する。",
       input_schema: {
         type: "object",
         properties: {
-          month: { type: "integer", minimum: 1, maximum: 12, description: "結合に含まれる月の番号" }
+          board: { type: "string", description: "分離するボード名（結合に含まれるどれか1つ）" },
+          all: { type: "boolean", description: "true なら board を含む結合をすべて解除する" }
         },
-        required: ["month"]
+        required: ["board"]
       }
     }
   ];
@@ -2805,7 +2944,7 @@
     const tasks = state.tasks.map(t => ({
       id: t.id, name: t.name, assignee: t.assignee || null,
       due: t.due || null, status: t.status,
-      months: taskMonthKeys(t),
+      boards: taskBoardIds(t).map(id => (boardById(id) || { name: "?" }).name),
       reminderDays: t.reminderDays, sentFlag: t.sentFlag || null
     }));
     const contacts = state.contacts.map(c => ({ name: c.name, dept: c.dept || null }));
@@ -2820,11 +2959,14 @@ ${JSON.stringify(tasks, null, 1)}
 名簿（担当者一覧）:
 ${JSON.stringify(contacts, null, 1)}
 
-結合中の月ボード:
-${state.monthGroups.length ? JSON.stringify(state.monthGroups) : "（なし）"}
+ボード一覧:
+${JSON.stringify(state.boards.map(b => b.name))}
+
+結合中のボード:
+${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id => (boardById(id) || { name: "?" }).name))) : "（なし）"}
 
 アプリの仕様:
-- タスクは期日の月ごとのボードに表示される（ステータス: ${STATUSES.join("/")}）
+- タスクは所属するボード（複数可）に表示される。ボードは自由に作成・結合・分離できる（ステータス: ${STATUSES.join("/")}）
 - 期日が近づくと担当者へリマインドメールを送る想定（このブラウザ版はドライラン）
 - タスクの追加・更新・削除はツールで実行できる。実行後は何をしたか短く報告する
 - 変更を伴わない質問（集計・期限チェック・提案など）はタスク一覧から直接答える`;
@@ -2853,12 +2995,23 @@ ${state.monthGroups.length ? JSON.stringify(state.monthGroups) : "（なし）"}
     return el;
   }
 
+  // ボード名からボードを探す（完全一致優先、次に部分一致）
+  function aiFindBoard(name) {
+    const q = String(name || "").trim();
+    if (!q) return null;
+    return state.boards.find(b => b.name === q)
+      || state.boards.find(b => b.name.includes(q) || q.includes(b.name))
+      || null;
+  }
+
   // ツール実行：state を直接更新して保存・再描画する。結果はAIへ文字列で返す。
   function execAiTool(name, input) {
     try {
       if (name === "add_task") {
         const due = normalizeDueInput(String(input.due || "").replace(/-/g, "/"));
         if (!due) return { content: "エラー: 期日は yyyy-mm-dd 形式で指定してください", isError: true };
+        if (!state.boards.length) createBoard("ボード1");
+        const targetBoard = (input.board && aiFindBoard(input.board)) || state.boards[0];
         const task = {
           id: state.nextTaskId++,
           name: String(input.name).trim(),
@@ -2866,7 +3019,8 @@ ${state.monthGroups.length ? JSON.stringify(state.monthGroups) : "（なし）"}
           due,
           reminderDays: Math.max(0, parseInt(input.reminderDays, 10) || 3),
           status: "未完了",
-          sentFlag: ""
+          sentFlag: "",
+          boards: [targetBoard.id]
         };
         state.tasks.push(task);
         save();
@@ -2874,33 +3028,46 @@ ${state.monthGroups.length ? JSON.stringify(state.monthGroups) : "（なし）"}
         toast(`AI: 「${task.name}」を追加しました`);
         return { content: `追加しました（id: ${task.id}）` };
       }
+      if (name === "create_board") {
+        const boardName = String(input.name || "").trim();
+        if (!boardName) return { content: "エラー: ボード名を指定してください", isError: true };
+        if (state.boards.some(b => b.name === boardName)) return { content: `エラー: 「${boardName}」ボードは既にあります`, isError: true };
+        createBoard(boardName);
+        toast(`AI: 「${boardName}」ボードを作成しました`);
+        return { content: `「${boardName}」ボードを作成しました` };
+      }
       if (name === "merge_boards") {
-        const year = new Date().getFullYear();
-        const months = [...new Set(input.months || [])].filter(m => m >= 1 && m <= 12);
-        if (months.length < 2) return { content: "エラー: 結合する月を2つ以上指定してください", isError: true };
-        // 指定月が既存の結合に含まれていれば、その結合ごと取り込む
-        const all = new Set(months.map(m => `${year}-${pad2(m)}`));
-        for (const key of [...all]) {
-          const g = findGroup(key);
+        const targets = [...new Set((input.boards || []).map(aiFindBoard).filter(Boolean).map(b => b.id))];
+        if (targets.length < 2) return { content: "エラー: 結合する既存のボードを2つ以上指定してください", isError: true };
+        // 指定ボードが既存の結合に含まれていれば、その結合ごと取り込む
+        const all = new Set(targets);
+        for (const id of [...all]) {
+          const g = findGroup(id);
           if (g) g.forEach(x => all.add(x));
         }
         const list = [...all].sort();
         const newKey = groupKeyOf(list);
-        state.monthGroups = state.monthGroups.filter(g => !g.some(m => all.has(m)));
-        state.monthGroups.push(list);
-        if (!state.monthPos[newKey]) state.monthPos[newKey] = Object.assign({}, state.monthPos[list[0]]);
+        state.boardGroups = state.boardGroups.filter(g => !g.some(m => all.has(m)));
+        state.boardGroups.push(list);
+        if (!state.boardPos[newKey]) state.boardPos[newKey] = Object.assign({}, state.boardPos[list[0]]);
         save();
         renderBoard();
         toast(`AI: 「${boardLabel(newKey)}」ボードに結合しました`);
         return { content: `「${boardLabel(newKey)}」ボードに結合しました` };
       }
       if (name === "unmerge_board") {
-        const year = new Date().getFullYear();
-        const g = findGroup(`${year}-${pad2(input.month)}`);
-        if (!g) return { content: `エラー: ${input.month}月は結合されていません`, isError: true };
-        const label = boardLabel(groupKeyOf(g));
-        unmergeBoard(groupKeyOf(g)); // 内部で save・再描画・トーストまで行う
-        return { content: `「${label}」ボードの結合を解除しました` };
+        const b = aiFindBoard(input.board);
+        if (!b) return { content: `エラー: ボード「${input.board}」が見つかりません`, isError: true };
+        const g = findGroup(b.id);
+        if (!g) return { content: `エラー: 「${b.name}」は結合されていません`, isError: true };
+        const gKey = groupKeyOf(g);
+        const label = boardLabel(gKey);
+        if (input.all) {
+          unmergeBoard(gKey); // 内部で save・再描画・トーストまで行う
+          return { content: `「${label}」ボードの結合をすべて解除しました` };
+        }
+        detachBoardFromGroup(gKey, b.id); // 内部で save・再描画・トーストまで行う
+        return { content: `「${b.name}」を結合から分離しました` };
       }
       const task = state.tasks.find(t => t.id === Number(input.id));
       if (!task) return { content: `エラー: id ${input.id} のタスクが見つかりません`, isError: true };
@@ -3209,7 +3376,12 @@ ${state.monthGroups.length ? JSON.stringify(state.monthGroups) : "（なし）"}
   });
 
   document.getElementById("btnAddTaskTop").addEventListener("click", () => {
-    openTaskDialog({ monthKey: monthKeyFromDate(new Date()) });
+    openTaskDialog({});
+  });
+  document.getElementById("btnAddBoardTop").addEventListener("click", () => {
+    const name = prompt("新しいボードの名前を入力してください", `ボード${state.boards.length + 1}`);
+    if (name === null) return;
+    createBoard(name);
   });
   document.getElementById("btnBgChange").addEventListener("click", () => changeBackground(true));
   document.getElementById("btnOpenSettings").addEventListener("click", () => openPanelModal("settings"));
@@ -3245,7 +3417,7 @@ ${state.monthGroups.length ? JSON.stringify(state.monthGroups) : "（なし）"}
     if (typing || anyDialogOpen) return;
     if (e.key === "n" || e.key === "N") {
       e.preventDefault();
-      openTaskDialog({ monthKey: monthKeyFromDate(new Date()) });
+      openTaskDialog({});
     } else if (e.key === "b" || e.key === "B") {
       e.preventDefault();
       changeBackground(true);
