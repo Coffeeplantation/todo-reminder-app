@@ -293,16 +293,29 @@
     to { opacity: 1; transform: none; }
   }
 
+  /* ステータス：ドット付きの淡色ピル（塗りつぶしより現代的で、カードの中で悪目立ちしない） */
   .status-badge {
-    display: inline-block;
-    padding: 1px 8px;
-    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 8px 1px 7px;
+    border-radius: 999px;
     font-size: 11px;
-    color: #fff;
+    font-weight: 600;
+    line-height: 1.7;
+    white-space: nowrap;
   }
-  .status-未完了 { background: var(--blue); }
-  .status-進行中 { background: var(--orange); }
-  .status-完了 { background: var(--green); }
+  .status-badge::before {
+    content: "";
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .status-badge.status-未完了 { background: rgba(59, 130, 246, 0.13); color: #1d4ed8; }
+  .status-badge.status-進行中 { background: rgba(245, 158, 11, 0.16); color: #b45309; }
+  .status-badge.status-完了 { background: rgba(16, 185, 129, 0.14); color: #047857; }
 
   /* ---- kanban board ---- */
   #boardView { overflow: hidden; cursor: grab; min-height: 62vh; }
@@ -315,12 +328,13 @@
     background: rgba(255, 255, 255, 0.88);
     -webkit-backdrop-filter: saturate(1.4) blur(10px);
     backdrop-filter: saturate(1.4) blur(10px);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    /* 明るい縁＋外側の極細ヘアラインで、ガラスパネルの厚みを表現する */
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    border-radius: 14px;
     display: flex;
     flex-direction: column;
     min-height: 160px;
-    box-shadow: var(--shadow-sm);
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.06), var(--shadow-sm);
     transition: transform 0.2s var(--ease-out);
   }
   .kb-col.collapsed { min-height: 0; }
@@ -334,8 +348,9 @@
   .kb-col-hdr {
     font-weight: 700;
     font-size: 13px;
-    padding: 7px 10px;
-    border-radius: 11px 11px 0 0;
+    letter-spacing: 0.01em;
+    padding: 8px 10px;
+    border-radius: 13px 13px 0 0;
     cursor: grab;
     user-select: none;
     touch-action: none;
@@ -395,7 +410,21 @@
     padding: 0;
   }
   .kb-col-menu-btn:hover { background: rgba(255,255,255,0.4); }
-  .kb-col.collapsed .kb-col-hdr { border-radius: 11px; }
+  .kb-col.collapsed .kb-col-hdr { border-radius: 13px; }
+  /* ヘッダー直下の達成率プログレスバー（展開時のみ、タスクがある月に表示） */
+  .kb-col-progress {
+    flex: none;
+    height: 4px;
+    background: rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+  }
+  .kb-col-progress i {
+    display: block;
+    height: 100%;
+    border-radius: 0 999px 999px 0;
+    background: linear-gradient(90deg, #34d399, var(--green));
+    transition: width 0.6s var(--ease-out);
+  }
   /* ドロップ候補：アウトライン＋波打つ発光。アニメーションはインラインshadow（影プリセット等）より優先される */
   .kb-col.drop-target {
     outline: 2px solid var(--accent);
@@ -403,7 +432,7 @@
     transform: scale(1.012);
     animation: drop-pulse 1.1s ease-in-out infinite;
   }
-  .kb-col.drop-target .kb-cards { background: rgba(37, 99, 235, 0.05); }
+  .kb-col.drop-target .kb-cards { background-color: rgba(37, 99, 235, 0.06); }
   @keyframes drop-pulse {
     0%, 100% { box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.16), 0 16px 40px rgba(37, 99, 235, 0.30); }
     50% { box-shadow: 0 0 0 12px rgba(37, 99, 235, 0.05), 0 16px 48px rgba(37, 99, 235, 0.42); }
@@ -415,6 +444,11 @@
     min-height: 0;
     overflow: auto;
     font-size: calc(11px * var(--kb-font-scale, 1));
+    /* 「カードを自由に置けるキャンバス」であることを示す微細なドットグリッド */
+    background-image: radial-gradient(rgba(15, 23, 42, 0.07) 1px, transparent 1.5px);
+    background-size: 16px 16px;
+    scrollbar-width: thin;
+    transition: background-color 0.2s ease;
   }
   .kb-col-tile-icon {
     position: absolute;
@@ -502,8 +536,8 @@
     background: linear-gradient(180deg, #ffffff, #f7f9fc);
     border: 1px solid var(--border);
     border-left: 4px solid #999;
-    border-radius: 10px;
-    padding: 6px 8px;
+    border-radius: 12px;
+    padding: 7px 9px;
     font-size: 1em;
     line-height: 1.35;
     cursor: grab;
@@ -555,14 +589,16 @@
   .kb-card .t-month {
     display: inline-block;
     flex: none;
-    padding: 0 6px;
-    border-radius: 8px;
+    padding: 0 7px;
+    border-radius: 999px;
     font-size: 0.92em;
-    font-weight: bold;
-    margin-right: 4px;
+    font-weight: 600;
     white-space: nowrap;
   }
   .kb-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+  /* 完了タスクは打ち消し線＋やや退色させ、残タスクが浮かび上がるようにする */
+  .kb-card.status-完了 { opacity: 0.82; }
+  .kb-card.status-完了 .t-name { text-decoration: line-through; color: var(--muted); }
   .kb-card.dimmed { opacity: 0.22; filter: grayscale(0.6); }
   .kb-card.selected {
     outline: 2px solid var(--accent);
@@ -592,37 +628,126 @@
     from { opacity: 0; transform: scale(0.96); }
   }
   .kb-card .t-name {
-    font-weight: bold;
+    font-weight: 700;
+    line-height: 1.3;
     overflow: hidden;
-    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+  .kb-card.selected .t-name { -webkit-line-clamp: unset; line-clamp: unset; }
+  /* メタ情報：月バッジ＋期日チップの行、ステータスピル＋担当者アバターのフッター行 */
+  .kb-card .t-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 3px;
+    margin-top: 4px;
+  }
+  .kb-card .t-due {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.06);
+    color: var(--muted);
+    font-size: 0.92em;
+    line-height: 1.7;
     white-space: nowrap;
   }
-  .kb-card.selected .t-name { white-space: normal; }
-  .kb-card .t-meta { color: var(--muted); display: flex; flex-direction: column; gap: 2px; margin-top: 3px; }
-  .kb-card.selected .t-meta { flex-direction: row; justify-content: space-between; align-items: center; }
-  .kb-card .status-badge { align-self: flex-start; font-size: 1em; }
+  .kb-card .t-due.soon { background: rgba(245, 158, 11, 0.16); color: #b45309; font-weight: 600; }
+  .kb-card .t-due.overdue { background: rgba(239, 68, 68, 0.13); color: #dc2626; font-weight: 700; }
+  .kb-card .t-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    margin-top: 5px;
+  }
+  .kb-card .t-avatar {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 0.9em;
+    font-weight: 700;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 1px 3px rgba(15, 23, 42, 0.25);
+  }
+  .kb-card .status-badge { font-size: 1em; }
+  .kb-card .t-chip-row { display: flex; flex-wrap: wrap; gap: 4px; }
+  .kb-card .t-chip {
+    padding: 0 7px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.06);
+    color: var(--muted);
+    font-size: 0.95em;
+    line-height: 1.7;
+    white-space: nowrap;
+  }
   .kb-card .t-detail {
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px dashed var(--border);
+    margin-top: 7px;
+    padding-top: 7px;
+    border-top: 1px solid var(--border);
     color: var(--muted);
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
     font-size: 1.09em;
   }
-  .kb-card .t-detail label { display: flex; flex-direction: column; gap: 2px; }
+  .kb-card .t-detail label { display: flex; flex-direction: column; gap: 3px; }
   .kb-card .t-detail input, .kb-card .t-detail select {
-    padding: 3px 5px;
+    padding: 5px 7px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 8px;
+    background: #f8fafc;
     font-size: inherit;
     color: var(--text);
+    transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  }
+  .kb-card .t-detail input:focus, .kb-card .t-detail select:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  }
+  .kb-card .t-detail .edit-delete {
+    background: rgba(239, 68, 68, 0.08);
+    color: #dc2626;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    box-shadow: none;
+    font-weight: 600;
+  }
+  .kb-card .t-detail .edit-delete:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.16);
+    filter: none;
+    box-shadow: none;
   }
   .kb-card.status-未完了 { border-left-color: var(--blue); }
   .kb-card.status-進行中 { border-left-color: var(--orange); }
   .kb-card.status-完了 { border-left-color: var(--green); }
-  .empty-msg { color: var(--muted); font-size: 12px; padding: 10px; text-align: center; }
+  .empty-msg {
+    color: var(--muted);
+    font-size: 12px;
+    margin: 10px;
+    padding: 16px 10px;
+    text-align: center;
+    line-height: 1.7;
+    border: 1.5px dashed rgba(15, 23, 42, 0.16);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.55);
+  }
+  .empty-msg::before {
+    content: "🗂";
+    display: block;
+    font-size: 17px;
+    opacity: 0.75;
+  }
 
   /* ---- reminder log ---- */
   #reminderLog {
@@ -1872,6 +1997,25 @@
     card.appendChild(handle);
   }
 
+  // 担当者名から安定した色相を決める（同じ名前は常に同じ色のアバターになる）
+  function avatarColor(name) {
+    let h = 0;
+    for (const ch of name.trim()) h = (h * 31 + ch.codePointAt(0)) % 360;
+    return `hsl(${h}, 55%, 46%)`;
+  }
+  // 期日チップ：残り日数で緊急度を色分けする（期日超過=赤、3日以内=橙、完了タスクは常にニュートラル）
+  function dueChipHtml(task, due) {
+    if (!due) return `<span class="t-due">期日未設定</span>`;
+    const left = daysBetween(todayDate(), due);
+    let cls = "", extra = "";
+    if (task.status !== "完了") {
+      if (left < 0) { cls = " overdue"; extra = `・${-left}日超過`; }
+      else if (left === 0) { cls = " soon"; extra = "・今日"; }
+      else if (left <= 3) { cls = " soon"; extra = `・あと${left}日`; }
+    }
+    return `<span class="t-due${cls}" title="${escapeHtml(formatDate(due))}">📅 ${due.getMonth() + 1}/${due.getDate()}${extra}</span>`;
+  }
+
   function buildCardEl(task) {
     const due = parseDue(task.due);
     const expanded = task.id === selectedTaskId;
@@ -1900,11 +2044,13 @@
         return `<span class="t-month" style="background:${mc.bg}; color:${mc.fg};">${escapeHtml(monthLabel(k))}</span>`;
       })
       .join("");
+    const assignee = (task.assignee || "").trim();
     card.innerHTML = `
       <div class="t-name">${escapeHtml(task.name)}</div>
-      <div class="t-meta">
-        <span>${monthBadge}${due ? formatDate(due) : escapeHtml(task.due || "未設定")}</span>
+      <div class="t-chips">${monthBadge}${dueChipHtml(task, due)}</div>
+      <div class="t-foot">
         <span class="status-badge status-${task.status}">${task.status}</span>
+        ${assignee ? `<span class="t-avatar" style="background:${avatarColor(assignee)}" title="${escapeHtml(assignee)}">${escapeHtml([...assignee][0])}</span>` : ""}
       </div>
       ${expanded ? `
       <div class="t-detail" data-detail>
@@ -1929,9 +2075,11 @@
             ${STATUSES.map(s => `<option value="${s}" ${s === task.status ? "selected" : ""}>${s}</option>`).join("")}
           </select>
         </label>
-        <span>リマインド日数前: ${task.reminderDays}</span>
-        <span>送信済み: ${task.sentFlag ? escapeHtml(task.sentFlag) : "（未判定）"}</span>
-        <button type="button" class="danger small edit-delete">タスクを削除</button>
+        <div class="t-chip-row">
+          <span class="t-chip">🔔 ${task.reminderDays}日前に通知</span>
+          <span class="t-chip">✉ ${task.sentFlag ? escapeHtml(task.sentFlag) : "未判定"}</span>
+        </div>
+        <button type="button" class="small edit-delete">🗑 タスクを削除</button>
       </div>` : ""}
     `;
     let cardResized = false;
@@ -2085,6 +2233,13 @@
         hdrLabel.className = "kb-col-hdr-label";
         hdrLabel.textContent = (pos.icon ? pos.icon + " " : "") + "▼ " + boardLabel(key) + (isCurrent ? "（今月）" : "");
         hdr.appendChild(hdrLabel);
+        if (tasks.length > 0) {
+          const countBadge = document.createElement("span");
+          countBadge.className = "kb-col-count";
+          countBadge.textContent = tasks.length;
+          countBadge.title = `タスク ${tasks.length} 件`;
+          hdr.appendChild(countBadge);
+        }
         const pct = monthCompletionPercent(tasks);
         if (pct !== null) {
           const pctBadge = document.createElement("span");
@@ -2106,6 +2261,15 @@
         hdr.appendChild(menuBtn);
       }
       col.appendChild(hdr);
+      // ヘッダー直下に達成率のプログレスバーを敷く（タスクのある展開ボードのみ）
+      if (!collapsed && tasks.length > 0) {
+        const progress = document.createElement("div");
+        progress.className = "kb-col-progress";
+        const fill = document.createElement("i");
+        fill.style.width = monthCompletionPercent(tasks) + "%";
+        progress.appendChild(fill);
+        col.appendChild(progress);
+      }
       attachColDrag(col, key);
 
       if (!collapsed) {
@@ -2117,7 +2281,7 @@
           openTaskDialog({ monthKey: boardMonths[0] });
         });
         if (tasks.length === 0) {
-          cardsWrap.innerHTML = `<div class="empty-msg">タスクなし</div>`;
+          cardsWrap.innerHTML = `<div class="empty-msg">タスクなし<br>ダブルクリックで追加</div>`;
         } else {
           if (ensureDefaultPos(tasks)) needsSave = true;
           if (!pos.h) {
