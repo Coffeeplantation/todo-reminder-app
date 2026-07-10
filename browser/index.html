@@ -1950,6 +1950,7 @@
       const offsetY = startY - cardRect.top;
       let moved = false;
       let ghost = null;
+      let prevInlineW = "", prevInlineH = "";
 
       function onMove(ev) {
         if (!moved && (Math.abs(ev.clientX - startX) > 3 || Math.abs(ev.clientY - startY) > 3)) {
@@ -1964,6 +1965,14 @@
           ghost.style.width = card.offsetWidth + "px";
           ghost.style.height = card.offsetHeight + "px";
           originWrap.appendChild(ghost);
+          // 親の .kb-col は backdrop-filter を持つため position:fixed の基準が viewport ではなく
+          // パネル自身になってしまう（containing block 化）。ドラッグ中だけ body 直下へ移して
+          // fixed をviewport基準で正しく効かせる。見た目のサイズは持ち上げた時点の実寸で固定する。
+          prevInlineW = card.style.width;
+          prevInlineH = card.style.height;
+          card.style.width = cardRect.width + "px";
+          card.style.height = cardRect.height + "px";
+          document.body.appendChild(card);
         }
         if (!moved) return;
         card.style.position = "fixed";
@@ -1984,11 +1993,15 @@
         document.body.style.cursor = "";
         document.querySelectorAll(".kb-col.drop-target").forEach(c => c.classList.remove("drop-target"));
         if (!moved) return;
-        if (ghost) ghost.remove();
+        // body 直下に出していたカードを元のボードに戻してからプレースホルダーを消す
+        originWrap.insertBefore(card, ghost);
+        ghost.remove();
         card.classList.remove("dragging");
         card.style.position = "";
         card.style.left = "";
         card.style.top = "";
+        card.style.width = prevInlineW;
+        card.style.height = prevInlineH;
 
         const under = document.elementFromPoint(ev.clientX, ev.clientY);
         const targetCol = under && under.closest(".kb-col");
