@@ -490,8 +490,7 @@
     padding: 8px;
     position: relative;
     min-height: 0;
-    /* カードを拡大したときに枠内でクリップせず、ボードの枠からはみ出して表示できるようにする */
-    overflow: visible;
+    overflow: auto;
     font-size: calc(11px * var(--kb-font-scale, 1));
     /* 「カードを自由に置けるキャンバス」であることを示す微細なドットグリッド */
     background-image: radial-gradient(rgba(15, 23, 42, 0.07) 1px, transparent 1.5px);
@@ -499,6 +498,8 @@
     scrollbar-width: thin;
     transition: background-color 0.2s ease;
   }
+  /* カードを開いている（詳細展開中の）ボードだけ、枠外へのはみ出し表示を許可して見やすくする */
+  .kb-col.has-open-card .kb-cards { overflow: visible; }
   .kb-col-tile-icon {
     position: absolute;
     top: -6px;
@@ -684,7 +685,9 @@
   .kb-card.dimmed { opacity: 0.22; filter: grayscale(0.6); }
   .kb-card.selected {
     outline: 2px solid var(--accent);
-    width: 220px;
+    /* 開いたときだけ大きく表示して読みやすくする（枠外へのはみ出しは .has-open-card 側で許可） */
+    width: 300px;
+    font-size: calc(12.5px * var(--kb-font-scale, 1));
     box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14), var(--shadow-md);
   }
   /* ドラッグ中：pointer-events を切って真下のドロップ先を正しく検出させる。演出（発光・拡大・半透明）は廃止 */
@@ -3219,7 +3222,17 @@
       if (e.target.closest("[data-detail]")) return;
       // リサイズ操作の直後や、ハンドル自体のクリックでは選択トグルしない
       if (cardResized || e.target.classList.contains("kb-card-resize")) return;
-      selectedTaskId = expanded ? null : task.id;
+      const willExpand = !expanded;
+      selectedTaskId = willExpand ? task.id : null;
+      if (willExpand) {
+        // 開いたカードが枠外へはみ出したとき、隣のボードの下に隠れないようこのボードを最前面へ
+        const colEl = card.closest(".kb-col");
+        const k = colEl && colEl.dataset.board;
+        if (k && state.boardPos[k]) {
+          state.boardPos[k].z = ++colZCounter;
+          save();
+        }
+      }
       renderBoard();
     });
     attachCardDrag(card, task);
@@ -3343,6 +3356,10 @@
       // 結合ボードでは各ボードのタスクを足し合わせた一覧になり（同一タスクは1枚）、
       // 分離時は複数ボード所属のタスクが双方のボードに同じ情報（共有）で表示される。
       const tasks = state.tasks.filter(t => taskBoardIds(t).some(id => memberIds.includes(id)));
+      // カードを開いている（詳細展開中の）ボードは、枠外へのはみ出し表示を許可する
+      if (!collapsed && selectedTaskId !== null && tasks.some(t => t.id === selectedTaskId)) {
+        col.classList.add("has-open-card");
+      }
 
       const hdr = document.createElement("div");
       hdr.className = "kb-col-hdr" + (collapsed ? " kb-col-hdr-collapsed" : "");
