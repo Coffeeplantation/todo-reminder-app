@@ -1072,13 +1072,12 @@
     <input type="search" id="searchInput" placeholder="タスク・担当者を検索（/）" autocomplete="off">
   </span>
   <span class="appbar-actions">
-    <!-- 全操作を1個の「☰ メニュー」に集約。中のボタンはIDと配線をそのまま維持している -->
+    <!-- よく使う操作（ボード作成・取り込み・AI）はヘッダー直置き。タスク追加は各ボードの「＋」から。残りは「☰ メニュー」に集約 -->
+    <button type="button" id="btnAddBoardTop" class="secondary" title="新しいタスクボードを作成">▦ 新しいボードを作成</button>
+    <button type="button" id="btnOpenImport" class="ghost" title="リンクやファイルから予定を取り込む">📥 取り込み</button>
+    <button type="button" id="btnOpenAi" class="ghost" title="AIアシスタントを開く">🤖 AI</button>
     <button type="button" id="btnAppMenu" title="メニューを開く" aria-haspopup="true" aria-expanded="false">☰ メニュー</button>
     <div id="appMenu" class="app-menu" hidden>
-      <button type="button" id="btnAddTaskTop" title="タスクを追加（N）">＋ タスク追加</button>
-      <button type="button" id="btnAddBoardTop" class="secondary" title="ボードを追加">▦ ボード追加</button>
-      <button type="button" id="btnOpenImport" class="ghost" title="リンクやファイルから予定を取り込む">📥 取り込み</button>
-      <button type="button" id="btnOpenAi" class="ghost" title="AIアシスタントを開く">🤖 AI</button>
       <div class="app-menu-row">
         <button type="button" id="btnBgChange" class="ghost" title="背景をランダムに変更（B）">🖼 背景</button>
         <button type="button" id="btnBgPin" class="ghost" title="背景を固定（自動切替を停止し、次回起動時も同じ背景を表示）">📌 固定</button>
@@ -3321,6 +3320,18 @@
           pctBadge.textContent = pct + "%";
           hdr.appendChild(pctBadge);
         }
+        // タスク追加はボード内から行う（☰メニューからは移設済み）。ヘッダー右の「＋」ボタン
+        const addTaskBtn = document.createElement("button");
+        addTaskBtn.type = "button";
+        addTaskBtn.className = "kb-col-menu-btn";
+        addTaskBtn.textContent = "＋";
+        addTaskBtn.title = "このボードにタスクを追加";
+        addTaskBtn.addEventListener("mousedown", e => e.stopPropagation());
+        addTaskBtn.addEventListener("click", e => {
+          e.stopPropagation();
+          openTaskDialog({ boardId: memberIds[0] });
+        });
+        hdr.appendChild(addTaskBtn);
         const menuBtn = document.createElement("button");
         menuBtn.type = "button";
         menuBtn.className = "kb-col-menu-btn";
@@ -4502,9 +4513,8 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     renderBoard();
   });
 
-  document.getElementById("btnAddTaskTop").addEventListener("click", () => {
-    openTaskDialog({});
-  });
+  // タスク追加はヘッダーからは行わず、各ボードヘッダーの「＋」ボタン（renderBoard内）と
+  // 空きスペースのダブルクリック、キーボードの N から行う
   document.getElementById("btnAddBoardTop").addEventListener("click", () => {
     const name = prompt("新しいボードの名前を入力してください", `ボード${state.boards.length + 1}`);
     if (name === null) return;
