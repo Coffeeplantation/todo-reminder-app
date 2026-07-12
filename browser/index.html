@@ -1035,6 +1035,7 @@
     <button type="button" id="btnOpenImport" class="ghost" title="リンクやファイルから予定を取り込む">📥 取り込み</button>
     <button type="button" id="btnOpenAi" class="ghost" title="AIアシスタントを開く">🤖 AI</button>
     <button type="button" id="btnBgChange" class="ghost" title="背景をランダムに変更（B）">🖼 背景</button>
+    <button type="button" id="btnBgPin" class="ghost" title="背景を固定（自動切替を停止し、次回起動時も同じ背景を表示）">📌 固定</button>
     <button type="button" id="btnOpenArchive" class="ghost" title="終了したボードの確認・復元（ゴミ箱）">🗑 終了ボード</button>
     <button type="button" id="btnOpenReminder" class="ghost" title="リマインダーチェックを開く">🔔 リマインダー</button>
     <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
@@ -1060,10 +1061,20 @@
           <span id="cfgAutoMailLabel">OFF（ブラウザ版は常にドライラン）</span>
         </span>
 
-        <label for="cfgBgOnline">背景：ネット画像を使う</label>
-        <span class="toggle">
-          <input type="checkbox" id="cfgBgOnline" checked>
-          <span id="cfgBgOnlineLabel">ON（ネットからランダム取得）</span>
+        <label for="cfgBgSource">背景の種類</label>
+        <span>
+          <select id="cfgBgSource" style="padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; max-width:240px;">
+            <option value="online">ネットからランダム取得</option>
+            <option value="local">フォルダの写真</option>
+            <option value="gradient">グラデーション</option>
+          </select>
+          <span id="cfgBgLocalRow" style="display:none; gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+            <button type="button" id="btnBgFolder" class="secondary small">📂 写真フォルダを選択</button>
+            <button type="button" id="btnBgPhotosClear" class="ghost small">登録写真をクリア</button>
+            <small id="bgPhotoCount" style="color:var(--muted);"></small>
+          </span>
+          <input type="file" id="bgFolderInput" webkitdirectory multiple hidden>
+          <small style="color:var(--muted); display:block; margin-top:2px;">「フォルダの写真」はPC内の画像（jpg/png等）をこのブラウザ（IndexedDB）へ取り込み、ランダムに表示します。取り込み後はオフラインでも使えます。</small>
         </span>
 
         <label for="cfgBgInterval">背景の自動切替間隔（分）</label>
@@ -1316,7 +1327,10 @@
       reminderDays: 3,
       signature: "Todoリマインダーシステム",
       autoMailOn: false,
-      bgOnline: true,
+      bgOnline: true, // 旧設定（後方互換のため残置。実際は bgSource を使う）
+      bgSource: "",   // "online" | "local" | "gradient"。空なら bgOnline から導出
+      bgFixed: false, // 背景の固定（自動切替停止＋次回起動時も同じ背景）
+      bgCurrent: null, // 最後に表示した背景（固定時の復元用）
       bgIntervalMin: 10,
       aiProvider: "anthropic",
       anthropicApiKey: "",
@@ -1815,8 +1829,9 @@
   const cfgSignature = document.getElementById("cfgSignature");
   const cfgAutoMail = document.getElementById("cfgAutoMail");
   const cfgAutoMailLabel = document.getElementById("cfgAutoMailLabel");
-  const cfgBgOnline = document.getElementById("cfgBgOnline");
-  const cfgBgOnlineLabel = document.getElementById("cfgBgOnlineLabel");
+  const cfgBgSource = document.getElementById("cfgBgSource");
+  const cfgBgLocalRow = document.getElementById("cfgBgLocalRow");
+  const bgPhotoCount = document.getElementById("bgPhotoCount");
   const cfgBgInterval = document.getElementById("cfgBgInterval");
   const cfgApiKey = document.getElementById("cfgApiKey");
   const cfgAiProvider = document.getElementById("cfgAiProvider");
@@ -1830,10 +1845,9 @@
     cfgAutoMailLabel.textContent = state.settings.autoMailOn
       ? "ON（ブラウザ版は実送信できないためドライランのまま判定のみ行います）"
       : "OFF（ブラウザ版は常にドライラン）";
-    cfgBgOnline.checked = state.settings.bgOnline;
-    cfgBgOnlineLabel.textContent = state.settings.bgOnline
-      ? "ON（ネットからランダム取得）"
-      : "OFF（グラデーション背景）";
+    cfgBgSource.value = bgSourceSetting();
+    cfgBgLocalRow.style.display = bgSourceSetting() === "local" ? "flex" : "none";
+    renderBgPhotoCount();
     cfgBgInterval.value = state.settings.bgIntervalMin;
     cfgApiKey.value = state.settings.anthropicApiKey || "";
     cfgAiProvider.value = state.settings.aiProvider || "anthropic";
@@ -1853,12 +1867,38 @@
     renderSettings();
     save();
   });
-  cfgBgOnline.addEventListener("change", () => {
-    state.settings.bgOnline = cfgBgOnline.checked;
+  cfgBgSource.addEventListener("change", () => {
+    state.settings.bgSource = cfgBgSource.value;
     renderSettings();
     save();
     changeBackground(false);
     restartBgTimer();
+  });
+  document.getElementById("btnBgFolder").addEventListener("click", () => document.getElementById("bgFolderInput").click());
+  document.getElementById("bgFolderInput").addEventListener("change", async e => {
+    const files = [...e.target.files]
+      .filter(f => /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name) && f.size < 15 * 1024 * 1024)
+      .slice(0, 200); // 取り込み上限（容量保護）
+    e.target.value = "";
+    if (!files.length) { toast("画像ファイル（jpg/png等）が見つかりませんでした"); return; }
+    try {
+      await bgDbAddAll(files);
+      state.settings.bgSource = "local";
+      save();
+      renderSettings();
+      toast(`${files.length} 枚の写真を背景に登録しました`);
+      changeBackground(false);
+      restartBgTimer();
+    } catch (err) {
+      toast("写真の取り込みに失敗しました: " + err.message);
+    }
+  });
+  document.getElementById("btnBgPhotosClear").addEventListener("click", async () => {
+    if (!confirm("登録した背景写真をすべて削除しますか？（PC内の元ファイルは消えません）")) return;
+    await bgDbClear();
+    renderSettings();
+    toast("登録写真をクリアしました");
+    if (bgSourceSetting() === "local") changeBackground(false);
   });
   cfgBgInterval.addEventListener("change", () => {
     state.settings.bgIntervalMin = Math.max(1, parseInt(cfgBgInterval.value, 10) || 10);
@@ -4197,36 +4237,140 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     bgActive = next;
   }
 
-  function showGradientBackground() {
-    swapBgLayers(FALLBACK_GRADIENTS[Math.floor(Math.random() * FALLBACK_GRADIENTS.length)]);
+  // ---- 背景写真ストア（IndexedDB） ----
+  // localStorage は容量が小さいため、フォルダから取り込んだ写真は IndexedDB に Blob のまま保存する。
+  function bgDb() {
+    return new Promise((res, rej) => {
+      const req = indexedDB.open("todoReminderBgPhotos", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("photos", { autoIncrement: true });
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+  }
+  function bgDbRequest(mode, fn) {
+    return bgDb().then(db => new Promise((res, rej) => {
+      const tx = db.transaction("photos", mode);
+      const req = fn(tx.objectStore("photos"));
+      tx.oncomplete = () => { db.close(); res(req && req.result); };
+      tx.onerror = () => { db.close(); rej(tx.error); };
+    }));
+  }
+  const bgDbKeys = () => bgDbRequest("readonly", s => s.getAllKeys());
+  const bgDbGet = key => bgDbRequest("readonly", s => s.get(key));
+  const bgDbClear = () => bgDbRequest("readwrite", s => s.clear());
+  function bgDbAddAll(blobs) {
+    return bgDb().then(db => new Promise((res, rej) => {
+      const tx = db.transaction("photos", "readwrite");
+      const store = tx.objectStore("photos");
+      blobs.forEach(b => store.add(b));
+      tx.oncomplete = () => { db.close(); res(blobs.length); };
+      tx.onerror = () => { db.close(); rej(tx.error); };
+    }));
+  }
+  async function renderBgPhotoCount() {
+    try {
+      const keys = await bgDbKeys();
+      bgPhotoCount.textContent = (keys && keys.length) ? `登録済み: ${keys.length} 枚` : "写真は未登録です";
+    } catch (_) { bgPhotoCount.textContent = ""; }
   }
 
-  function changeBackground(notify) {
-    if (!state.settings.bgOnline) {
-      showGradientBackground();
-      if (notify) toast("背景を変更しました（グラデーション）");
-      return;
-    }
-    // picsum.photos: APIキー不要のランダム写真。seedを毎回変えて重複を避け、読み込み完了後にフェードインする。
+  // ---- 背景の表示（種類: online=ネット写真 / local=フォルダの写真 / gradient） ----
+  function bgSourceSetting() {
+    return state.settings.bgSource || (state.settings.bgOnline === false ? "gradient" : "online");
+  }
+  // 表示した背景は常に bgCurrent へ記録しておき、📌固定中は次回起動時に同じ背景を復元する
+  function setBackground(css, current, notify, msg) {
+    swapBgLayers(css);
+    state.settings.bgCurrent = current;
+    save();
+    if (notify) toast(msg || "背景を変更しました");
+  }
+  function showGradientBackground(notify) {
+    const css = FALLBACK_GRADIENTS[Math.floor(Math.random() * FALLBACK_GRADIENTS.length)];
+    setBackground(css, { kind: "gradient", css }, notify, "背景を変更しました（グラデーション）");
+  }
+  let bgObjectUrl = null; // 表示中ローカル写真の objectURL（次の切替後に解放）
+  async function showLocalPhoto(fixedKey, notify) {
+    try {
+      const keys = await bgDbKeys();
+      if (!keys || !keys.length) return false;
+      let key;
+      if (fixedKey != null && keys.includes(fixedKey)) {
+        key = fixedKey;
+      } else {
+        const cur = state.settings.bgCurrent;
+        const pool = keys.length > 1 && cur && cur.kind === "local" ? keys.filter(k => k !== cur.key) : keys;
+        key = pool[Math.floor(Math.random() * pool.length)];
+      }
+      const blob = await bgDbGet(key);
+      if (!blob) return false;
+      const url = URL.createObjectURL(blob);
+      if (bgObjectUrl) { const old = bgObjectUrl; setTimeout(() => URL.revokeObjectURL(old), 2000); } // クロスフェード完了後に解放
+      bgObjectUrl = url;
+      setBackground(`url("${url}")`, { kind: "local", key }, notify);
+      return true;
+    } catch (_) { return false; }
+  }
+  function showOnlinePhoto(fixedUrl, notify) {
+    // picsum.photos: APIキー不要のランダム写真。seed固定で同じ画像を再現できる（📌固定の復元に利用）
     const seed = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
-    const url = `https://picsum.photos/seed/${seed}/1920/1080`;
+    const url = fixedUrl || `https://picsum.photos/seed/${seed}/1920/1080`;
     const img = new Image();
-    img.onload = () => {
-      swapBgLayers(`url("${url}")`);
-      if (notify) toast("背景を変更しました");
-    };
+    img.onload = () => setBackground(`url("${url}")`, { kind: "url", url }, notify);
     img.onerror = () => {
-      showGradientBackground();
+      showGradientBackground(false);
       if (notify) toast("画像を取得できないため、グラデーション背景を使用します");
     };
     img.src = url;
   }
+  async function changeBackground(notify) {
+    const src = bgSourceSetting();
+    if (src === "gradient") { showGradientBackground(notify); return; }
+    if (src === "local") {
+      const ok = await showLocalPhoto(null, notify);
+      if (!ok) {
+        showGradientBackground(false);
+        if (notify) toast("背景写真が未登録です。⚙設定の「📂 写真フォルダを選択」で取り込んでください");
+      }
+      return;
+    }
+    showOnlinePhoto(null, notify);
+  }
+  // 起動時: 📌固定中なら前回の背景をそのまま復元、そうでなければランダム表示
+  async function initBackground() {
+    const cur = state.settings.bgFixed ? state.settings.bgCurrent : null;
+    if (cur) {
+      if (cur.kind === "gradient" && cur.css) { swapBgLayers(cur.css); return; }
+      if (cur.kind === "local" && await showLocalPhoto(cur.key, false)) return;
+      if (cur.kind === "url" && cur.url) { showOnlinePhoto(cur.url, false); return; }
+    }
+    changeBackground(false);
+  }
 
   function restartBgTimer() {
     if (bgTimer) clearInterval(bgTimer);
+    bgTimer = null;
+    if (state.settings.bgFixed) return; // 📌固定中は自動切替しない
     const min = Math.max(1, state.settings.bgIntervalMin || 10);
     bgTimer = setInterval(() => changeBackground(false), min * 60000);
   }
+
+  // 📌背景の固定トグル（固定中は自動切替を停止し、手動変更した背景も次回起動時に復元される）
+  const btnBgPin = document.getElementById("btnBgPin");
+  function renderBgPin() {
+    btnBgPin.textContent = state.settings.bgFixed ? "📌 固定中" : "📌 固定";
+    btnBgPin.style.background = state.settings.bgFixed ? "rgba(37, 99, 235, 0.16)" : "";
+    btnBgPin.style.color = state.settings.bgFixed ? "var(--accent)" : "";
+  }
+  btnBgPin.addEventListener("click", () => {
+    state.settings.bgFixed = !state.settings.bgFixed;
+    save();
+    renderBgPin();
+    restartBgTimer();
+    toast(state.settings.bgFixed
+      ? "背景を固定しました（自動切替を停止し、次回起動時も同じ背景を表示します）"
+      : "背景の固定を解除しました（自動切替を再開）");
+  });
 
   // ---------------------------------------------------------------
   // アプリバー（検索・クイック操作）とキーボードショートカット
@@ -4290,8 +4434,9 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
   });
 
   function renderAll() {
-    changeBackground(false);
+    initBackground();
     restartBgTimer();
+    renderBgPin();
     renderSettings();
     renderContacts();
     renderBoard();
