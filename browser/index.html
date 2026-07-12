@@ -2094,7 +2094,7 @@
       mailListBody.innerHTML = `<tr><td colspan="6" style="padding:8px; color:var(--muted);">対象タスクがありません（期日ありの未完了タスクが対象です）</td></tr>`;
       return;
     }
-    mailListBody.innerHTML = mailListRows.map((r, i) => {
+    mailListBody.innerHTML = mailListRows.map(r => {
       const rcpt = r.recipients.length
         ? r.recipients.map(x => `${escapeHtml(x.name)}${x.email ? `（${escapeHtml(x.email)}）` : "（アドレス不明）"}`).join("<br>")
         : `<span style="color:#c22;">宛先未設定</span>`;
@@ -2105,12 +2105,14 @@
         <td>${formatDate(r.due)}（残${r.daysLeft}日）</td>
         <td>${rcpt}</td>
         <td style="color:${stColor};">${r.status}</td>
-        <td><button type="button" class="secondary small" data-mailto="${i}" title="既定のメールソフトで下書きを作成">✉ 作成</button></td>
+        <td><button type="button" class="secondary small" data-mailto="${r.task.id}" title="既定のメールソフトで下書きを作成">✉ 作成</button></td>
       </tr>`;
     }).join("");
     mailListBody.querySelectorAll("[data-mailto]").forEach(btn => {
       btn.addEventListener("click", () => {
-        const r = mailListRows[Number(btn.dataset.mailto)];
+        // 行の特定はタスクid（一意）で行う。表示後にリストが再構築されてもズレない
+        const r = mailListRows.find(x => x.task.id === Number(btn.dataset.mailto));
+        if (!r) return;
         const emails = r.recipients.filter(x => x.email).map(x => x.email);
         if (!emails.length) { alert("宛先のメールアドレスが名簿にありません。👥名簿でメールアドレスを登録してください。"); return; }
         location.href = `mailto:${emails[0]}?cc=${encodeURIComponent(emails.slice(1).join(","))}` +
@@ -2182,6 +2184,7 @@
   const impPreviewWrap = document.getElementById("impPreviewWrap");
   const impPreviewBody = document.getElementById("impPreviewBody");
   let impCandidates = [];
+  let impUidSeq = 1; // 候補行の一意ID（配列インデックスを識別子に使わないため）
 
   function impSetStatus(msg) { impStatus.textContent = msg; }
 
@@ -2232,6 +2235,7 @@
       const participants = Array.isArray(c.participants)
         ? c.participants.map(impCleanName).filter(Boolean) : [];
       impCandidates.push({
+        uid: "c" + impUidSeq++, // 行の識別は配列インデックスではなく一意IDで行う
         include: true, name, due,
         assignee: impCleanName(c.assignee),
         // 参加者が読み取れなければ、過去の類似タスクから初期草案を提案
@@ -2478,18 +2482,19 @@
 
   function renderImpPreview() {
     impPreviewWrap.hidden = impCandidates.length === 0;
-    impPreviewBody.innerHTML = impCandidates.map((c, i) => `
+    impPreviewBody.innerHTML = impCandidates.map(c => `
       <tr>
-        <td style="text-align:center;"><input type="checkbox" data-f="include" data-i="${i}" ${c.include ? "checked" : ""}></td>
-        <td style="min-width:140px;"><input type="text" data-f="name" data-i="${i}" value="${escapeHtml(c.name)}"></td>
-        <td style="min-width:96px;"><input type="text" data-f="due" data-i="${i}" value="${escapeHtml(c.due)}" placeholder="yyyy-mm-dd"></td>
-        <td style="min-width:80px;"><input type="text" data-f="assignee" data-i="${i}" value="${escapeHtml(c.assignee)}" list="assigneeList"></td>
-        <td style="min-width:110px;"><input type="text" data-f="participants" data-i="${i}" value="${escapeHtml(c.participants.join("、"))}"></td>
+        <td style="text-align:center;"><input type="checkbox" data-f="include" data-uid="${c.uid}" ${c.include ? "checked" : ""}></td>
+        <td style="min-width:140px;"><input type="text" data-f="name" data-uid="${c.uid}" value="${escapeHtml(c.name)}"></td>
+        <td style="min-width:96px;"><input type="text" data-f="due" data-uid="${c.uid}" value="${escapeHtml(c.due)}" placeholder="yyyy-mm-dd"></td>
+        <td style="min-width:80px;"><input type="text" data-f="assignee" data-uid="${c.uid}" value="${escapeHtml(c.assignee)}" list="assigneeList"></td>
+        <td style="min-width:110px;"><input type="text" data-f="participants" data-uid="${c.uid}" value="${escapeHtml(c.participants.join("、"))}"></td>
         <td style="font-size:11px; color:var(--muted); max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(c.source)}">${escapeHtml(c.source)}</td>
       </tr>`).join("");
     impPreviewBody.querySelectorAll("input").forEach(inp => {
       inp.addEventListener("change", () => {
-        const c = impCandidates[Number(inp.dataset.i)];
+        const c = impCandidates.find(x => x.uid === inp.dataset.uid); // 一意IDで行を特定（行の増減でズレない）
+        if (!c) return;
         const f = inp.dataset.f;
         if (f === "include") c.include = inp.checked;
         else if (f === "participants") c.participants = inp.value.split(/[、,]/).map(s => s.trim()).filter(Boolean);
@@ -3488,11 +3493,13 @@
 
   taskForm.addEventListener("submit", e => {
     e.preventDefault();
+    const cleanName = taskName.value.trim(); // 空白のみのタスク登録を防ぐ
+    if (!cleanName) { alert("タスク名を入力してください。"); taskName.focus(); return; }
     const due = normalizeDueInput(taskDue.value);
     if (!due) { alert("期日は yyyy/mm/dd 形式で入力してください。"); return; }
     const newTask = {
       id: state.nextTaskId++,
-      name: taskName.value.trim(),
+      name: cleanName,
       assignee: taskAssignee.value.trim(),
       due,
       reminderDays: Math.max(0, parseInt(taskReminderDays.value, 10) || 0),
@@ -3621,8 +3628,15 @@
   document.getElementById("contactCancel").addEventListener("click", () => contactDialog.close());
   contactForm.addEventListener("submit", e => {
     e.preventDefault();
+    const name = document.getElementById("contactName").value.trim();
+    if (!name) { alert("名前を入力してください。"); return; } // 空白のみの登録を防ぐ
+    // 名前はメール引き当てのキーのため、同名の重複登録は不可
+    if (state.contacts.some(c => c.name.trim() === name)) {
+      alert(`「${name}」は既に名簿に登録されています。`);
+      return;
+    }
     state.contacts.push({
-      name: document.getElementById("contactName").value.trim(),
+      name,
       email: document.getElementById("contactEmail").value.trim(),
       dept: document.getElementById("contactDept").value.trim()
     });
@@ -3842,13 +3856,15 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
   function execAiTool(name, input) {
     try {
       if (name === "add_task") {
+        const taskNameClean = String(input.name || "").trim();
+        if (!taskNameClean) return { content: "エラー: タスク名を指定してください", isError: true };
         const due = normalizeDueInput(String(input.due || "").replace(/-/g, "/"));
         if (!due) return { content: "エラー: 期日は yyyy-mm-dd 形式で指定してください", isError: true };
         if (!activeBoards().length) createBoard("ボード1");
         const targetBoard = (input.board && aiFindBoard(input.board)) || activeBoards()[0];
         const task = {
           id: state.nextTaskId++,
-          name: String(input.name).trim(),
+          name: taskNameClean,
           assignee: (input.assignee || "").trim(),
           participants: Array.isArray(input.participants) ? input.participants.map(s => String(s).trim()).filter(Boolean) : [],
           due,
@@ -3919,7 +3935,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
           task.participants = input.participants.map(s => String(s).trim()).filter(Boolean);
           changed.push("参加者→" + (task.participants.join("、") || "（なし）"));
         }
-        if (input.name) { task.name = String(input.name).trim(); changed.push("名前→" + task.name); }
+        if (input.name !== undefined && String(input.name).trim()) { task.name = String(input.name).trim(); changed.push("名前→" + task.name); }
         if (changed.length === 0) return { content: "エラー: 更新内容が指定されていません", isError: true };
         save();
         renderBoard();
