@@ -120,7 +120,46 @@
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+    position: relative;
   }
+  /* ☰ メニュー：ヘッダー操作を1つに集約したドロップダウン */
+  .app-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 100001; /* 列メニュー(100000)より手前 */
+    min-width: 200px;
+    background: rgba(255, 255, 255, 0.97);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-md);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .app-menu[hidden] { display: none; }
+  /* メニュー内では元のボタン色（青/緑/ゴースト）を打ち消してフラットな項目にする */
+  .app-menu button,
+  .app-menu button.secondary,
+  .app-menu button.ghost {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .app-menu button:hover,
+  .app-menu button.secondary:hover,
+  .app-menu button.ghost:hover { background: #eef1f6; transform: none; filter: none; box-shadow: none; color: var(--text); }
   .appbar-hint {
     font-size: 11px;
     color: var(--muted);
@@ -1030,16 +1069,20 @@
     <input type="search" id="searchInput" placeholder="タスク・担当者を検索（/）" autocomplete="off">
   </span>
   <span class="appbar-actions">
-    <button type="button" id="btnAddTaskTop" title="タスクを追加（N）">＋ タスク追加</button>
-    <button type="button" id="btnAddBoardTop" class="secondary" title="ボードを追加">▦ ボード追加</button>
-    <button type="button" id="btnOpenImport" class="ghost" title="リンクやファイルから予定を取り込む">📥 取り込み</button>
-    <button type="button" id="btnOpenAi" class="ghost" title="AIアシスタントを開く">🤖 AI</button>
-    <button type="button" id="btnBgChange" class="ghost" title="背景をランダムに変更（B）">🖼 背景</button>
-    <button type="button" id="btnBgPin" class="ghost" title="背景を固定（自動切替を停止し、次回起動時も同じ背景を表示）">📌 固定</button>
-    <button type="button" id="btnOpenArchive" class="ghost" title="終了したボードの確認・復元（ゴミ箱）">🗑 終了ボード</button>
-    <button type="button" id="btnOpenReminder" class="ghost" title="リマインダーチェックを開く">🔔 リマインダー</button>
-    <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
-    <button type="button" id="btnOpenSettings" class="ghost" title="設定を開く">⚙ 設定</button>
+    <!-- 全操作を1個の「☰ メニュー」に集約。中のボタンはIDと配線をそのまま維持している -->
+    <button type="button" id="btnAppMenu" title="メニューを開く" aria-haspopup="true" aria-expanded="false">☰ メニュー</button>
+    <div id="appMenu" class="app-menu" hidden>
+      <button type="button" id="btnAddTaskTop" title="タスクを追加（N）">＋ タスク追加</button>
+      <button type="button" id="btnAddBoardTop" class="secondary" title="ボードを追加">▦ ボード追加</button>
+      <button type="button" id="btnOpenImport" class="ghost" title="リンクやファイルから予定を取り込む">📥 取り込み</button>
+      <button type="button" id="btnOpenAi" class="ghost" title="AIアシスタントを開く">🤖 AI</button>
+      <button type="button" id="btnBgChange" class="ghost" title="背景をランダムに変更（B）">🖼 背景</button>
+      <button type="button" id="btnBgPin" class="ghost" title="背景を固定（自動切替を停止し、次回起動時も同じ背景を表示）">📌 固定</button>
+      <button type="button" id="btnOpenArchive" class="ghost" title="終了したボードの確認・復元（ゴミ箱）">🗑 終了ボード</button>
+      <button type="button" id="btnOpenReminder" class="ghost" title="リマインダーチェックを開く">🔔 リマインダー</button>
+      <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
+      <button type="button" id="btnOpenSettings" class="ghost" title="設定を開く">⚙ 設定</button>
+    </div>
   </span>
 </header>
 
@@ -4391,6 +4434,27 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
   // ---------------------------------------------------------------
   // アプリバー（検索・クイック操作）とキーボードショートカット
   // ---------------------------------------------------------------
+  // ☰ メニュー：ヘッダー操作の集約ドロップダウン。項目を選ぶ・外側クリック・Escで閉じる
+  const appMenu = document.getElementById("appMenu");
+  const btnAppMenu = document.getElementById("btnAppMenu");
+  function setAppMenu(open) {
+    appMenu.hidden = !open;
+    btnAppMenu.setAttribute("aria-expanded", String(open));
+  }
+  btnAppMenu.addEventListener("click", e => {
+    e.stopPropagation();
+    setAppMenu(appMenu.hidden);
+  });
+  appMenu.addEventListener("click", e => {
+    if (e.target.closest("button")) setAppMenu(false); // 操作を選んだら閉じる（各ボタンの処理はそのまま実行される）
+  });
+  document.addEventListener("click", e => {
+    if (!appMenu.hidden && !e.target.closest(".appbar-actions")) setAppMenu(false);
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && !appMenu.hidden) setAppMenu(false);
+  });
+
   const searchInput = document.getElementById("searchInput");
   searchInput.addEventListener("input", () => {
     searchQuery = searchInput.value.trim().toLowerCase();
