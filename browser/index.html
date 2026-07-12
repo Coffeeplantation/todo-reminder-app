@@ -490,7 +490,8 @@
     padding: 8px;
     position: relative;
     min-height: 0;
-    overflow: auto;
+    /* カードを拡大したときに枠内でクリップせず、ボードの枠からはみ出して表示できるようにする */
+    overflow: visible;
     font-size: calc(11px * var(--kb-font-scale, 1));
     /* 「カードを自由に置けるキャンバス」であることを示す微細なドットグリッド */
     background-image: radial-gradient(rgba(15, 23, 42, 0.07) 1px, transparent 1.5px);
@@ -626,13 +627,18 @@
     position: absolute;
     right: 0;
     bottom: 0;
-    width: 12px;
-    height: 12px;
+    width: 18px;
+    height: 18px;
     cursor: nwse-resize;
-    background: linear-gradient(135deg, transparent 0 48%, var(--muted) 48% 58%, transparent 58% 100%);
+    touch-action: none;
+    background: linear-gradient(135deg, transparent 0 42%, var(--muted) 42% 52%, transparent 52% 62%, var(--muted) 62% 72%, transparent 72% 100%);
     border-radius: 0 0 8px 0;
-    opacity: 0.65;
+    opacity: 0.55;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+    z-index: 3;
   }
+  .kb-card:hover .kb-card-resize { opacity: 1; }
+  .kb-card-resize:hover { background-color: rgba(37, 99, 235, 0.14); }
   .kb-card .t-detail .edit-months {
     display: flex;
     flex-wrap: wrap;
@@ -3058,11 +3064,14 @@
   }
 
   // カード右下のハンドルをドラッグして、カードの大きさを自由に変更する。サイズは task.size に保存。
+  // カードの拡大縮小。Pointer Events ベースでタッチ・ペンにも対応。
+  // つまみのダブルクリックで既定サイズ（task.size を破棄）に戻せる。
   function attachCardResize(card, task, onResized) {
     const handle = document.createElement("div");
     handle.className = "kb-card-resize";
-    handle.addEventListener("mousedown", e => {
-      if (e.button !== 0) return;
+    handle.title = "ドラッグで拡大縮小 / ダブルクリックで既定サイズに戻す";
+    handle.addEventListener("pointerdown", e => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       const startX = e.clientX, startY = e.clientY;
@@ -3075,16 +3084,26 @@
         card.style.height = Math.max(44, startH + (ev.clientY - startY)) + "px";
       }
       function onUp() {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onUp);
         if (!moved) return;
         onResized();
         task.size = { w: parseFloat(card.style.width), h: parseFloat(card.style.height) };
         save();
         renderBoard();
       }
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onUp);
+    });
+    handle.addEventListener("dblclick", e => {
+      e.stopPropagation();
+      delete task.size;
+      onResized(); // 直後のクリック判定で選択がトグルしないようガード
+      save();
+      renderBoard();
+      toast("カードを既定サイズに戻しました");
     });
     card.appendChild(handle);
   }
