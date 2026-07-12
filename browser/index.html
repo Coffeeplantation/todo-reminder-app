@@ -160,6 +160,9 @@
   .app-menu button:hover,
   .app-menu button.secondary:hover,
   .app-menu button.ghost:hover { background: #eef1f6; transform: none; filter: none; box-shadow: none; color: var(--text); }
+  /* 「🖼 背景」と「📌 固定」は横並びの1行にする */
+  .app-menu .app-menu-row { display: flex; gap: 2px; }
+  .app-menu .app-menu-row button { width: auto; flex: 1; }
   .appbar-hint {
     font-size: 11px;
     color: var(--muted);
@@ -1076,8 +1079,10 @@
       <button type="button" id="btnAddBoardTop" class="secondary" title="ボードを追加">▦ ボード追加</button>
       <button type="button" id="btnOpenImport" class="ghost" title="リンクやファイルから予定を取り込む">📥 取り込み</button>
       <button type="button" id="btnOpenAi" class="ghost" title="AIアシスタントを開く">🤖 AI</button>
-      <button type="button" id="btnBgChange" class="ghost" title="背景をランダムに変更（B）">🖼 背景</button>
-      <button type="button" id="btnBgPin" class="ghost" title="背景を固定（自動切替を停止し、次回起動時も同じ背景を表示）">📌 固定</button>
+      <div class="app-menu-row">
+        <button type="button" id="btnBgChange" class="ghost" title="背景をランダムに変更（B）">🖼 背景</button>
+        <button type="button" id="btnBgPin" class="ghost" title="背景を固定（自動切替を停止し、次回起動時も同じ背景を表示）">📌 固定</button>
+      </div>
       <button type="button" id="btnOpenArchive" class="ghost" title="終了したボードの確認・復元（ゴミ箱）">🗑 終了ボード</button>
       <button type="button" id="btnOpenReminder" class="ghost" title="リマインダーチェックを開く">🔔 リマインダー</button>
       <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
@@ -1747,6 +1752,8 @@
       ? `「${board.name}」を完全に削除しますか？\nこのボードだけに属するタスク ${onlyHere} 件も完全に削除されます。\nこの操作は元に戻せません。`
       : `「${board.name}」を完全に削除しますか？\nこの操作は元に戻せません。`;
     if (!confirm(msg)) return;
+    // 完全削除は取り返しがつかないため、確認を2回行う
+    if (!confirm(`【最終確認】本当に「${board.name}」を完全に削除しますか？\nこの操作を実行すると、データは二度と復元できません。`)) return;
     state.tasks = state.tasks.filter(t => {
       const ids = (t.boards || []).filter(i => boardById(i));
       return !(ids.includes(id) && ids.length === 1);
@@ -1759,7 +1766,9 @@
     renderArchive();
     toast(`「${board.name}」ボードを完全に削除しました`);
   }
-  // 終了ボード一覧の描画。ボード名・区分（削除/完了）・終了日時・タスク数と、復元/完全削除ボタンを並べる
+  // 終了ボード一覧の描画。ボード名・区分（削除/完了）・終了日時・タスク数と、
+  // 復元 / 中身の確認（タスク一覧の展開） / 完全に削除（確認2回）のボタンを並べる
+  let archivePeekBoardId = null; // 「中身の確認」で展開中のボードid（モーダルを閉じてもリセットされる一時状態）
   function renderArchive() {
     const body = document.getElementById("archiveBody");
     const archived = state.boards.filter(b => b.archived)
@@ -1769,25 +1778,55 @@
       return;
     }
     body.innerHTML = archived.map(b => {
-      const count = state.tasks.filter(t => (t.boards || []).includes(b.id)).length;
+      const tasks = state.tasks.filter(t => (t.boards || []).includes(b.id));
       const dt = b.archivedAt ? new Date(b.archivedAt) : null;
       const when = dt ? `${dt.getFullYear()}/${pad2(dt.getMonth() + 1)}/${pad2(dt.getDate())} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}` : "—";
       const badge = b.archivedReason === "完了"
         ? `<span style="color:var(--green, #16a34a); font-weight:600;">✅ 完了</span>`
         : `<span style="color:#c22; font-weight:600;">🗑 削除</span>`;
+      const peeking = archivePeekBoardId === b.id;
+      const peekRow = peeking ? `<tr>
+        <td colspan="5" style="padding:4px 8px 10px; border-bottom:1px solid var(--border); background:rgba(15,23,42,0.03);">
+          ${tasks.length ? `
+          <table style="width:100%; border-collapse:collapse; font-size:12px;">
+            <thead><tr style="color:var(--muted);">
+              <th style="text-align:left; padding:4px 6px;">タスク名</th>
+              <th style="text-align:left; padding:4px 6px;">期日</th>
+              <th style="text-align:left; padding:4px 6px;">担当者</th>
+              <th style="text-align:left; padding:4px 6px;">参加者</th>
+              <th style="text-align:left; padding:4px 6px;">ステータス</th>
+            </tr></thead>
+            <tbody>
+              ${tasks.map(t => `<tr>
+                <td style="padding:3px 6px;">${escapeHtml(t.name)}</td>
+                <td style="padding:3px 6px;">${escapeHtml(t.due || "—")}</td>
+                <td style="padding:3px 6px;">${escapeHtml(t.assignee || "—")}</td>
+                <td style="padding:3px 6px;">${escapeHtml((t.participants || []).join("、") || "—")}</td>
+                <td style="padding:3px 6px;">${escapeHtml(t.status)}</td>
+              </tr>`).join("")}
+            </tbody>
+          </table>` : `<span style="color:var(--muted); font-size:12px;">このボードにタスクはありません</span>`}
+        </td>
+      </tr>` : "";
       return `<tr>
         <td style="padding:6px 8px; border-bottom:1px solid var(--border); font-weight:600;">${escapeHtml(b.name)}</td>
         <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${badge}</td>
         <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${when}</td>
-        <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${count} 件</td>
+        <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${tasks.length} 件</td>
         <td style="padding:6px 8px; border-bottom:1px solid var(--border); white-space:nowrap;">
           <button type="button" class="small" data-restore="${b.id}">↩ 復元</button>
-          <button type="button" class="secondary small" data-purge="${b.id}" title="ボードと、このボードだけに属するタスクを完全に削除（元に戻せません）">✕ 完全に削除</button>
+          <button type="button" class="secondary small" data-peek="${b.id}">${peeking ? "▲ 中身を閉じる" : "👁 中身の確認"}</button>
+          <button type="button" class="secondary small" data-purge="${b.id}" title="ボードと、このボードだけに属するタスクを完全に削除（確認が2回あります）">✕ 完全に削除</button>
         </td>
-      </tr>`;
+      </tr>${peekRow}`;
     }).join("");
     body.querySelectorAll("[data-restore]").forEach(btn =>
       btn.addEventListener("click", () => restoreBoard(btn.dataset.restore)));
+    body.querySelectorAll("[data-peek]").forEach(btn =>
+      btn.addEventListener("click", () => {
+        archivePeekBoardId = archivePeekBoardId === btn.dataset.peek ? null : btn.dataset.peek;
+        renderArchive();
+      }));
     body.querySelectorAll("[data-purge]").forEach(btn =>
       btn.addEventListener("click", () => purgeBoard(btn.dataset.purge)));
   }
@@ -4335,7 +4374,9 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
 
   // ---- 背景の表示（種類: online=ネット写真 / local=フォルダの写真 / gradient） ----
   function bgSourceSetting() {
-    return state.settings.bgSource || (state.settings.bgOnline === false ? "gradient" : "online");
+    // 既定は画像背景（ネット写真）。旧トグル「背景：ネット画像を使う=OFF」は引き継がない
+    // （グラデーション＝単色に見えるため。グラデーションにしたい場合は設定で明示的に選ぶ）
+    return state.settings.bgSource || "online";
   }
   // 表示した背景は常に bgCurrent へ記録しておき、📌固定中は次回起動時に同じ背景を復元する
   function setBackground(css, current, notify, msg) {
