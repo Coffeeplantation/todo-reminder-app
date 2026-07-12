@@ -1077,6 +1077,7 @@
         <select id="cfgAiProvider" style="padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; max-width:240px;">
           <option value="anthropic">Claude（Anthropic）</option>
           <option value="gemini">Gemini（Google）</option>
+          <option value="ollama">ローカルAI（Ollama・オフライン）</option>
         </select>
 
         <label for="cfgApiKey">AI：Anthropic APIキー</label>
@@ -1090,6 +1091,12 @@
           <input type="password" id="cfgGeminiKey" placeholder="AIza..." autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
           <button type="button" id="btnPasteGeminiKey" class="ghost small" style="margin-top:4px;">📋 コピーしたキーを貼り付け</button>
           <small style="color:var(--muted); display:block; margin-top:2px;">キーは https://aistudio.google.com/apikey で無料発行できます。入力すると自動でGeminiに切り替わります。<br>キーはこのブラウザの localStorage にのみ保存されます（外部送信は選択したAIのAPIのみ）</small>
+        </span>
+
+        <label for="cfgOllamaModel">AI：ローカルモデル名</label>
+        <span>
+          <input type="text" id="cfgOllamaModel" placeholder="qwen2.5:3b" autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
+          <small style="color:var(--muted); display:block; margin-top:2px;">「ローカルAI（Ollama）」で使うモデル名。PC内の Ollama で動くため、APIキー不要・完全オフラインで利用できます。<br>初回のみオンライン時にコマンドプロンプトで「ollama pull qwen2.5:3b」を実行してモデルを取得してください。</small>
         </span>
       </div>
     </div>
@@ -1216,7 +1223,8 @@
       bgIntervalMin: 10,
       aiProvider: "anthropic",
       anthropicApiKey: "",
-      geminiApiKey: ""
+      geminiApiKey: "",
+      ollamaModel: "qwen2.5:3b"
     },
     tasks: [
       { id: 1, name: "プロジェクト報告書提出", assignee: "山田太郎", due: "2026-07-15", reminderDays: 3, status: "未完了", sentFlag: "" },
@@ -1521,6 +1529,7 @@
   const cfgApiKey = document.getElementById("cfgApiKey");
   const cfgAiProvider = document.getElementById("cfgAiProvider");
   const cfgGeminiKey = document.getElementById("cfgGeminiKey");
+  const cfgOllamaModel = document.getElementById("cfgOllamaModel");
 
   function renderSettings() {
     cfgReminderDays.value = state.settings.reminderDays;
@@ -1539,6 +1548,7 @@
     cfgApiKey.value = state.settings.anthropicApiKey || "";
     cfgAiProvider.value = state.settings.aiProvider || "anthropic";
     cfgGeminiKey.value = state.settings.geminiApiKey || "";
+    cfgOllamaModel.value = state.settings.ollamaModel || "qwen2.5:3b";
   }
   cfgReminderDays.addEventListener("change", () => {
     state.settings.reminderDays = Math.max(0, parseInt(cfgReminderDays.value, 10) || 0);
@@ -1590,6 +1600,11 @@
   cfgGeminiKey.addEventListener("change", () => {
     state.settings.geminiApiKey = cfgGeminiKey.value.trim();
     if (state.settings.geminiApiKey) state.settings.aiProvider = "gemini";
+    renderSettings();
+    save();
+  });
+  cfgOllamaModel.addEventListener("change", () => {
+    state.settings.ollamaModel = cfgOllamaModel.value.trim() || "qwen2.5:3b";
     renderSettings();
     save();
   });
@@ -2700,7 +2715,8 @@
 
   // ---------------------------------------------------------------
   // AIアシスタント（ヘッダーの🤖AIボタン）
-  // 公式SDK（@anthropic-ai/sdk）をCDNから動的importし、ブラウザから直接 Claude API を呼ぶ。
+  // プロバイダは3種：Claude（公式SDKをCDNから動的import）・Gemini（REST）・
+  // ローカルAI（PC内の Ollama サーバー。APIキー不要でオフラインでも動く）。
   // APIキーは設定パネルで入力し localStorage に保存（dangerouslyAllowBrowser で明示的に許可）。
   // タスクの追加・更新・削除はツール（tool use）としてAIに公開し、手動ループで実行する。
   // ---------------------------------------------------------------
@@ -3013,6 +3029,65 @@ ${state.monthGroups.length ? JSON.stringify(state.monthGroups) : "（なし）"}
     }
   }
 
+  // ローカルAI（Ollama）でのターン処理：/api/chat（非ストリーミング）＋ tool calling の手動ループ
+  // PC内の Ollama サーバー（http://localhost:11434）と通信するため、ネット接続なしで動作する。
+  const OLLAMA_URL = "http://localhost:11434";
+  function ollamaToolDecls() {
+    return AI_TOOLS.map(t => ({
+      type: "function",
+      function: { name: t.name, description: t.description, parameters: t.input_schema }
+    }));
+  }
+  async function aiTurnOllama(text, waitEl) {
+    const model = (state.settings.ollamaModel || "qwen2.5:3b").trim();
+    aiHistory.push({ role: "user", content: text });
+    for (let iter = 0; iter < 8; iter++) {
+      let res;
+      try {
+        res = await fetch(`${OLLAMA_URL}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model,
+            stream: false,
+            messages: [{ role: "system", content: buildAiSystemPrompt() }, ...aiHistory],
+            tools: ollamaToolDecls()
+          })
+        });
+      } catch (_) {
+        throw new Error("ローカルAI（Ollama）に接続できません。スタートメニューから Ollama を起動してから再試行してください。");
+      }
+      if (!res.ok) {
+        let detail = "";
+        try { const err = await res.json(); detail = err.error ? ": " + err.error : ""; } catch (_) { /* JSONでない場合は無視 */ }
+        if (res.status === 404 && /not found/i.test(detail)) {
+          throw new Error(`モデル「${model}」が未取得です。オンライン時にコマンドプロンプトで「ollama pull ${model}」を実行してください。`);
+        }
+        if (res.status === 403) {
+          throw new Error("Ollama がこのアプリからの接続を拒否しました。環境変数 OLLAMA_ORIGINS に * を設定して Ollama を再起動してください。");
+        }
+        throw new Error(`ローカルAIエラー（${res.status}）${detail}`);
+      }
+      const data = await res.json();
+      const msg = data.message || {};
+      aiHistory.push(msg);
+      if (msg.content) {
+        waitEl.remove();
+        aiAddMsg("assistant", msg.content);
+      }
+      const calls = msg.tool_calls || [];
+      if (calls.length === 0) break;
+      for (const c of calls) {
+        const fn = c.function || {};
+        let args = fn.arguments;
+        if (typeof args === "string") { try { args = JSON.parse(args); } catch (_) { args = {}; } }
+        aiAddMsg("info", `🔧 ${fn.name} を実行`);
+        const { content } = execAiTool(fn.name, args || {}); // エラー時も content 先頭に「エラー:」が付くのでそのまま渡す
+        aiHistory.push({ role: "tool", tool_name: fn.name, content });
+      }
+    }
+  }
+
   async function aiSend(text) {
     aiBusy = true;
     aiSendBtn.disabled = true;
@@ -3028,6 +3103,8 @@ ${state.monthGroups.length ? JSON.stringify(state.monthGroups) : "（なし）"}
     try {
       if (provider === "gemini") {
         await aiTurnGemini(text, waitEl);
+      } else if (provider === "ollama") {
+        await aiTurnOllama(text, waitEl);
       } else {
         await aiTurnClaude(text, waitEl);
       }
@@ -3101,13 +3178,15 @@ ${state.monthGroups.length ? JSON.stringify(state.monthGroups) : "（なし）"}
       if (aiMessages.children.length === 0) {
         aiAddMsg("assistant", "こんにちは！タスクについて何でも聞いてください。\n例:「今週締め切りのタスクは？」「来週金曜までに資料作成のタスクを追加して」「7月と8月を結合して」");
         const provider = state.settings.aiProvider || "anthropic";
-        const hasKey = provider === "gemini"
-          ? !!(state.settings.geminiApiKey || "").trim()
-          : !!(state.settings.anthropicApiKey || "").trim();
+        const hasKey = provider === "ollama"
+          ? true // ローカルAIはAPIキー不要（接続エラーは送信時に案内する）
+          : provider === "gemini"
+            ? !!(state.settings.geminiApiKey || "").trim()
+            : !!(state.settings.anthropicApiKey || "").trim();
         if (!hasKey) {
           aiAddMsg("error", provider === "gemini"
             ? "利用には Gemini APIキーが必要です。⚙設定の「AI：Gemini APIキー」に入力してください（https://aistudio.google.com/apikey で無料発行）。"
-            : "利用には Anthropic APIキーが必要です。⚙設定の「AI：Anthropic APIキー」に入力してください。（GeminiのAPIキーでも利用できます。設定でGeminiキーを入力すると自動で切り替わります）");
+            : "利用には Anthropic APIキーが必要です。⚙設定の「AI：Anthropic APIキー」に入力してください。（GeminiのAPIキーでも利用できます。設定でGeminiキーを入力すると自動で切り替わります。オフライン環境では設定でプロバイダを「ローカルAI（Ollama）」にしてください）");
         }
       }
       aiInput.focus();
