@@ -397,12 +397,14 @@
     align-items: center;
     justify-content: space-between;
     gap: 6px;
+    position: relative; /* 中央配置バッジ（.kb-col-count-center）の基準 */
   }
   .kb-col-hdr-label {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
+    flex: 1; /* ラベルが余白を占有し、％・＋・☰は右詰め（メニューの左隣に並ぶ） */
   }
   .kb-col-count {
     flex: none;
@@ -434,6 +436,20 @@
     font-size: 10px;
     font-weight: bold;
     white-space: nowrap;
+  }
+  /* 「現在のタスク数 N」はヘッダー中央に絶対配置（左=ボード名、右=％・＋・☰） */
+  .kb-col-count-center {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.35);
+    font-size: 10px;
+    font-weight: bold;
+    white-space: nowrap;
+    pointer-events: none;
   }
   .kb-col-menu-btn {
     flex: none;
@@ -551,16 +567,44 @@
     border-radius: 4px;
     color: var(--text);
   }
+  /* ボードのリサイズ：右下コーナー（大型・ホバーで強調）＋右端/下端のグリップ帯 */
   .kb-col-resize {
     position: absolute;
     right: 0;
     bottom: 0;
-    width: 15px;
-    height: 15px;
+    width: 22px;
+    height: 22px;
     cursor: nwse-resize;
-    background: linear-gradient(135deg, transparent 0 45%, var(--muted) 45% 55%, transparent 55% 100%);
-    border-radius: 0 0 6px 0;
+    touch-action: none;
+    background: linear-gradient(135deg, transparent 0 40%, var(--muted) 40% 50%, transparent 50% 60%, var(--muted) 60% 70%, transparent 70% 100%);
+    border-radius: 0 0 10px 0;
+    opacity: 0.65;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+    z-index: 5;
   }
+  .kb-col:hover .kb-col-resize { opacity: 1; }
+  .kb-col-resize:hover { background-color: rgba(37, 99, 235, 0.14); }
+  .kb-col-resize-e {
+    position: absolute;
+    top: 44px;
+    bottom: 24px;
+    right: 0;
+    width: 7px;
+    cursor: ew-resize;
+    touch-action: none;
+    z-index: 4;
+  }
+  .kb-col-resize-s {
+    position: absolute;
+    left: 16px;
+    right: 24px;
+    bottom: 0;
+    height: 7px;
+    cursor: ns-resize;
+    touch-action: none;
+    z-index: 4;
+  }
+  .kb-col-resize-e:hover, .kb-col-resize-s:hover { background: rgba(37, 99, 235, 0.20); border-radius: 4px; }
   .kb-card {
     position: absolute;
     width: 128px;
@@ -2850,11 +2894,12 @@
 
   // 月パネル右下のハンドルをドラッグして大きさを自由に変更する。
   // 見出しの高さまで縮めると、折りたたみ状態（月名のみ表示）に切り替わる。
+  // ボードの拡大縮小。右下コーナー（縦横）に加えて、右端（幅のみ）・下端（高さのみ）の
+  // グリップ帯からもドラッグできる。Pointer Events ベースでタッチ・ペンにも対応。
+  // コーナーのダブルクリックで既定サイズ（幅240px・高さ自動）に戻せる。
   function attachColResize(col, key) {
-    const handle = document.createElement("div");
-    handle.className = "kb-col-resize";
-    handle.addEventListener("mousedown", e => {
-      if (e.button !== 0) return;
+    function startResize(e, mode) { // mode: "se"=縦横 / "e"=幅のみ / "s"=高さのみ
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       const startX = e.clientX, startY = e.clientY;
@@ -2862,15 +2907,16 @@
       let requestedW = startW, requestedH = startH;
 
       function onMove(ev) {
-        requestedW = Math.max(COL_MIN_W, startW + (ev.clientX - startX));
-        requestedH = Math.max(COL_MIN_H, startH + (ev.clientY - startY));
+        if (mode !== "s") requestedW = Math.max(COL_MIN_W, startW + (ev.clientX - startX));
+        if (mode !== "e") requestedH = Math.max(COL_MIN_H, startH + (ev.clientY - startY));
         col.style.width = requestedW + "px";
         col.style.height = requestedH + "px";
         resizeBoardCanvas();
       }
       function onUp() {
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onUp);
         // flexboxの子要素は内容サイズより縮まないため、実測値ではなく要求値で折りたたみ判定する
         const isMin = requestedH <= COL_HEADER_H + 6;
         state.boardPos[key].w = requestedW;
@@ -2879,10 +2925,36 @@
         save();
         renderBoard();
       }
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onUp);
+    }
+
+    const corner = document.createElement("div");
+    corner.className = "kb-col-resize";
+    corner.title = "ドラッグで拡大縮小 / ダブルクリックで既定サイズに戻す";
+    corner.addEventListener("pointerdown", e => startResize(e, "se"));
+    corner.addEventListener("dblclick", e => {
+      e.stopPropagation();
+      state.boardPos[key].w = 240;
+      delete state.boardPos[key].h;
+      save();
+      renderBoard();
+      toast("ボードを既定サイズに戻しました");
     });
-    col.appendChild(handle);
+    col.appendChild(corner);
+
+    const edgeE = document.createElement("div");
+    edgeE.className = "kb-col-resize-e";
+    edgeE.title = "ドラッグで幅を変更";
+    edgeE.addEventListener("pointerdown", e => startResize(e, "e"));
+    col.appendChild(edgeE);
+
+    const edgeS = document.createElement("div");
+    edgeS.className = "kb-col-resize-s";
+    edgeS.title = "ドラッグで高さを変更";
+    edgeS.addEventListener("pointerdown", e => startResize(e, "s"));
+    col.appendChild(edgeS);
   }
 
   // カードのドラッグ移動（Pointer Events ベース）。持ち上げるとわずかに拡大してぼんやり発光し、
@@ -3307,10 +3379,10 @@
         hdrLabel.textContent = (pos.icon ? pos.icon + " " : "") + "▼ " + boardLabel(key);
         hdr.appendChild(hdrLabel);
         if (tasks.length > 0) {
+          // 「現在のタスク数 N」をヘッダー中央に表示する
           const countBadge = document.createElement("span");
-          countBadge.className = "kb-col-count";
-          countBadge.textContent = tasks.length;
-          countBadge.title = `タスク ${tasks.length} 件`;
+          countBadge.className = "kb-col-count-center";
+          countBadge.textContent = `現在のタスク数 ${tasks.length}`;
           hdr.appendChild(countBadge);
         }
         const pct = monthCompletionPercent(tasks);
