@@ -1074,8 +1074,8 @@
   <span class="appbar-actions">
     <!-- よく使う操作（ボード作成・取り込み・AI）はヘッダー直置き。タスク追加は各ボードの「＋」から。残りは「☰ メニュー」に集約 -->
     <button type="button" id="btnAddBoardTop" class="secondary" title="新しいタスクボードを作成">▦ 新しいボードを作成</button>
-    <button type="button" id="btnOpenImport" class="ghost" title="リンクやファイルから予定を取り込む">📥 取り込み</button>
-    <button type="button" id="btnOpenAi" class="ghost" title="AIアシスタントを開く">🤖 AI</button>
+    <button type="button" id="btnOpenImport" class="ghost" title="自動タスク作成（予定表のリンク・ファイル・貼り付け文をAIに取り込んでタスクを自動作成）">📥 自動タスク作成</button>
+    <button type="button" id="btnOpenAi" class="ghost" title="AIアシスタントに相談する（タスクの追加・整理・質問）">🤖 AIに相談</button>
     <button type="button" id="btnAppMenu" title="メニューを開く" aria-haspopup="true" aria-expanded="false">☰ メニュー</button>
     <div id="appMenu" class="app-menu" hidden>
       <div class="app-menu-row">
@@ -1220,7 +1220,7 @@
   </section>
 
   <section class="panel modal-only" id="sectionImport">
-    <h2>予定の取り込み</h2>
+    <h2>📥 自動タスク作成（予定表をAIに取り込む）</h2>
     <div class="panel-body" id="importPanelBody">
       <p style="font-size:12.5px; color:var(--muted); margin:0 0 10px;">
         参照リンク（URL）や、フォルダ内のファイル（Excel / CSV / カレンダー(.ics) / テキスト）から予定を読み取り、タスクボードへ自動登録します。<br>
