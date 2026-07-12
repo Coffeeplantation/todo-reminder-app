@@ -1035,6 +1035,7 @@
     <button type="button" id="btnOpenImport" class="ghost" title="リンクやファイルから予定を取り込む">📥 取り込み</button>
     <button type="button" id="btnOpenAi" class="ghost" title="AIアシスタントを開く">🤖 AI</button>
     <button type="button" id="btnBgChange" class="ghost" title="背景をランダムに変更（B）">🖼 背景</button>
+    <button type="button" id="btnOpenArchive" class="ghost" title="終了したボードの確認・復元（ゴミ箱）">🗑 終了ボード</button>
     <button type="button" id="btnOpenReminder" class="ghost" title="リマインダーチェックを開く">🔔 リマインダー</button>
     <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
     <button type="button" id="btnOpenSettings" class="ghost" title="設定を開く">⚙ 設定</button>
@@ -1135,6 +1136,28 @@
   <section class="panel board-panel">
     <div id="boardView">
       <div class="kanban-columns" id="kanbanColumns"></div>
+    </div>
+  </section>
+
+  <section class="panel modal-only" id="sectionArchive">
+    <h2>🗑 終了ボード</h2>
+    <div class="panel-body" id="archivePanelBody">
+      <p style="font-size:12.5px; color:var(--muted); margin:0 0 10px;">
+        「削除」または「完了」したボードは、タスクごとここに保管されます（Windowsのゴミ箱と同じ仕組み）。<br>
+        いつでも「↩ 復元」でボードもタスクも元通りに戻せます。「完全に削除」するまでデータは消えません。
+      </p>
+      <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+        <thead>
+          <tr style="background:#2b3f63; color:#fff; font-size:12px;">
+            <th style="text-align:left; padding:6px 8px;">ボード名</th>
+            <th style="text-align:left; padding:6px 8px;">区分</th>
+            <th style="text-align:left; padding:6px 8px;">終了日時</th>
+            <th style="text-align:left; padding:6px 8px;">タスク数</th>
+            <th style="padding:6px 8px;"></th>
+          </tr>
+        </thead>
+        <tbody id="archiveBody"></tbody>
+      </table>
     </div>
   </section>
 
@@ -1454,11 +1477,18 @@
 
   // ---- 自由ボード（ユーザーが好きな数だけ作成できる名前付きボード） ----
   function boardById(id) { return state.boards.find(b => b.id === id) || null; }
-  // タスクが所属するボードid一覧。存在しないボードへの参照は除外し、空になったら先頭ボードへ割り当てる。
+  // 稼働中（終了ボードに入っていない）ボードの一覧。画面表示・選択肢・振り分けはこちらを使う
+  function activeBoards() { return state.boards.filter(b => !b.archived); }
+  // タスクの所属先がすべて終了（アーカイブ）済みかどうか。終了タスクは通常画面・リマインド対象から外れる
+  function taskIsArchived(task) {
+    const ids = (task.boards || []).filter(id => boardById(id));
+    return ids.length > 0 && ids.every(id => boardById(id).archived);
+  }
+  // タスクが所属するボードid一覧。存在しないボードへの参照は除外し、空になったら稼働中の先頭ボードへ割り当てる。
   function taskBoardIds(task) {
     let ids = (task.boards || []).filter(id => boardById(id));
-    if (!ids.length && state.boards.length) {
-      ids = [state.boards[0].id];
+    if (!ids.length && activeBoards().length) {
+      ids = [activeBoards()[0].id];
       task.boards = ids;
     }
     return ids;
@@ -1478,7 +1508,7 @@
   function getBoardKeys() {
     const seen = new Set();
     const result = [];
-    for (const b of state.boards) {
+    for (const b of activeBoards()) {
       const g = findGroup(b.id);
       if (g) {
         const gk = groupKeyOf(g);
@@ -1604,34 +1634,111 @@
     save();
     renderBoard();
   }
-  function deleteBoard(id) {
+  // ---- 終了ボード（Windowsのゴミ箱に相当。削除・完了したボードをタスクごと保管し、いつでも復元できる） ----
+  // 「削除」「完了」はどちらも即消去せず、archived フラグを付けて終了ボード置き場へ移す。
+  // タスクの所属（task.boards）は変えないため、復元すればタスクもそのまま戻る。
+  function archiveBoard(id, reason) {
     const board = boardById(id);
-    if (!board) return;
-    if (state.boards.length <= 1) { toast("最後のボードは削除できません"); return; }
-    const orphanCount = state.tasks.filter(t => {
-      const ids = taskBoardIds(t);
-      return ids.includes(id) && ids.length === 1;
-    }).length;
-    const msg = orphanCount
-      ? `「${board.name}」を削除しますか？\nこのボードだけに属するタスク ${orphanCount} 件は、残りの先頭ボードへ移動します。`
-      : `「${board.name}」を削除しますか？`;
-    if (!confirm(msg)) return;
-    state.boards = state.boards.filter(b => b.id !== id);
+    if (!board || board.archived) return;
+    if (activeBoards().length <= 1) { toast("最後のボードは終了できません（先に新しいボードを作成してください）"); return; }
+    // 結合中なら結合から外す（残り1枚になった結合は解消）
     state.boardGroups = state.boardGroups
       .map(g => g.filter(i => i !== id))
       .filter(g => g.length >= 2);
     Object.keys(state.boardPos).forEach(k => {
-      if (boardsOfKey(k).includes(id)) delete state.boardPos[k];
+      if (isGroupKey(k) && boardsOfKey(k).includes(id)) delete state.boardPos[k];
     });
-    const fallback = state.boards[0].id;
-    state.tasks.forEach(t => {
-      t.boards = (t.boards || []).filter(i => i !== id);
-      if (!t.boards.length) t.boards = [fallback];
-    });
+    board.archived = true;
+    board.archivedAt = Date.now();
+    board.archivedReason = reason; // "削除" | "完了"
+    if (selectedTaskId !== null) {
+      const sel = state.tasks.find(t => t.id === selectedTaskId);
+      if (sel && taskIsArchived(sel)) selectedTaskId = null;
+    }
     save();
     renderBoard();
-    toast(`「${board.name}」ボードを削除しました`);
+    toast(`「${board.name}」ボードを終了ボードへ移動しました（🗑 終了ボードから復元できます）`, {
+      actionLabel: "元に戻す",
+      onAction: () => restoreBoard(id)
+    });
   }
+  function restoreBoard(id) {
+    const board = boardById(id);
+    if (!board || !board.archived) return;
+    delete board.archived;
+    delete board.archivedAt;
+    delete board.archivedReason;
+    if (!state.boardPos[id]) {
+      state.boardPos[id] = { x: 24, y: 24, z: ++colZCounter, collapsed: false };
+    } else {
+      state.boardPos[id].z = ++colZCounter; // 復元したボードを最前面に
+    }
+    save();
+    renderBoard();
+    renderArchive();
+    toast(`「${board.name}」ボードを復元しました`);
+  }
+  // 完全削除（ゴミ箱を空にする操作に相当）。このボードだけに属するタスクも一緒に消える。
+  function purgeBoard(id) {
+    const board = boardById(id);
+    if (!board) return;
+    const onlyHere = state.tasks.filter(t => {
+      const ids = (t.boards || []).filter(i => boardById(i));
+      return ids.includes(id) && ids.length === 1;
+    }).length;
+    const msg = onlyHere
+      ? `「${board.name}」を完全に削除しますか？\nこのボードだけに属するタスク ${onlyHere} 件も完全に削除されます。\nこの操作は元に戻せません。`
+      : `「${board.name}」を完全に削除しますか？\nこの操作は元に戻せません。`;
+    if (!confirm(msg)) return;
+    state.tasks = state.tasks.filter(t => {
+      const ids = (t.boards || []).filter(i => boardById(i));
+      return !(ids.includes(id) && ids.length === 1);
+    });
+    state.tasks.forEach(t => { t.boards = (t.boards || []).filter(i => i !== id); });
+    state.boards = state.boards.filter(b => b.id !== id);
+    delete state.boardPos[id];
+    save();
+    renderBoard();
+    renderArchive();
+    toast(`「${board.name}」ボードを完全に削除しました`);
+  }
+  // 終了ボード一覧の描画。ボード名・区分（削除/完了）・終了日時・タスク数と、復元/完全削除ボタンを並べる
+  function renderArchive() {
+    const body = document.getElementById("archiveBody");
+    const archived = state.boards.filter(b => b.archived)
+      .sort((a, b2) => (b2.archivedAt || 0) - (a.archivedAt || 0));
+    if (!archived.length) {
+      body.innerHTML = `<tr><td colspan="5" style="padding:10px 8px; color:var(--muted);">終了したボードはありません</td></tr>`;
+      return;
+    }
+    body.innerHTML = archived.map(b => {
+      const count = state.tasks.filter(t => (t.boards || []).includes(b.id)).length;
+      const dt = b.archivedAt ? new Date(b.archivedAt) : null;
+      const when = dt ? `${dt.getFullYear()}/${pad2(dt.getMonth() + 1)}/${pad2(dt.getDate())} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}` : "—";
+      const badge = b.archivedReason === "完了"
+        ? `<span style="color:var(--green, #16a34a); font-weight:600;">✅ 完了</span>`
+        : `<span style="color:#c22; font-weight:600;">🗑 削除</span>`;
+      return `<tr>
+        <td style="padding:6px 8px; border-bottom:1px solid var(--border); font-weight:600;">${escapeHtml(b.name)}</td>
+        <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${badge}</td>
+        <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${when}</td>
+        <td style="padding:6px 8px; border-bottom:1px solid var(--border);">${count} 件</td>
+        <td style="padding:6px 8px; border-bottom:1px solid var(--border); white-space:nowrap;">
+          <button type="button" class="small" data-restore="${b.id}">↩ 復元</button>
+          <button type="button" class="secondary small" data-purge="${b.id}" title="ボードと、このボードだけに属するタスクを完全に削除（元に戻せません）">✕ 完全に削除</button>
+        </td>
+      </tr>`;
+    }).join("");
+    body.querySelectorAll("[data-restore]").forEach(btn =>
+      btn.addEventListener("click", () => restoreBoard(btn.dataset.restore)));
+    body.querySelectorAll("[data-purge]").forEach(btn =>
+      btn.addEventListener("click", () => purgeBoard(btn.dataset.purge)));
+  }
+  document.getElementById("btnOpenArchive").addEventListener("click", () => {
+    renderArchive();
+    openPanelModal("archive");
+  });
+
   // その月のタスク達成率を10%刻み（10段階）に丸めて返す。タスクが無い月は null（達成率表示なし）。
   function monthCompletionStep(tasks) {
     if (tasks.length === 0) return null;
@@ -1673,7 +1780,8 @@
     settings: "sectionSettings",
     reminder: "sectionReminder",
     contacts: "sectionContacts",
-    import: "sectionImport"
+    import: "sectionImport",
+    archive: "sectionArchive"
   };
   const panelModal = document.getElementById("panelModal");
   const panelModalBody = document.getElementById("panelModalBody");
@@ -1821,6 +1929,7 @@
 
     for (const task of state.tasks) {
       if (task.status === "完了") continue;
+      if (taskIsArchived(task)) continue; // 終了ボードのタスクはリマインド対象外
       if (task.sentFlag === "済") { skipCount++; continue; }
 
       const due = parseDue(task.due);
@@ -1920,6 +2029,7 @@
     mailListRows = [];
     for (const task of state.tasks) {
       if (task.status === "完了") continue;
+      if (taskIsArchived(task)) continue; // 終了ボードのタスクは送信リスト対象外
       const due = parseDue(task.due);
       if (!due) continue;
       const reminderDays = task.reminderDays > 0 ? task.reminderDays : state.settings.reminderDays;
@@ -2385,15 +2495,15 @@
   });
   // 取り込みタスクの所属ボード：期日の月と同名のボード（例「8月」）があればそこへ、無ければ先頭ボードへ
   function impBoardIdFor(due) {
-    if (!state.boards.length) createBoard("ボード1");
+    if (!activeBoards().length) createBoard("ボード1");
     if (due) {
       const m = due.match(/^\d{4}[\/\-](\d{1,2})/);
       if (m) {
-        const b = state.boards.find(b => b.name === `${parseInt(m[1], 10)}月`);
+        const b = activeBoards().find(b => b.name === `${parseInt(m[1], 10)}月`);
         if (b) return b.id;
       }
     }
-    return state.boards[0].id;
+    return activeBoards()[0].id;
   }
 
   document.getElementById("btnImpAdd").addEventListener("click", () => {
@@ -2859,7 +2969,7 @@
         </label>
         <label><span class="f-label">📌 所属ボード <span class="f-hint">複数選択可</span></span>
           <span class="edit-months">
-            ${state.boards.map(b => {
+            ${activeBoards().map(b => {
               const on = memberBoardIds.includes(b.id);
               return `<button type="button" class="em-btn${on ? " on" : ""}" data-bid="${b.id}"
                 title="${on ? "クリックで所属から外す" : "クリックで所属に追加"}">${escapeHtml(b.name)}</button>`;
@@ -3157,13 +3267,23 @@
             });
             menu.appendChild(renameBtn);
 
+            const doneBtn = document.createElement("button");
+            doneBtn.type = "button";
+            doneBtn.className = "kb-col-menu-item";
+            doneBtn.textContent = "✅ ボードを完了（終了へ移動）";
+            doneBtn.addEventListener("click", () => {
+              openMenuMonthKey = null;
+              archiveBoard(key, "完了");
+            });
+            menu.appendChild(doneBtn);
+
             const delBtn = document.createElement("button");
             delBtn.type = "button";
             delBtn.className = "kb-col-menu-item";
-            delBtn.textContent = "🗑 ボードを削除";
+            delBtn.textContent = "🗑 ボードを削除（終了へ移動）";
             delBtn.addEventListener("click", () => {
               openMenuMonthKey = null;
-              deleteBoard(key);
+              archiveBoard(key, "削除");
             });
             menu.appendChild(delBtn);
           }
@@ -3313,8 +3433,8 @@
     taskForm.reset();
     taskName.value = "";
     taskAssignee.value = "";
-    if (!state.boards.length) createBoard("ボード1");
-    dialogBoardId = (boardId && boardById(boardId)) ? boardId : state.boards[0].id;
+    if (!activeBoards().length) createBoard("ボード1");
+    dialogBoardId = (boardId && boardById(boardId) && !boardById(boardId).archived) ? boardId : activeBoards()[0].id;
     const d = new Date();
     d.setDate(d.getDate() + 7);
     taskDue.value = formatDate(d);
@@ -3338,7 +3458,7 @@
       reminderDays: Math.max(0, parseInt(taskReminderDays.value, 10) || 0),
       status: "未完了",
       sentFlag: "",
-      boards: [dialogBoardId && boardById(dialogBoardId) ? dialogBoardId : state.boards[0].id]
+      boards: [dialogBoardId && boardById(dialogBoardId) && !boardById(dialogBoardId).archived ? dialogBoardId : activeBoards()[0].id]
     };
     state.tasks.push(newTask);
     save();
@@ -3361,6 +3481,7 @@
   function tasksOfContact(c) {
     const scopeIds = contactsScopeKey ? boardsOfKey(contactsScopeKey) : null;
     return state.tasks.filter(t =>
+      !taskIsArchived(t) &&
       ((t.assignee || "").trim() === c.name.trim() ||
         (t.participants || []).some(p => (p || "").trim() === c.name.trim())) &&
       (!scopeIds || taskBoardIds(t).some(id => scopeIds.includes(id))));
@@ -3610,7 +3731,7 @@
 
   function buildAiSystemPrompt() {
     const today = formatDate(todayDate());
-    const tasks = state.tasks.map(t => ({
+    const tasks = state.tasks.filter(t => !taskIsArchived(t)).map(t => ({
       id: t.id, name: t.name, assignee: t.assignee || null,
       participants: t.participants || [],
       due: t.due || null, status: t.status,
@@ -3630,7 +3751,10 @@ ${JSON.stringify(tasks, null, 1)}
 ${JSON.stringify(contacts, null, 1)}
 
 ボード一覧:
-${JSON.stringify(state.boards.map(b => b.name))}
+${JSON.stringify(activeBoards().map(b => b.name))}
+
+終了（アーカイブ済み）ボード:
+${state.boards.some(b => b.archived) ? JSON.stringify(state.boards.filter(b => b.archived).map(b => b.name)) : "（なし）"}
 
 結合中のボード:
 ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id => (boardById(id) || { name: "?" }).name))) : "（なし）"}
@@ -3669,8 +3793,8 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
   function aiFindBoard(name) {
     const q = String(name || "").trim();
     if (!q) return null;
-    return state.boards.find(b => b.name === q)
-      || state.boards.find(b => b.name.includes(q) || q.includes(b.name))
+    return activeBoards().find(b => b.name === q)
+      || activeBoards().find(b => b.name.includes(q) || q.includes(b.name))
       || null;
   }
 
@@ -3680,8 +3804,8 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
       if (name === "add_task") {
         const due = normalizeDueInput(String(input.due || "").replace(/-/g, "/"));
         if (!due) return { content: "エラー: 期日は yyyy-mm-dd 形式で指定してください", isError: true };
-        if (!state.boards.length) createBoard("ボード1");
-        const targetBoard = (input.board && aiFindBoard(input.board)) || state.boards[0];
+        if (!activeBoards().length) createBoard("ボード1");
+        const targetBoard = (input.board && aiFindBoard(input.board)) || activeBoards()[0];
         const task = {
           id: state.nextTaskId++,
           name: String(input.name).trim(),
@@ -3702,7 +3826,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
       if (name === "create_board") {
         const boardName = String(input.name || "").trim();
         if (!boardName) return { content: "エラー: ボード名を指定してください", isError: true };
-        if (state.boards.some(b => b.name === boardName)) return { content: `エラー: 「${boardName}」ボードは既にあります`, isError: true };
+        if (activeBoards().some(b => b.name === boardName)) return { content: `エラー: 「${boardName}」ボードは既にあります`, isError: true };
         createBoard(boardName);
         toast(`AI: 「${boardName}」ボードを作成しました`);
         return { content: `「${boardName}」ボードを作成しました` };
