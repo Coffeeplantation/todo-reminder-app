@@ -812,16 +812,16 @@
     white-space: nowrap;
   }
   .kb-card .t-detail {
-    margin-top: 7px;
-    padding-top: 7px;
+    margin-top: 10px;
+    padding-top: 12px;
     border-top: 1px solid var(--border);
     color: var(--muted);
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    font-size: 1.09em;
+    gap: 13px;
+    font-size: 1.05em;
   }
-  .kb-card .t-detail label { display: flex; flex-direction: column; gap: 3px; }
+  .kb-card .t-detail label { display: flex; flex-direction: column; gap: 5px; }
   .kb-card .t-detail input, .kb-card .t-detail select {
     padding: 5px 7px;
     border: 1px solid var(--border);
@@ -837,7 +837,14 @@
     background: #fff;
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
   }
+  /* リマインド情報と削除ボタンは、上に区切り線を置いて他の編集項目と視覚的に分ける */
+  .kb-card .t-detail .t-chip-row {
+    margin-top: 2px;
+    padding-top: 11px;
+    border-top: 1px dashed var(--border);
+  }
   .kb-card .t-detail .edit-delete {
+    margin-top: 2px;
     background: rgba(239, 68, 68, 0.08);
     color: #dc2626;
     border: 1px solid rgba(239, 68, 68, 0.35);
