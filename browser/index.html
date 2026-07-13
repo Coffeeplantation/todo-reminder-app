@@ -2403,13 +2403,12 @@
     reminderSummary.innerHTML = chips.map(([label, filterVal, n]) => {
       const active = reminderFilter === filterVal;
       const color = filterVal ? (REMINDER_STATUS_COLORS[filterVal] || "var(--accent)") : "var(--accent)";
+      // 活性：色地に白文字ではっきり。非活性：同じ色の文字を薄く表示（元の文字が透けて見える）
       const style = active
-        ? `border-color:${color}; background:${color}; color:#fff;`
-        : `border-color:var(--border);`;
-      const dotColor = filterVal ? color : "var(--accent)";
-      const dot = active ? "" : `<span style="width:7px; height:7px; border-radius:50%; background:${dotColor}; display:inline-block;"></span>`;
+        ? `border-color:${color}; background:${color}; color:#fff; opacity:1;`
+        : `border-color:${color}; background:transparent; color:${color}; opacity:0.45;`;
       return `<button type="button" class="reminder-chip" data-filter="${filterVal === null ? "" : filterVal}" style="${style}">
-        ${dot}${label}<span class="chip-count">${n}</span></button>`;
+        ${label}<span class="chip-count">${n}</span></button>`;
     }).join("");
     reminderSummary.querySelectorAll(".reminder-chip").forEach(btn => {
       btn.addEventListener("click", () => {
