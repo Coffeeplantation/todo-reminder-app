@@ -80,6 +80,14 @@
     backdrop-filter: var(--glass-blur);
     border-bottom: 1px solid rgba(255, 255, 255, 0.55);
     box-shadow: var(--shadow-sm);
+    position: relative;
+  }
+  .appbar-center-btn {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
   }
   .appbar-title {
     font-weight: 800;
@@ -1133,9 +1141,9 @@
   <span class="appbar-search">
     <input type="search" id="searchInput" placeholder="タスク・担当者を検索" title="タスク名・担当者名で検索（ショートカット: /）" autocomplete="off">
   </span>
+  <button type="button" id="btnOpenCurrentSchedule" class="ghost appbar-center-btn" title="現行予定表を開く">📅 現行予定表</button>
   <span class="appbar-actions">
     <!-- よく使う操作（ボード作成・取り込み・AI）はヘッダー直置き。タスク追加は各ボードの「＋」から。残りは「☰ メニュー」に集約 -->
-    <button type="button" id="btnOpenCurrentSchedule" class="ghost" title="現行予定表を開く">📅 現行予定表</button>
     <button type="button" id="btnAddBoardTop" class="secondary" title="新しいタスクボードを作成">▦ 新しいボードを作成</button>
     <button type="button" id="btnOpenImport" class="ghost" title="自動タスク作成（予定表のリンク・ファイル・貼り付け文をAIに取り込んでタスクを自動作成）">📥 自動タスク作成</button>
     <button type="button" id="btnOpenAi" class="ghost" title="AIアシスタントに相談する（タスクの追加・整理・質問）">🤖 AIに相談</button>
