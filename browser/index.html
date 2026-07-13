@@ -2794,9 +2794,6 @@
     renderImpPreview();
     impSetStatus("");
   });
-  document.getElementById("btnCloseSchedule").addEventListener("click", () => {
-    document.getElementById("currentScheduleSection").hidden = true;
-  });
   // 取り込みタスクの所属ボード：期日の月と同名のボード（例「8月」）があればそこへ、無ければ先頭ボードへ
   function impBoardIdFor(due) {
     if (!activeBoards().length) createBoard("ボード1");
