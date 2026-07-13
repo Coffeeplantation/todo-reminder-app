@@ -801,6 +801,24 @@
     box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 1px 3px rgba(15, 23, 42, 0.25);
   }
   .kb-card .status-badge { font-size: 1em; }
+  /* カード上の👥参加者ボタン：クリックで参加者リストを表示 */
+  .kb-card .t-participants-btn {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 1px 7px;
+    border: none;
+    border-radius: 999px;
+    background: rgba(37, 99, 235, 0.10);
+    color: var(--accent);
+    font-size: 0.9em;
+    font-weight: 600;
+    line-height: 1.6;
+    cursor: pointer;
+    box-shadow: none;
+  }
+  .kb-card .t-participants-btn:hover { background: rgba(37, 99, 235, 0.2); filter: none; box-shadow: none; }
   .kb-card .t-chip-row { display: flex; flex-wrap: wrap; gap: 4px; }
   .kb-card .t-chip {
     padding: 0 7px;
@@ -2993,8 +3011,12 @@
   }
 
   function showParticipantsList(taskName, participants) {
-    const msg = `【${escapeHtml(taskName)}】\n\n参加者：\n${participants.map(p => `• ${escapeHtml(p)}`).join("\n")}`;
-    alert(msg);
+    // alert はプレーンテキスト表示のため、HTMLエスケープはせず生の名前を表示する
+    const list = (participants || []).filter(p => (p || "").trim());
+    const body = list.length
+      ? `参加者（${list.length}名）：\n${list.map(p => `・${p}`).join("\n")}`
+      : "参加者は登録されていません。";
+    alert(`【${taskName}】\n\n${body}`);
   }
 
   function renderImpPreview() {
@@ -3586,6 +3608,7 @@
       <div class="t-foot">
         <span class="status-badge status-${task.status}">${task.status}</span>
         <span class="t-foot-right">
+          ${(task.participants && task.participants.length) ? `<button type="button" class="t-participants-btn" data-show-participants title="参加者リストを表示">👥 ${task.participants.length}</button>` : ""}
           ${assignee ? `<span class="t-avatar" style="background:${avatarColor(assignee)}" title="${escapeHtml(assignee)}">${escapeHtml([...assignee][0])}</span>` : ""}
           <span class="t-caret" aria-hidden="true"><svg width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         </span>
@@ -3640,8 +3663,17 @@
       </div>` : ""}
     `;
     let cardResized = false;
+    // 👥参加者ボタン：カードの開閉はせず、参加者リストを表示する
+    const partsBtn = card.querySelector("[data-show-participants]");
+    if (partsBtn) {
+      partsBtn.addEventListener("click", e => {
+        e.stopPropagation();
+        showParticipantsList(task.name, task.participants || []);
+      });
+    }
     card.addEventListener("click", e => {
       if (e.target.closest("[data-detail]")) return;
+      if (e.target.closest("[data-show-participants]")) return;
       // リサイズ操作の直後や、ハンドル自体のクリックでは選択トグルしない
       if (cardResized || e.target.classList.contains("kb-card-resize")) return;
       const willExpand = !expanded;
