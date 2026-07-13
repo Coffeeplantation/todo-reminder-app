@@ -1284,6 +1284,26 @@
     </div>
   </section>
 
+  <!-- ボード作成ダイアログ -->
+  <dialog id="dialogCreateBoard" style="max-width:400px; border-radius:var(--radius-sm); border:1px solid var(--border); backdrop-filter:var(--glass-blur);">
+    <h3 style="margin:0 0 16px; font-size:16px;">新しいボードを作成</h3>
+    <div style="display:flex; flex-direction:column; gap:12px;">
+      <div>
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">ボード名</label>
+        <input type="text" id="inputBoardName" placeholder="例：プロジェクトA" style="width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; font-size:14px;">
+      </div>
+      <div>
+        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">最小サイズ表示名（1-3文字）</label>
+        <input type="text" id="inputBoardMiniName" placeholder="例：PA、①" maxlength="3" style="width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; font-size:14px;">
+        <p style="font-size:12px; color:var(--muted); margin:4px 0 0; line-height:1.4;">ボードを最小化したときに表示される名前です</p>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:16px; justify-content:flex-end;">
+      <button type="button" id="btnBoardDialogCancel" class="secondary" style="padding:6px 16px;">キャンセル</button>
+      <button type="button" id="btnBoardDialogCreate" class="primary" style="padding:6px 16px;">作成</button>
+    </div>
+  </dialog>
+
   <section class="panel board-panel">
     <div id="boardView">
       <div class="kanban-columns" id="kanbanColumns"></div>
@@ -1783,9 +1803,16 @@
   }
 
   // ---- ボードの作成・名前変更・削除 ----
-  function createBoard(name, pos) {
+  function createBoard(name, pos, miniName) {
     const id = "b" + state.nextBoardId++;
-    state.boards.push({ id, name: (name || "").trim() || `ボード${state.boards.length + 1}` });
+    const boardIdx = state.boards.length;
+    const defaultName = `ボード${boardIdx + 1}`;
+    const defaultMiniName = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"][boardIdx] || `#${boardIdx + 1}`;
+    state.boards.push({
+      id,
+      name: (name || "").trim() || defaultName,
+      miniName: (miniName || "").trim() || defaultMiniName
+    });
     const openCount = getBoardKeys().length;
     state.boardPos[id] = Object.assign(
       { x: 24 + (openCount % 6) * 40, y: 24 + (openCount % 6) * 32, z: ++colZCounter, collapsed: false },
@@ -1801,6 +1828,16 @@
     const name = prompt("ボード名を入力してください", board.name);
     if (name === null || !name.trim()) return;
     board.name = name.trim();
+    save();
+    renderBoard();
+  }
+  function renameBoardMiniName(id) {
+    const board = boardById(id);
+    if (!board) return;
+    const miniName = prompt("最小サイズ表示名を入力してください（1-3文字）", board.miniName || "");
+    if (miniName === null || !miniName.trim()) return;
+    if (miniName.trim().length > 3) { alert("最小サイズ表示名は3文字以下です"); return; }
+    board.miniName = miniName.trim();
     save();
     renderBoard();
   }
@@ -3617,12 +3654,11 @@
         hdrLabel.className = "kb-col-hdr-label";
         let displayLabel = boardLabel(key);
         let isMinimalSize = false;
-        // 最小サイズの場合は、作成順序による番号のみ表示
+        // 最小サイズの場合は、ボードの miniName を表示
         if (pos.w && pos.w < 80 && memberIds.length === 1) {
-          const boardIdx = state.boards.findIndex(b => b.id === memberIds[0]);
-          if (boardIdx >= 0) {
-            const boardNumbers = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩", "⑪", "⑫"];
-            displayLabel = boardNumbers[boardIdx] || (boardIdx + 1);
+          const board = state.boards.find(b => b.id === memberIds[0]);
+          if (board && board.miniName) {
+            displayLabel = board.miniName;
             isMinimalSize = true;
           }
         }
@@ -3726,6 +3762,16 @@
               renameBoard(key);
             });
             menu.appendChild(renameBtn);
+
+            const renameMiniBtn = document.createElement("button");
+            renameMiniBtn.type = "button";
+            renameMiniBtn.className = "kb-col-menu-item";
+            renameMiniBtn.textContent = "✏ 最小サイズ表示名を変更";
+            renameMiniBtn.addEventListener("click", () => {
+              openMenuMonthKey = null;
+              renameBoardMiniName(key);
+            });
+            menu.appendChild(renameMiniBtn);
 
             const doneBtn = document.createElement("button");
             doneBtn.type = "button";
@@ -4838,9 +4884,35 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
   // タスク追加はヘッダーからは行わず、各ボードヘッダーの「＋」ボタン（renderBoard内）と
   // 空きスペースのダブルクリック、キーボードの N から行う
   document.getElementById("btnAddBoardTop").addEventListener("click", () => {
-    const name = prompt("新しいボードの名前を入力してください", `ボード${state.boards.length + 1}`);
-    if (name === null) return;
-    createBoard(name);
+    const dialog = document.getElementById("dialogCreateBoard");
+    const inputName = document.getElementById("inputBoardName");
+    const inputMiniName = document.getElementById("inputBoardMiniName");
+    const boardIdx = state.boards.length;
+    inputName.value = `ボード${boardIdx + 1}`;
+    inputMiniName.value = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"][boardIdx] || `#${boardIdx + 1}`;
+    inputName.focus();
+    dialog.showModal();
+  });
+
+  document.getElementById("btnBoardDialogCancel").addEventListener("click", () => {
+    document.getElementById("dialogCreateBoard").close();
+  });
+
+  document.getElementById("btnBoardDialogCreate").addEventListener("click", () => {
+    const name = document.getElementById("inputBoardName").value.trim();
+    const miniName = document.getElementById("inputBoardMiniName").value.trim();
+    if (!name) { alert("ボード名を入力してください"); return; }
+    if (!miniName) { alert("最小サイズ表示名を入力してください"); return; }
+    createBoard(name, null, miniName);
+    document.getElementById("dialogCreateBoard").close();
+  });
+
+  document.getElementById("inputBoardName").addEventListener("keydown", e => {
+    if (e.key === "Enter") document.getElementById("btnBoardDialogCreate").click();
+  });
+
+  document.getElementById("inputBoardMiniName").addEventListener("keydown", e => {
+    if (e.key === "Enter") document.getElementById("btnBoardDialogCreate").click();
   });
   document.getElementById("btnBgChange").addEventListener("click", () => changeBackground(true));
   document.getElementById("btnOpenSettings").addEventListener("click", () => openPanelModal("settings"));
