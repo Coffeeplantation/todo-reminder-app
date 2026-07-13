@@ -1171,6 +1171,7 @@
     <table id="currentScheduleTable" style="width:100%; border-collapse:collapse; font-size:13px;">
       <thead>
         <tr style="background:rgba(43,63,99,0.1); border-bottom:1px solid var(--border);">
+          <th style="text-align:left; padding:8px 10px; font-weight:600;">ボード名</th>
           <th style="text-align:left; padding:8px 10px; font-weight:600;">タスク名</th>
           <th style="text-align:left; padding:8px 10px; font-weight:600;">期日</th>
           <th style="text-align:left; padding:8px 10px; font-weight:600;">参加者</th>
@@ -2692,7 +2693,27 @@
   function renderCurrentSchedule() {
     const tbody = document.getElementById("currentScheduleBody");
 
-    if (!impCandidates.length) {
+    // ボード内のタスクとインポート予定を統合
+    const boardTasks = state.tasks.map(t => ({
+      id: `task-${t.id}`,
+      name: t.name,
+      due: t.due,
+      participants: t.participants || [],
+      include: true,
+      isBoarded: true,
+      originalTask: t
+    }));
+
+    const allTasks = [...boardTasks, ...impCandidates];
+
+    // 期日順にソート
+    allTasks.sort((a, b) => {
+      const dueDateA = a.due ? a.due.replace(/\D/g, "") : "99999999";
+      const dueDateB = b.due ? b.due.replace(/\D/g, "") : "99999999";
+      return dueDateA.localeCompare(dueDateB);
+    });
+
+    if (!allTasks.length) {
       tbody.innerHTML = `
         <tr>
           <td colspan="4" style="text-align:center; padding:20px 10px; color:var(--muted); font-size:13px;">
@@ -2702,20 +2723,30 @@
       return;
     }
 
-    tbody.innerHTML = impCandidates.map(c => {
+    tbody.innerHTML = allTasks.map(c => {
       const participantCount = c.participants.length;
       const participantDisplay = participantCount > 0 ? participantCount : "0";
+      // ボード名を取得
+      let boardName = "未取込";
+      if (c.isBoarded && c.originalTask) {
+        const boardIds = c.originalTask.boards || [];
+        if (boardIds.length > 0) {
+          const board = state.boards.find(b => b.id === boardIds[0]);
+          boardName = board ? board.name : "不明";
+        }
+      }
       return `
         <tr style="border-bottom:1px solid var(--border);">
+          <td style="text-align:left; padding:8px 10px; font-size:12px; color:var(--muted);">${escapeHtml(boardName)}</td>
           <td style="text-align:left; padding:8px 10px;">${escapeHtml(c.name)}</td>
           <td style="text-align:left; padding:8px 10px;">${escapeHtml(c.due || "未定")}</td>
           <td style="text-align:left; padding:8px 10px;">
-            <button type="button" class="participants-btn" data-uid="${c.uid}" style="background:none; border:none; color:var(--accent); cursor:pointer; text-decoration:underline; padding:0; font-size:inherit;">
+            <button type="button" class="participants-btn" data-uid="${c.id || c.uid}" style="background:none; border:none; color:var(--accent); cursor:pointer; text-decoration:underline; padding:0; font-size:inherit;">
               ${escapeHtml(participantDisplay)}
             </button>
           </td>
           <td style="text-align:center; padding:8px 10px;">
-            <input type="checkbox" class="schedule-include" data-uid="${c.uid}" ${c.include ? "checked" : ""} style="cursor:pointer;">
+            <input type="checkbox" class="schedule-include" data-uid="${c.id || c.uid}" ${c.include ? "checked" : ""} style="cursor:pointer;" ${c.isBoarded ? "disabled" : ""}>
           </td>
         </tr>`;
     }).join("");
@@ -2724,7 +2755,7 @@
       btn.addEventListener("click", (e) => {
         e.preventDefault();
         const uid = btn.dataset.uid;
-        const c = impCandidates.find(x => x.uid === uid);
+        const c = allTasks.find(x => (x.id || x.uid) === uid);
         if (!c || !c.participants.length) return;
         showParticipantsList(c.name, c.participants);
       });
@@ -2732,8 +2763,14 @@
 
     tbody.querySelectorAll(".schedule-include").forEach(chk => {
       chk.addEventListener("change", () => {
-        const c = impCandidates.find(x => x.uid === chk.dataset.uid);
+        const uid = chk.dataset.uid;
+        const c = allTasks.find(x => (x.id || x.uid) === uid);
         if (c) c.include = chk.checked;
+        // インポート予定の場合、impCandidatesも更新
+        if (!c.isBoarded) {
+          const impC = impCandidates.find(x => x.uid === uid);
+          if (impC) impC.include = chk.checked;
+        }
       });
     });
   }
