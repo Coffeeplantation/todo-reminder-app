@@ -1,0 +1,51 @@
+name: Daily Email Reminder
+
+on:
+  # 毎日午前9時 UTC に実行（日本時間 18時）
+  schedule:
+    - cron: '0 9 * * *'
+
+  # 手動実行用（テスト時）
+  workflow_dispatch:
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Trigger Vercel API
+        env:
+          VERCEL_DEPLOYMENT_URL: ${{ secrets.VERCEL_DEPLOYMENT_URL }}
+        run: |
+          echo "📧 リマインドメール送信プロセスを開始"
+
+          # Vercel 関数を呼び出し
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://${VERCEL_DEPLOYMENT_URL}/api/send-reminders" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+
+          # レスポンスとステータスコードを分離
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+
+          # ステータスコード確認
+          if [ "$http_code" = "200" ]; then
+            echo "✅ リマインドメール送信成功"
+            exit 0
+          else
+            echo "❌ リマインドメール送信失敗 (HTTP $http_code)"
+            exit 1
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "⚠️ リマインドメール送信に失敗しました"
+          echo "詳細: Vercel ダッシュボードでログを確認してください"
