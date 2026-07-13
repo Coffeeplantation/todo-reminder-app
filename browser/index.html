@@ -3806,19 +3806,6 @@
           });
           menu.appendChild(addBtn);
 
-          if (!isGroupKey(key)) {
-            // 完了・削除は「終了ボード」へ移すという同じ動作のため1つに統合（いつでも復元可）
-            const archiveBtn = document.createElement("button");
-            archiveBtn.type = "button";
-            archiveBtn.className = "kb-col-menu-item";
-            archiveBtn.textContent = "🗑 ボードを終了（終了ボードへ移動）";
-            archiveBtn.addEventListener("click", () => {
-              openMenuMonthKey = null;
-              archiveBoard(key, "終了");
-            });
-            menu.appendChild(archiveBtn);
-          }
-
           if (isGroupKey(key)) {
             // 結合解除：どのボードを分離するか選べる（1枚ずつ分離 or すべて解除）
             const unmergeLabel = document.createElement("div");
@@ -3962,6 +3949,21 @@
             pos.icon || "", v => { state.boardPos[key].icon = v; }));
 
           menu.appendChild(configSection);
+
+          // 「完了/終了」はメニュー最下部に配置。削除前に確認ダイアログを表示する
+          if (!isGroupKey(key)) {
+            const archiveBtn = document.createElement("button");
+            archiveBtn.type = "button";
+            archiveBtn.className = "kb-col-menu-item";
+            archiveBtn.textContent = "🗑 ボードを完了/終了（終了ボードに移動）";
+            archiveBtn.addEventListener("click", () => {
+              const boardName = boardLabel(key);
+              if (!confirm(`「${boardName}」を終了ボードに移動しますか？\n（終了ボードからいつでも復元できます）`)) return;
+              openMenuMonthKey = null;
+              archiveBoard(key, "終了");
+            });
+            menu.appendChild(archiveBtn);
+          }
 
           col.appendChild(menu);
         }
