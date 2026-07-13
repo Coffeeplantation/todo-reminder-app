@@ -3883,17 +3883,7 @@
             openConfigMonthKey = configSection.open ? key : (openConfigMonthKey === key ? null : openConfigMonthKey);
           });
 
-          // アプリ全体の設定パネルもこの設定内から開けるように統合
-          const openSettingsBtn = document.createElement("button");
-          openSettingsBtn.type = "button";
-          openSettingsBtn.className = "kb-col-menu-item";
-          openSettingsBtn.textContent = "⚙ 詳細設定を開く";
-          openSettingsBtn.addEventListener("click", () => {
-            openMenuMonthKey = null;
-            renderBoard();
-            openPanelModal("settings");
-          });
-          configSection.appendChild(openSettingsBtn);
+          // アプリ全体の設定はヘッダーの「⚙ 設定」から開けるため、ここには重複導線を置かない
 
           // 名前の変更・最小サイズ表示名の変更（結合ボードでは不可）も設定内にまとめる
           if (!isGroupKey(key)) {
