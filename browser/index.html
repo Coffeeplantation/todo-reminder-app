@@ -967,18 +967,98 @@
     opacity: 0.75;
   }
 
-  /* ---- reminder log ---- */
-  #reminderLog {
-    max-height: 220px;
-    overflow-y: auto;
-    font-size: 12px;
-    background: rgba(248, 250, 252, 0.9);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 10px;
-    white-space: pre-wrap;
+  /* ---- リマインダー（カードリスト形式） ---- */
+  .reminder-summary {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 0 0 14px;
   }
-  #reminderLog:empty::before { content: "（まだチェックを実行していません）"; color: var(--muted); }
+  .reminder-chip {
+    border: 1.5px solid var(--border);
+    background: rgba(255,255,255,0.5);
+    border-radius: 999px;
+    padding: 5px 13px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .reminder-chip .chip-count {
+    font-size: 11px;
+    opacity: 0.85;
+  }
+  .reminder-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .reminder-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 14px;
+    background: var(--panel-solid);
+    border: 1px solid var(--border);
+    border-left-width: 4px;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+  }
+  .reminder-card.is-done { opacity: 0.55; }
+  .reminder-card-main { flex: 1; min-width: 0; }
+  .reminder-card-title {
+    font-weight: 700;
+    font-size: 13.5px;
+    margin: 0 0 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .reminder-card-meta {
+    font-size: 11.5px;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    align-items: center;
+  }
+  .reminder-card-due { font-weight: 600; }
+  .reminder-card-actions {
+    display: flex;
+    gap: 6px;
+    flex: none;
+    align-items: center;
+  }
+  .reminder-badge {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 62px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .reminder-empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 32px 12px;
+    font-size: 13px;
+  }
+  .reminder-footer {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 16px 0 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
 
   dialog {
     border: none;
@@ -1296,33 +1376,15 @@
   <section class="panel modal-only" id="sectionReminder">
     <h2>🔔 リマインダー</h2>
     <div class="panel-body" id="reminderPanelBody">
-      <p style="font-size:12.5px; color:var(--muted); margin:0 0 10px; line-height:1.5;">
-        未完了タスクを「送信予定日（期限−リマインド日数）」の早い順に並べています。<br>
-        <strong style="color:var(--red);">期日超過</strong>・<strong style="color:#c47f00;">要送信</strong>のタスクから対応しましょう。「✉ 下書き」で既定メールソフトに下書きを作成できます。
-      </p>
-
       <!-- 状況サマリー：クリックで絞り込み -->
-      <div id="reminderSummary" style="display:flex; gap:8px; flex-wrap:wrap; margin:0 0 12px;"></div>
+      <div id="reminderSummary" class="reminder-summary"></div>
 
-      <div style="overflow-x:auto;">
-        <table style="width:100%; border-collapse:collapse; font-size:12px;">
-          <thead>
-            <tr style="background:#2b3f63; color:#fff;">
-              <th style="text-align:left; padding:6px 8px;">状態</th>
-              <th style="text-align:left; padding:6px 8px;">タスク名</th>
-              <th style="text-align:left; padding:6px 8px;">期限</th>
-              <th style="text-align:left; padding:6px 8px;">送信予定日</th>
-              <th style="text-align:left; padding:6px 8px;">宛先</th>
-              <th style="padding:6px 8px;"></th>
-            </tr>
-          </thead>
-          <tbody id="mailListBody"></tbody>
-        </table>
-      </div>
+      <!-- タスクカード一覧（緊急度の高い順） -->
+      <div id="reminderList" class="reminder-list"></div>
 
-      <div style="display:flex; gap:8px; margin:12px 0 0; flex-wrap:wrap;">
-        <button type="button" id="btnMailListCsv" class="secondary small">⬇ CSVダウンロード（Excel対応）</button>
-        <button type="button" id="btnReset" class="ghost small">送信済みフラグをリセット</button>
+      <div class="reminder-footer">
+        <button type="button" id="btnMailListCsv" class="ghost small">⬇ CSVダウンロード</button>
+        <button type="button" id="btnReset" class="ghost small">送信済みをリセット</button>
       </div>
     </div>
   </section>
@@ -2272,7 +2334,7 @@
   // 未完了タスクの期限とリマインド日数から「送信予定日・内容・期限・宛先（担当者＋参加者）」を自動作成する。
   // CSVダウンロード（Excel対応）と、既定メールソフトでの下書き作成（mailto）に対応。
   // ---------------------------------------------------------------
-  const mailListBody = document.getElementById("mailListBody");
+  const reminderList = document.getElementById("reminderList");
   const reminderSummary = document.getElementById("reminderSummary");
   let mailListRows = [];
   // 状態フィルタ（null=すべて表示）。サマリーのチップで切り替える
@@ -2335,15 +2397,19 @@
   function renderReminderSummary() {
     const counts = { "期日超過": 0, "要送信": 0, "予定": 0, "送信済": 0 };
     mailListRows.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
-    const total = mailListRows.length;
-    const chips = [["すべて", null, total], ...Object.keys(counts).map(st => [st, st, counts[st]])];
+    // 0件の状態はチップを出さず、シンプルに保つ（「すべて」は常に表示）
+    const chips = [["すべて", null, mailListRows.length]];
+    Object.keys(counts).forEach(st => { if (counts[st] > 0) chips.push([st, st, counts[st]]); });
     reminderSummary.innerHTML = chips.map(([label, filterVal, n]) => {
       const active = reminderFilter === filterVal;
-      const color = filterVal ? (REMINDER_STATUS_COLORS[filterVal] || "var(--text)") : "var(--accent)";
-      return `<button type="button" class="reminder-chip${active ? " active" : ""}" data-filter="${filterVal === null ? "" : filterVal}"
-        style="border:1.5px solid ${active ? color : "var(--border)"}; ${active ? `background:${color}; color:#fff;` : "background:rgba(255,255,255,0.5);"}
-        border-radius:999px; padding:4px 12px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">
-        ${label} ${n}</button>`;
+      const color = filterVal ? (REMINDER_STATUS_COLORS[filterVal] || "var(--accent)") : "var(--accent)";
+      const style = active
+        ? `border-color:${color}; background:${color}; color:#fff;`
+        : `border-color:var(--border);`;
+      const dotColor = filterVal ? color : "var(--accent)";
+      const dot = active ? "" : `<span style="width:7px; height:7px; border-radius:50%; background:${dotColor}; display:inline-block;"></span>`;
+      return `<button type="button" class="reminder-chip" data-filter="${filterVal === null ? "" : filterVal}" style="${style}">
+        ${dot}${label}<span class="chip-count">${n}</span></button>`;
     }).join("");
     reminderSummary.querySelectorAll(".reminder-chip").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -2358,34 +2424,38 @@
     renderReminderSummary();
     const rows = reminderFilter ? mailListRows.filter(r => r.status === reminderFilter) : mailListRows;
     if (!mailListRows.length) {
-      mailListBody.innerHTML = `<tr><td colspan="6" style="padding:12px 8px; color:var(--muted);">対象タスクがありません（期日ありの未完了タスクが対象です）</td></tr>`;
+      reminderList.innerHTML = `<div class="reminder-empty">🎉 対応が必要なタスクはありません<br><small>（期日ありの未完了タスクが対象です）</small></div>`;
       return;
     }
     if (!rows.length) {
-      mailListBody.innerHTML = `<tr><td colspan="6" style="padding:12px 8px; color:var(--muted);">「${reminderFilter}」のタスクはありません</td></tr>`;
+      reminderList.innerHTML = `<div class="reminder-empty">「${reminderFilter}」のタスクはありません</div>`;
       return;
     }
-    mailListBody.innerHTML = rows.map(r => {
-      const rcpt = r.recipients.length
-        ? r.recipients.map(x => `${escapeHtml(x.name)}${x.email ? "" : `<span style="color:#c22;">（アドレス無）</span>`}`).join("、")
+    reminderList.innerHTML = rows.map(r => {
+      const stColor = REMINDER_STATUS_COLORS[r.status] || "var(--muted)";
+      const dueText = r.daysLeft < 0 ? `${-r.daysLeft}日超過` : r.daysLeft === 0 ? "本日期限" : `あと${r.daysLeft}日`;
+      const names = r.recipients.length
+        ? r.recipients.map(x => escapeHtml(x.name)).join("、")
         : `<span style="color:#c22;">宛先未設定</span>`;
-      const stColor = REMINDER_STATUS_COLORS[r.status] || "inherit";
-      const dueColor = r.daysLeft < 0 ? "#c22" : r.daysLeft <= 1 ? "#c47f00" : "inherit";
-      const dueText = r.daysLeft < 0 ? `${-r.daysLeft}日超過` : r.daysLeft === 0 ? "本日" : `残${r.daysLeft}日`;
+      const noAddr = r.recipients.length && r.recipients.every(x => !x.email);
       const done = r.status === "送信済";
-      return `<tr style="${done ? "opacity:0.6;" : ""}">
-        <td style="white-space:nowrap;"><span style="display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; color:#fff; background:${stColor};">${r.status}</span></td>
-        <td>${escapeHtml(r.task.name)}</td>
-        <td style="white-space:nowrap; color:${dueColor};">${formatDate(r.due)}<br><small>${dueText}</small></td>
-        <td style="white-space:nowrap; color:var(--muted);">${formatDate(r.sendDate)}</td>
-        <td>${rcpt}</td>
-        <td style="white-space:nowrap;">
+      return `<div class="reminder-card${done ? " is-done" : ""}" style="border-left-color:${stColor};">
+        <span class="reminder-badge" style="background:${stColor};">${r.status}</span>
+        <div class="reminder-card-main">
+          <div class="reminder-card-title">${escapeHtml(r.task.name)}</div>
+          <div class="reminder-card-meta">
+            <span class="reminder-card-due" style="color:${stColor};">${dueText}</span>
+            <span>期限 ${formatDate(r.due)}</span>
+            <span>👤 ${names}${noAddr ? ` <span style="color:#c22;">(アドレス未登録)</span>` : ""}</span>
+          </div>
+        </div>
+        <div class="reminder-card-actions">
           <button type="button" class="secondary small" data-mailto="${r.task.id}" title="既定のメールソフトで下書きを作成">✉ 下書き</button>
           <button type="button" class="ghost small" data-toggledone="${r.task.id}" title="${done ? "送信済みを取り消す" : "送信済みにする"}">${done ? "↩" : "✓"}</button>
-        </td>
-      </tr>`;
+        </div>
+      </div>`;
     }).join("");
-    mailListBody.querySelectorAll("[data-mailto]").forEach(btn => {
+    reminderList.querySelectorAll("[data-mailto]").forEach(btn => {
       btn.addEventListener("click", () => {
         // 行の特定はタスクid（一意）で行う。表示後にリストが再構築されてもズレない
         const r = mailListRows.find(x => x.task.id === Number(btn.dataset.mailto));
@@ -2396,7 +2466,7 @@
           `&subject=${encodeURIComponent(r.subject)}&body=${encodeURIComponent(r.body)}`;
       });
     });
-    mailListBody.querySelectorAll("[data-toggledone]").forEach(btn => {
+    reminderList.querySelectorAll("[data-toggledone]").forEach(btn => {
       btn.addEventListener("click", () => {
         const task = state.tasks.find(t => t.id === Number(btn.dataset.toggledone));
         if (!task) return;
