@@ -1306,6 +1306,22 @@
 
       <div id="impStatus" style="font-size:12.5px; color:var(--muted); min-height:18px; margin:6px 0;"></div>
 
+      <div id="impFolderInfo" hidden style="margin:10px 0; padding:8px; background:rgba(59,130,246,0.08); border-radius:6px; border-left:3px solid #3b82f6;">
+        <div style="font-size:12.5px; font-weight:600; margin-bottom:6px;">📂 参照フォルダ内容</div>
+        <table id="impFolderFileTable" style="width:100%; border-collapse:collapse; font-size:12px;">
+          <thead>
+            <tr style="background:rgba(43,63,99,0.15); color:var(--text);">
+              <th style="text-align:left; padding:4px 6px; border-bottom:1px solid var(--border);">ファイル名</th>
+              <th style="text-align:right; padding:4px 6px; border-bottom:1px solid var(--border);">読み込んだ予定</th>
+            </tr>
+          </thead>
+          <tbody id="impFolderFileBody"></tbody>
+        </table>
+        <div style="font-size:11px; color:var(--muted); margin-top:6px; padding-top:6px; border-top:1px solid rgba(59,130,246,0.2);">
+          <span>合計: <strong id="impFolderFileCount">0</strong> ファイル、<strong id="impFolderTaskCount">0</strong> 件の予定</span>
+        </div>
+      </div>
+
       <div id="impPreviewWrap" hidden>
         <h3 style="font-size:13.5px; margin:10px 0 6px;">読み取った予定（チェックした行が追加されます・内容は編集できます）</h3>
         <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
@@ -2319,6 +2335,7 @@
   const impPreviewBody = document.getElementById("impPreviewBody");
   let impCandidates = [];
   let impUidSeq = 1; // 候補行の一意ID（配列インデックスを識別子に使わないため）
+  let impFileStats = {}; // ファイル名 → 読み込み件数
 
   function impSetStatus(msg) { impStatus.textContent = msg; }
 
@@ -2377,6 +2394,7 @@
         source
       });
       added++;
+      impFileStats[source] = (impFileStats[source] || 0) + 1;
     }
     return added;
   }
@@ -2614,8 +2632,26 @@
     impSetStatus(`${n} 件の新しい予定を読み取りました`);
   }
 
+  function renderImpFolderInfo() {
+    const files = Object.entries(impFileStats).sort((a, b) => a[0].localeCompare(b[0]));
+    if (!files.length) {
+      document.getElementById("impFolderInfo").hidden = true;
+      return;
+    }
+    document.getElementById("impFolderInfo").hidden = false;
+    const tbody = document.getElementById("impFolderFileBody");
+    tbody.innerHTML = files.map(([file, count]) => `
+      <tr>
+        <td style="text-align:left; padding:4px 6px; border-bottom:1px solid var(--border);">${escapeHtml(file)}</td>
+        <td style="text-align:right; padding:4px 6px; border-bottom:1px solid var(--border);">${count}</td>
+      </tr>`).join("");
+    document.getElementById("impFolderFileCount").textContent = files.length;
+    document.getElementById("impFolderTaskCount").textContent = Object.values(impFileStats).reduce((a, b) => a + b, 0);
+  }
+
   function renderImpPreview() {
     impPreviewWrap.hidden = impCandidates.length === 0;
+    renderImpFolderInfo();
     impPreviewBody.innerHTML = impCandidates.map(c => `
       <tr>
         <td style="text-align:center;"><input type="checkbox" data-f="include" data-uid="${c.uid}" ${c.include ? "checked" : ""}></td>
@@ -2669,6 +2705,7 @@
   });
   document.getElementById("btnImpClear").addEventListener("click", () => {
     impCandidates = [];
+    impFileStats = {};
     renderImpPreview();
     impSetStatus("");
   });
