@@ -1175,7 +1175,7 @@
 </header>
 
 <!-- 現行予定表：取り込んだ予定をリスト表示 -->
-<section id="currentScheduleSection" class="current-schedule" hidden>
+<section id="currentScheduleSection" class="current-schedule">
   <div class="current-schedule-header">
     <h2>📅 現行予定表</h2>
     <button id="btnCloseSchedule" class="ghost small" title="現行予定表を閉じる">✕</button>
@@ -2703,12 +2703,18 @@
 
   function renderCurrentSchedule() {
     const sect = document.getElementById("currentScheduleSection");
+    const tbody = document.getElementById("currentScheduleBody");
+
     if (!impCandidates.length) {
-      sect.hidden = true;
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="4" style="text-align:center; padding:20px 10px; color:var(--muted); font-size:13px;">
+            📭 現在、予定はありません
+          </td>
+        </tr>`;
       return;
     }
-    sect.hidden = false;
-    const tbody = document.getElementById("currentScheduleBody");
+
     tbody.innerHTML = impCandidates.map(c => {
       const participants = c.participants.length > 0
         ? c.participants.join("、")
@@ -4821,6 +4827,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     renderBgPin();
     renderSettings();
     renderContacts();
+    renderCurrentSchedule();
     renderBoard();
     reminderLog.textContent = "";
   }
