@@ -1143,6 +1143,27 @@
   </span>
 </header>
 
+<!-- 現行予定表：取り込んだ予定をリスト表示 -->
+<section id="currentScheduleSection" class="current-schedule" hidden>
+  <div class="current-schedule-header">
+    <h2>📅 現行予定表</h2>
+    <button id="btnCloseSchedule" class="ghost small" title="現行予定表を閉じる">✕</button>
+  </div>
+  <div class="current-schedule-body">
+    <table id="currentScheduleTable" style="width:100%; border-collapse:collapse; font-size:13px;">
+      <thead>
+        <tr style="background:rgba(43,63,99,0.1); border-bottom:1px solid var(--border);">
+          <th style="text-align:left; padding:8px 10px; font-weight:600;">期日</th>
+          <th style="text-align:left; padding:8px 10px; font-weight:600;">タスク名</th>
+          <th style="text-align:left; padding:8px 10px; font-weight:600;">参加者</th>
+          <th style="text-align:center; padding:8px 10px; font-weight:600; width:60px;">状況</th>
+        </tr>
+      </thead>
+      <tbody id="currentScheduleBody"></tbody>
+    </table>
+  </div>
+</section>
+
 <main>
 
   <section class="panel modal-only" id="sectionSettings">
@@ -2649,9 +2670,60 @@
     document.getElementById("impFolderTaskCount").textContent = Object.values(impFileStats).reduce((a, b) => a + b, 0);
   }
 
+  function renderCurrentSchedule() {
+    const sect = document.getElementById("currentScheduleSection");
+    if (!impCandidates.length) {
+      sect.hidden = true;
+      return;
+    }
+    sect.hidden = false;
+    const tbody = document.getElementById("currentScheduleBody");
+    tbody.innerHTML = impCandidates.map(c => {
+      const participants = c.participants.length > 0
+        ? c.participants.join("、")
+        : "（なし）";
+      return `
+        <tr style="border-bottom:1px solid var(--border);">
+          <td style="text-align:left; padding:8px 10px;">${escapeHtml(c.due || "未定")}</td>
+          <td style="text-align:left; padding:8px 10px;">${escapeHtml(c.name)}</td>
+          <td style="text-align:left; padding:8px 10px;">
+            <button type="button" class="participants-btn" data-uid="${c.uid}" style="background:none; border:none; color:var(--accent); cursor:pointer; text-decoration:underline; padding:0; font-size:inherit;">
+              ${escapeHtml(participants)}
+            </button>
+          </td>
+          <td style="text-align:center; padding:8px 10px;">
+            <input type="checkbox" class="schedule-include" data-uid="${c.uid}" ${c.include ? "checked" : ""} style="cursor:pointer;">
+          </td>
+        </tr>`;
+    }).join("");
+
+    tbody.querySelectorAll(".participants-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const uid = btn.dataset.uid;
+        const c = impCandidates.find(x => x.uid === uid);
+        if (!c || !c.participants.length) return;
+        showParticipantsList(c.name, c.participants);
+      });
+    });
+
+    tbody.querySelectorAll(".schedule-include").forEach(chk => {
+      chk.addEventListener("change", () => {
+        const c = impCandidates.find(x => x.uid === chk.dataset.uid);
+        if (c) c.include = chk.checked;
+      });
+    });
+  }
+
+  function showParticipantsList(taskName, participants) {
+    const msg = `【${escapeHtml(taskName)}】\n\n参加者：\n${participants.map(p => `• ${escapeHtml(p)}`).join("\n")}`;
+    alert(msg);
+  }
+
   function renderImpPreview() {
     impPreviewWrap.hidden = impCandidates.length === 0;
     renderImpFolderInfo();
+    renderCurrentSchedule();
     impPreviewBody.innerHTML = impCandidates.map(c => `
       <tr>
         <td style="text-align:center;"><input type="checkbox" data-f="include" data-uid="${c.uid}" ${c.include ? "checked" : ""}></td>
@@ -2708,6 +2780,9 @@
     impFileStats = {};
     renderImpPreview();
     impSetStatus("");
+  });
+  document.getElementById("btnCloseSchedule").addEventListener("click", () => {
+    document.getElementById("currentScheduleSection").hidden = true;
   });
   // 取り込みタスクの所属ボード：期日の月と同名のボード（例「8月」）があればそこへ、無ければ先頭ボードへ
   function impBoardIdFor(due) {
