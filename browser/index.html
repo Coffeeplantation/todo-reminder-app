@@ -1188,6 +1188,7 @@
       <button type="button" id="btnOpenArchive" class="ghost" title="終了したボードの確認・復元（ゴミ箱）">🗑 終了ボード</button>
       <button type="button" id="btnOpenReminder" class="ghost" title="リマインダーチェックを開く">🔔 リマインダー</button>
       <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
+      <button type="button" id="btnOpenAiSettings" class="ghost" title="AIプロバイダ・APIキーの設定">🤖 AI設定</button>
       <button type="button" id="btnOpenSettings" class="ghost" title="設定を開く">⚙ 設定</button>
     </div>
   </span>
@@ -1248,7 +1249,15 @@
 
         <label for="cfgBgInterval">背景の自動切替間隔（分）</label>
         <input type="number" id="cfgBgInterval" min="1" value="10">
+      </div>
+    </div>
+  </section>
 
+  <!-- AI設定：ヘッダーメニューから開く。プロバイダ・各APIキー・ローカルモデル名をまとめる -->
+  <section class="panel modal-only" id="sectionAiSettings">
+    <h2>🤖 AI設定</h2>
+    <div class="panel-body">
+      <div class="settings-grid">
         <label for="cfgAiProvider">AI：プロバイダ</label>
         <select id="cfgAiProvider" style="padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; max-width:240px;">
           <option value="anthropic">Claude（Anthropic）</option>
@@ -2058,6 +2067,7 @@
   // ---------------------------------------------------------------
   const PANEL_SECTION_IDS = {
     settings: "sectionSettings",
+    aiSettings: "sectionAiSettings",
     reminder: "sectionReminder",
     contacts: "sectionContacts",
     import: "sectionImport",
@@ -4981,6 +4991,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
   });
   document.getElementById("btnBgChange").addEventListener("click", () => changeBackground(true));
   document.getElementById("btnOpenSettings").addEventListener("click", () => openPanelModal("settings"));
+  document.getElementById("btnOpenAiSettings").addEventListener("click", () => openPanelModal("aiSettings"));
   document.getElementById("btnOpenReminder").addEventListener("click", () => openPanelModal("reminder"));
   document.getElementById("btnOpenContacts").addEventListener("click", () => {
     // ヘッダーからの名簿は常に総合名簿（全員）
