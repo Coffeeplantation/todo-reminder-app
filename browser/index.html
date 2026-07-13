@@ -3654,8 +3654,8 @@
         hdrLabel.className = "kb-col-hdr-label";
         let displayLabel = boardLabel(key);
         let isMinimalSize = false;
-        // 最小サイズの場合は、ボードの miniName を表示
-        if (pos.w && pos.w < 80 && memberIds.length === 1) {
+        // 最小サイズ付近（最小幅90px前後）では、ボードの miniName を表示
+        if (pos.w && pos.w <= COL_MIN_W + 30 && memberIds.length === 1) {
           const board = state.boards.find(b => b.id === memberIds[0]);
           if (board) {
             // miniName が設定されていない場合はデフォルト値を生成
