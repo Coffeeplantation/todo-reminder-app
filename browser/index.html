@@ -1154,6 +1154,19 @@
   .pt-chip .pt-x { border: none; background: none; cursor: pointer; color: inherit; font-size: 11px; padding: 0 0 0 2px; line-height: 1; }
   .pt-chip.suggest { background: transparent; border: 1px dashed var(--border); color: var(--muted); cursor: pointer; }
   .pt-chip.suggest:hover { border-color: var(--accent); color: var(--accent); }
+  .pt-roster-btn {
+    border: 1px solid rgba(37, 99, 235, 0.35);
+    background: rgba(37, 99, 235, 0.08);
+    color: var(--accent);
+    border-radius: 8px;
+    padding: 3px 10px;
+    font-size: 0.85em;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: none;
+  }
+  .pt-roster-btn:hover { background: rgba(37, 99, 235, 0.16); filter: none; box-shadow: none; }
   .pt-add { display: flex; gap: 4px; margin-top: 4px; }
   .pt-add input { flex: 1; }
   #mailListBody td { padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -1326,6 +1339,23 @@
     </div>
   </span>
 </header>
+
+<!-- タスク参加者の名簿リスト（カードの👥ボタンから開く別表） -->
+<section id="sectionTaskParticipants" class="panel modal-only">
+  <h2 id="taskParticipantsTitle">👥 参加者</h2>
+  <div class="panel-body">
+    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+      <thead>
+        <tr style="background:rgba(43,63,99,0.1); border-bottom:1px solid var(--border);">
+          <th style="text-align:left; padding:8px 10px; font-weight:600;">名前</th>
+          <th style="text-align:left; padding:8px 10px; font-weight:600;">メールアドレス</th>
+          <th style="text-align:left; padding:8px 10px; font-weight:600;">部署</th>
+        </tr>
+      </thead>
+      <tbody id="taskParticipantsBody"></tbody>
+    </table>
+  </div>
+</section>
 
 <!-- 現行予定表：取り込んだ予定をリスト表示 -->
 <section id="sectionCurrentSchedule" class="panel modal-only">
@@ -2202,6 +2232,7 @@
     aiSettings: "sectionAiSettings",
     reminder: "sectionReminder",
     contacts: "sectionContacts",
+    taskParticipants: "sectionTaskParticipants",
     import: "sectionImport",
     archive: "sectionArchive",
     currentSchedule: "sectionCurrentSchedule"
@@ -2214,6 +2245,11 @@
 
   function openPanelModal(key, returnMenuKey = null) {
     const el = document.getElementById(PANEL_SECTION_IDS[key]);
+    // すでに別パネルを表示中なら、その要素を元の位置へ戻してから差し替える（二重showModalを防ぐ）
+    if (panelModal.open && modalReturn) {
+      const p = modalReturn;
+      if (p.nextSibling) p.parent.insertBefore(p.el, p.nextSibling); else p.parent.appendChild(p.el);
+    }
     modalReturn = { el, parent: el.parentElement, nextSibling: el.nextSibling };
     modalReturnMenuKey = returnMenuKey;
     panelModalBody.appendChild(el);
@@ -2222,7 +2258,7 @@
       reminderFilter = null;
       renderMailList();
     }
-    panelModal.showModal();
+    if (!panelModal.open) panelModal.showModal();
   }
 
   document.getElementById("panelModalClose").addEventListener("click", () => panelModal.close());
@@ -3010,13 +3046,26 @@
     });
   }
 
-  function showParticipantsList(taskName, participants) {
-    // alert はプレーンテキスト表示のため、HTMLエスケープはせず生の名前を表示する
-    const list = (participants || []).filter(p => (p || "").trim());
-    const body = list.length
-      ? `参加者（${list.length}名）：\n${list.map(p => `・${p}`).join("\n")}`
-      : "参加者は登録されていません。";
-    alert(`【${taskName}】\n\n${body}`);
+  function showParticipantsList(taskName, participants, returnMenuKey = null) {
+    // 参加者を名簿（state.contacts）と突き合わせ、別表モーダルで表示する
+    const list = (participants || []).map(p => (p || "").trim()).filter(Boolean);
+    document.getElementById("taskParticipantsTitle").textContent = `👥 参加者リスト — ${taskName}`;
+    const body = document.getElementById("taskParticipantsBody");
+    if (!list.length) {
+      body.innerHTML = `<tr><td colspan="3" style="padding:12px 10px; color:var(--muted);">参加者は登録されていません。</td></tr>`;
+    } else {
+      body.innerHTML = list.map(name => {
+        const c = state.contacts.find(x => x.name.trim() === name);
+        const email = c && c.email ? escapeHtml(c.email) : `<span style="color:#c22;">未登録</span>`;
+        const dept = c && c.dept ? escapeHtml(c.dept) : "—";
+        return `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:8px 10px;">${escapeHtml(name)}</td>
+          <td style="padding:8px 10px;">${email}</td>
+          <td style="padding:8px 10px; color:var(--muted);">${dept}</td>
+        </tr>`;
+      }).join("");
+    }
+    openPanelModal("taskParticipants", returnMenuKey);
   }
 
   function renderImpPreview() {
@@ -3619,7 +3668,10 @@
           <input type="text" class="edit-assignee" value="${escapeHtml(task.assignee)}" list="assigneeList">
         </label>
         <div class="kb-field">
-          <span class="f-label">👥 参加者 <span class="f-hint">点線は前回の類似タスクからの提案</span></span>
+          <span class="f-label" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            <span>👥 参加者</span>
+            <button type="button" class="pt-roster-btn" data-open-roster title="参加者を名簿リスト（別表）で開く">📋 名簿を開く</button>
+          </span>
           <span class="pt-chips" data-participants>
             ${(task.participants || []).map(p => `<span class="pt-chip">${escapeHtml(p)}<button type="button" class="pt-x" data-remove-pt="${escapeHtml(p)}" title="参加者から外す">✕</button></span>`).join("")}
             ${suggestParticipants(task.name, [task.assignee, ...(task.participants || [])]).map(p => `<button type="button" class="pt-chip suggest" data-add-pt="${escapeHtml(p)}" title="前回の類似タスクからの提案。クリックで追加">＋ ${escapeHtml(p)}</button>`).join("")}
@@ -3696,6 +3748,12 @@
         task.assignee = e.target.value.trim();
         save();
         renderBoard();
+      });
+      // 「📋 名簿を開く」：参加者を名簿リスト（別表）で表示する
+      const rosterBtn = card.querySelector("[data-open-roster]");
+      if (rosterBtn) rosterBtn.addEventListener("click", e => {
+        e.stopPropagation();
+        showParticipantsList(task.name, task.participants || []);
       });
       // 参加者：チップの✕で削除、点線の提案チップ・入力欄から追加（担当者が参加者を足していく）
       card.querySelectorAll("[data-remove-pt]").forEach(b => b.addEventListener("click", () => {
