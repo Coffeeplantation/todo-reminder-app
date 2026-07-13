@@ -1171,8 +1171,8 @@
     <table id="currentScheduleTable" style="width:100%; border-collapse:collapse; font-size:13px;">
       <thead>
         <tr style="background:rgba(43,63,99,0.1); border-bottom:1px solid var(--border);">
-          <th style="text-align:left; padding:8px 10px; font-weight:600;">期日</th>
           <th style="text-align:left; padding:8px 10px; font-weight:600;">タスク名</th>
+          <th style="text-align:left; padding:8px 10px; font-weight:600;">期日</th>
           <th style="text-align:left; padding:8px 10px; font-weight:600;">参加者</th>
           <th style="text-align:center; padding:8px 10px; font-weight:600; width:60px;">状況</th>
         </tr>
@@ -2708,8 +2708,8 @@
         : "（なし）";
       return `
         <tr style="border-bottom:1px solid var(--border);">
-          <td style="text-align:left; padding:8px 10px;">${escapeHtml(c.due || "未定")}</td>
           <td style="text-align:left; padding:8px 10px;">${escapeHtml(c.name)}</td>
+          <td style="text-align:left; padding:8px 10px;">${escapeHtml(c.due || "未定")}</td>
           <td style="text-align:left; padding:8px 10px;">
             <button type="button" class="participants-btn" data-uid="${c.uid}" style="background:none; border:none; color:var(--accent); cursor:pointer; text-decoration:underline; padding:0; font-size:inherit;">
               ${escapeHtml(participants)}
