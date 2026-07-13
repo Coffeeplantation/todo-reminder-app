@@ -2768,42 +2768,73 @@
     });
   }
 
-  document.getElementById("btnOpenImport").addEventListener("click", () => openPanelModal("import"));
-  document.getElementById("btnImpFolder").addEventListener("click", () => document.getElementById("impFolderInput").click());
-  document.getElementById("btnImpFiles").addEventListener("click", () => document.getElementById("impFilesInput").click());
+  const btnOpenImport = document.getElementById("btnOpenImport");
+  if (btnOpenImport) btnOpenImport.addEventListener("click", () => openPanelModal("import"));
+
+  const btnImpFolder = document.getElementById("btnImpFolder");
+  if (btnImpFolder) {
+    btnImpFolder.addEventListener("click", () => {
+      const input = document.getElementById("impFolderInput");
+      if (input) input.click();
+    });
+  }
+
+  const btnImpFiles = document.getElementById("btnImpFiles");
+  if (btnImpFiles) {
+    btnImpFiles.addEventListener("click", () => {
+      const input = document.getElementById("impFilesInput");
+      if (input) input.click();
+    });
+  }
   for (const id of ["impFolderInput", "impFilesInput"]) {
     document.getElementById(id).addEventListener("change", e => {
       impHandleFiles(e.target.files).catch(err => impSetStatus("エラー: " + err.message));
       e.target.value = "";
     });
   }
-  document.getElementById("btnImpUrl").addEventListener("click", () => {
-    const u = document.getElementById("impUrl").value.trim();
-    if (!u) { impSetStatus("URLを入力してください"); return; }
-    impHandleUrl(u).catch(err => impSetStatus("エラー: " + err.message));
-  });
-  document.getElementById("btnImpText").addEventListener("click", async () => {
-    const t = document.getElementById("impText").value.trim();
-    if (!t) { impSetStatus("テキストを貼り付けてください"); return; }
-    impSetStatus("AIで予定を抽出中…（ローカルAIは1分ほどかかることがあります）");
-    try {
-      const n = impAddCandidates(await aiExtractTasks(t), "貼り付けテキスト");
+  const btnImpUrl = document.getElementById("btnImpUrl");
+  if (btnImpUrl) {
+    btnImpUrl.addEventListener("click", () => {
+      const u = document.getElementById("impUrl").value.trim();
+      if (!u) { impSetStatus("URLを入力してください"); return; }
+      impHandleUrl(u).catch(err => impSetStatus("エラー: " + err.message));
+    });
+  }
+
+  const btnImpText = document.getElementById("btnImpText");
+  if (btnImpText) {
+    btnImpText.addEventListener("click", async () => {
+      const t = document.getElementById("impText").value.trim();
+      if (!t) { impSetStatus("テキストを貼り付けてください"); return; }
+      impSetStatus("AIで予定を抽出中…（ローカルAIは1分ほどかかることがあります）");
+      try {
+        const n = impAddCandidates(await aiExtractTasks(t), "貼り付けテキスト");
+        renderImpPreview();
+        impSetStatus(`${n} 件の新しい予定を読み取りました`);
+      } catch (e) {
+        impSetStatus("エラー: " + e.message);
+      }
+    });
+  }
+
+  const impCheckAll = document.getElementById("impCheckAll");
+  if (impCheckAll) {
+    impCheckAll.addEventListener("change", e => {
+      impCandidates.forEach(c => { c.include = e.target.checked; });
       renderImpPreview();
-      impSetStatus(`${n} 件の新しい予定を読み取りました`);
-    } catch (e) {
-      impSetStatus("エラー: " + e.message);
-    }
-  });
-  document.getElementById("impCheckAll").addEventListener("change", e => {
-    impCandidates.forEach(c => { c.include = e.target.checked; });
-    renderImpPreview();
-  });
-  document.getElementById("btnImpClear").addEventListener("click", () => {
-    impCandidates = [];
-    impFileStats = {};
-    renderImpPreview();
-    impSetStatus("");
-  });
+    });
+  }
+
+  const btnImpClear = document.getElementById("btnImpClear");
+  if (btnImpClear) {
+    btnImpClear.addEventListener("click", () => {
+      impCandidates = [];
+      impFileStats = {};
+      renderImpPreview();
+      impSetStatus("");
+    });
+  }
+
   // 取り込みタスクの所属ボード：期日の月と同名のボード（例「8月」）があればそこへ、無ければ先頭ボードへ
   function impBoardIdFor(due) {
     if (!activeBoards().length) createBoard("ボード1");
@@ -2817,32 +2848,35 @@
     return activeBoards()[0].id;
   }
 
-  document.getElementById("btnImpAdd").addEventListener("click", () => {
-    const sel = impCandidates.filter(c => c.include && c.name);
-    if (!sel.length) { impSetStatus("追加する行にチェックを入れてください"); return; }
-    let added = 0;
-    for (const c of sel) {
-      const due = c.due ? (normalizeDueInput(c.due.replace(/-/g, "/")) || "") : "";
-      state.tasks.push({
-        id: state.nextTaskId++,
-        name: c.name,
-        assignee: c.assignee,
-        participants: c.participants.slice(),
-        due,
-        reminderDays: Math.max(0, state.settings.reminderDays || 3),
-        status: "未完了",
-        sentFlag: "",
-        boards: [impBoardIdFor(due)]
-      });
-      added++;
-    }
-    impCandidates = impCandidates.filter(c => !(c.include && c.name));
-    save();
-    renderBoard();
-    renderImpPreview();
-    toast(`${added} 件のタスクをボードに追加しました`);
-    impSetStatus(`${added} 件をボードに追加しました`);
-  });
+  const btnImpAdd = document.getElementById("btnImpAdd");
+  if (btnImpAdd) {
+    btnImpAdd.addEventListener("click", () => {
+      const sel = impCandidates.filter(c => c.include && c.name);
+      if (!sel.length) { impSetStatus("追加する行にチェックを入れてください"); return; }
+      let added = 0;
+      for (const c of sel) {
+        const due = c.due ? (normalizeDueInput(c.due.replace(/-/g, "/")) || "") : "";
+        state.tasks.push({
+          id: state.nextTaskId++,
+          name: c.name,
+          assignee: c.assignee,
+          participants: c.participants.slice(),
+          due,
+          reminderDays: Math.max(0, state.settings.reminderDays || 3),
+          status: "未完了",
+          sentFlag: "",
+          boards: [impBoardIdFor(due)]
+        });
+        added++;
+      }
+      impCandidates = impCandidates.filter(c => !(c.include && c.name));
+      save();
+      renderBoard();
+      renderImpPreview();
+      toast(`${added} 件のタスクをボードに追加しました`);
+      impSetStatus(`${added} 件をボードに追加しました`);
+    });
+  }
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
