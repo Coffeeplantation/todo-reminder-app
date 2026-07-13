@@ -3657,8 +3657,11 @@
         // 最小サイズの場合は、ボードの miniName を表示
         if (pos.w && pos.w < 80 && memberIds.length === 1) {
           const board = state.boards.find(b => b.id === memberIds[0]);
-          if (board && board.miniName) {
-            displayLabel = board.miniName;
+          if (board) {
+            // miniName が設定されていない場合はデフォルト値を生成
+            const boardIdx = state.boards.indexOf(board);
+            const defaultMiniName = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"][boardIdx] || `#${boardIdx + 1}`;
+            displayLabel = board.miniName || defaultMiniName;
             isMinimalSize = true;
           }
         }
