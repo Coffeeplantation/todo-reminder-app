@@ -1965,6 +1965,8 @@
       const when = dt ? `${dt.getFullYear()}/${pad2(dt.getMonth() + 1)}/${pad2(dt.getDate())} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}` : "—";
       const badge = b.archivedReason === "完了"
         ? `<span style="color:var(--green, #16a34a); font-weight:600;">✅ 完了</span>`
+        : b.archivedReason === "終了"
+        ? `<span style="color:var(--muted); font-weight:600;">🗑 終了</span>`
         : `<span style="color:#c22; font-weight:600;">🗑 削除</span>`;
       const peeking = archivePeekBoardId === b.id;
       const peekRow = peeking ? `<tr>
@@ -3795,25 +3797,16 @@
           menu.appendChild(addBtn);
 
           if (!isGroupKey(key)) {
-            const doneBtn = document.createElement("button");
-            doneBtn.type = "button";
-            doneBtn.className = "kb-col-menu-item";
-            doneBtn.textContent = "✅ ボードを完了（終了へ移動）";
-            doneBtn.addEventListener("click", () => {
+            // 完了・削除は「終了ボード」へ移すという同じ動作のため1つに統合（いつでも復元可）
+            const archiveBtn = document.createElement("button");
+            archiveBtn.type = "button";
+            archiveBtn.className = "kb-col-menu-item";
+            archiveBtn.textContent = "🗑 ボードを終了（終了ボードへ移動）";
+            archiveBtn.addEventListener("click", () => {
               openMenuMonthKey = null;
-              archiveBoard(key, "完了");
+              archiveBoard(key, "終了");
             });
-            menu.appendChild(doneBtn);
-
-            const delBtn = document.createElement("button");
-            delBtn.type = "button";
-            delBtn.className = "kb-col-menu-item";
-            delBtn.textContent = "🗑 ボードを削除（終了へ移動）";
-            delBtn.addEventListener("click", () => {
-              openMenuMonthKey = null;
-              archiveBoard(key, "削除");
-            });
-            menu.appendChild(delBtn);
+            menu.appendChild(archiveBtn);
           }
 
           if (isGroupKey(key)) {
@@ -3849,7 +3842,8 @@
             menu.appendChild(unmergeAllBtn);
           }
 
-          [["settings", "設定"], ["reminder", "リマインダー"], ["contacts", "名簿"]].forEach(([panelKey, label]) => {
+          // 「設定」パネルは「⚙ ボード設定」内に統合したため、ここでは扱わない
+          [["reminder", "リマインダー"], ["contacts", "名簿"]].forEach(([panelKey, label]) => {
             const item = document.createElement("button");
             item.type = "button";
             item.className = "kb-col-menu-item";
@@ -3867,17 +3861,29 @@
             menu.appendChild(item);
           });
 
-          // 見た目に関する設定（色・形・枠線など）は「⚙ 表示設定」として折りたたみにまとめる
+          // 見た目に関する設定（色・形・枠線など）は「⚙ ボード設定」として折りたたみにまとめる
           const configSection = document.createElement("details");
           configSection.className = "kb-col-menu-config";
           if (openConfigMonthKey === key) configSection.open = true;
           const configSummary = document.createElement("summary");
-          configSummary.textContent = "⚙ ボード設定";
+          configSummary.textContent = "⚙ 設定";
           configSection.appendChild(configSummary);
           // 開閉状態を覚えておき、再描画（色変更など）でも開いたままにする
           configSection.addEventListener("toggle", () => {
             openConfigMonthKey = configSection.open ? key : (openConfigMonthKey === key ? null : openConfigMonthKey);
           });
+
+          // アプリ全体の設定パネルもこの設定内から開けるように統合
+          const openSettingsBtn = document.createElement("button");
+          openSettingsBtn.type = "button";
+          openSettingsBtn.className = "kb-col-menu-item";
+          openSettingsBtn.textContent = "⚙ 詳細設定を開く";
+          openSettingsBtn.addEventListener("click", () => {
+            openMenuMonthKey = null;
+            renderBoard();
+            openPanelModal("settings");
+          });
+          configSection.appendChild(openSettingsBtn);
 
           // 名前の変更・最小サイズ表示名の変更（結合ボードでは不可）も設定内にまとめる
           if (!isGroupKey(key)) {
