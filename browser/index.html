@@ -1059,6 +1059,28 @@
     padding-top: 12px;
     border-top: 1px solid var(--border);
   }
+  .reminder-help {
+    background: rgba(37, 99, 235, 0.06);
+    border: 1px solid rgba(37, 99, 235, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    margin: 0 0 14px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--text);
+  }
+  .reminder-help-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 4px 0;
+  }
+  .reminder-help-legend > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .reminder-help-legend .reminder-badge { flex: none; }
 
   dialog {
     border: none;
@@ -1374,8 +1396,26 @@
   </section>
 
   <section class="panel modal-only" id="sectionReminder">
-    <h2>🔔 リマインダー</h2>
+    <h2 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+      <span>🔔 リマインダー</span>
+      <button type="button" id="btnReminderHelp" class="ghost small" style="font-weight:600;">❓ 使い方</button>
+    </h2>
     <div class="panel-body" id="reminderPanelBody">
+      <!-- 使い方ガイド（❓ボタンで開閉） -->
+      <div id="reminderHelp" class="reminder-help" hidden>
+        <p style="margin:0 0 8px; font-weight:700;">📖 リマインダーの使い方</p>
+        <p style="margin:0 0 8px;">期日ありの未完了タスクを、対応が必要な順に自動でならべます。状態は「送信予定日（＝期限−リマインド日数前）」から自動で決まります。</p>
+        <div class="reminder-help-legend">
+          <div><span class="reminder-badge" style="background:#c22;">期日超過</span>期限を過ぎています。至急対応してください。</div>
+          <div><span class="reminder-badge" style="background:#c47f00;">要送信</span>送信予定日になりました。今、下書き送信しましょう。</div>
+          <div><span class="reminder-badge" style="background:var(--muted);">予定</span>まだ先です（送信予定日が未来）。対応はまだ不要。</div>
+          <div><span class="reminder-badge" style="background:var(--green, #16a34a);">送信済</span>「✓」で完了にしたタスク。「↩」で戻せます。</div>
+        </div>
+        <p style="margin:8px 0 0;">・上のチップ（<strong>すべて / 期日超過…</strong>）をクリックすると、その状態だけに絞り込めます。<br>
+        ・<strong>✉ 下書き</strong>：宛先・件名・本文を入れた状態で、パソコンの既定メールソフトを開きます（自動送信はしません）。宛先は👥名簿のメールアドレスを使います。<br>
+        ・<strong>⬇ CSVダウンロード</strong>：一覧をExcelで開ける形式で保存します。</p>
+      </div>
+
       <!-- 状況サマリー：クリックで絞り込み -->
       <div id="reminderSummary" class="reminder-summary"></div>
 
@@ -2328,6 +2368,12 @@
   }
 
   document.getElementById("btnReset").addEventListener("click", resetSentFlags);
+
+  // 「❓ 使い方」ガイドの開閉
+  document.getElementById("btnReminderHelp").addEventListener("click", () => {
+    const help = document.getElementById("reminderHelp");
+    help.hidden = !help.hidden;
+  });
 
   // ---------------------------------------------------------------
   // 通知メール送信リスト
