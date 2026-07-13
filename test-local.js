@@ -53,13 +53,11 @@ async function testSendReminders() {
       console.log(`      参加者: ${task.participants || 'なし'}`);
 
       try {
-        // Claude API でメール生成
-        if (!process.env.ANTHROPIC_API_KEY) {
-          console.log('      ⚠️  ANTHROPIC_API_KEY が未設定です（スキップ）\n');
-          continue;
-        }
+        // Claude API またはモック でメール生成
+        const isRealAPI = !!process.env.ANTHROPIC_API_KEY;
+        const apiLabel = isRealAPI ? '🤖 Claude API' : '🎭 モック（テスト用）';
 
-        console.log('      🤖 Claude API でメール生成中...');
+        console.log(`      ${apiLabel} でメール生成中...`);
         const emailBody = await generateEmailBody(task);
 
         console.log('      📧 生成されたメール本文:');
@@ -118,6 +116,11 @@ async function getTasks() {
 }
 
 async function generateEmailBody(task) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    // API キーなしの場合はモック応答を返す
+    return generateMockEmail(task);
+  }
+
   const anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY
   });
@@ -150,6 +153,24 @@ async function generateEmailBody(task) {
   });
 
   return message.content[0].type === 'text' ? message.content[0].text : '';
+}
+
+function generateMockEmail(task) {
+  const daysUntil = Math.ceil(
+    (new Date(task.due_date) - new Date()) / (1000 * 60 * 60 * 24)
+  );
+
+  const templates = {
+    overdue: `お疲れ様です。\n\n「${task.name}」の提出期限がすでに過ぎています。\n大変お手数ですが、至急のご対応をお願いいたします。\n\nよろしくお願いいたします。`,
+
+    today: `お疲れ様です。\n\n「${task.name}」の提出期限が本日となっています。\nお忙しいところ恐れ入りますが、本日中のご完了をお願いいたします。\n\nよろしくお願いいたします。`,
+
+    soon: `お疲れ様です。\n\n「${task.name}」の提出期限が${daysUntil}日後に迫っています。\nお手すきの際に、ご対応いただきますようお願いいたします。\n\nよろしくお願いいたします。`
+  };
+
+  if (daysUntil < 0) return templates.overdue;
+  if (daysUntil === 0) return templates.today;
+  return templates.soon;
 }
 
 function closeDB() {
