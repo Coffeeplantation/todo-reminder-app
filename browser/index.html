@@ -3616,15 +3616,17 @@
         const hdrLabel = document.createElement("span");
         hdrLabel.className = "kb-col-hdr-label";
         let displayLabel = boardLabel(key);
+        let isMinimalSize = false;
         // 最小サイズの場合は、作成順序による番号のみ表示
         if (pos.w && pos.w < 80 && memberIds.length === 1) {
           const boardIdx = state.boards.findIndex(b => b.id === memberIds[0]);
           if (boardIdx >= 0) {
             const boardNumbers = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩", "⑪", "⑫"];
             displayLabel = boardNumbers[boardIdx] || (boardIdx + 1);
+            isMinimalSize = true;
           }
         }
-        hdrLabel.textContent = (pos.icon ? pos.icon + " " : "") + "▼ " + displayLabel;
+        hdrLabel.textContent = (pos.icon ? pos.icon + " " : "") + (isMinimalSize ? "" : "▼ ") + displayLabel;
         hdr.appendChild(hdrLabel);
         if (tasks.length > 0) {
           // 「現在のタスク数 N」をヘッダー中央に表示する
