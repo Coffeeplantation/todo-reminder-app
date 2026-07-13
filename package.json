@@ -1,0 +1,37 @@
+{
+  "name": "todoreminder",
+  "version": "1.0.0",
+  "description": "タスクボードと予定管理を統合したシンプルで強力なタスク管理アプリ",
+  "main": "browser/index.html",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Coffeeplantation/todo-reminder-app.git"
+  },
+  "keywords": [
+    "todo",
+    "task-management",
+    "kanban",
+    "scheduler",
+    "planner",
+    "タスク管理",
+    "予定管理",
+    "カンバン"
+  ],
+  "author": "Coffeeplantation",
+  "license": "MIT",
+  "scripts": {
+    "start": "cd browser && python -m http.server 8000",
+    "start:win": "cd browser && python -m http.server 8000"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=12.0.0"
+  },
+  "homepage": "https://github.com/Coffeeplantation/todo-reminder-app#readme",
+  "bugs": {
+    "url": "https://github.com/Coffeeplantation/todo-reminder-app/issues"
+  }
+}
