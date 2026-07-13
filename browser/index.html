@@ -986,29 +986,7 @@
   #mailListBody td { padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
 
   /* ---- 現行予定表 ---- */
-  .current-schedule {
-    background: rgba(255, 255, 255, 0.85);
-    border-bottom: 2px solid var(--blue);
-    padding: 12px 16px;
-    margin: 0;
-  }
-  .current-schedule-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-  }
-  .current-schedule-header h2 {
-    font-size: 15px;
-    margin: 0;
-    color: var(--text);
-    font-weight: 600;
-  }
-  .current-schedule-body {
-    max-height: 300px;
-    overflow-y: auto;
-  }
-  .current-schedule-body table tbody tr:hover {
+  #sectionCurrentSchedule .panel-body table tbody tr:hover {
     background: rgba(59, 130, 246, 0.05);
   }
   .participants-btn:hover {
@@ -1167,6 +1145,7 @@
         <button type="button" id="btnBgPin" class="ghost" title="背景を固定（自動切替を停止し、次回起動時も同じ背景を表示）">📌 固定</button>
       </div>
       <button type="button" id="btnOpenArchive" class="ghost" title="終了したボードの確認・復元（ゴミ箱）">🗑 終了ボード</button>
+      <button type="button" id="btnOpenCurrentSchedule" class="ghost" title="現行予定表を開く">📅 現行予定表</button>
       <button type="button" id="btnOpenReminder" class="ghost" title="リマインダーチェックを開く">🔔 リマインダー</button>
       <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
       <button type="button" id="btnOpenSettings" class="ghost" title="設定を開く">⚙ 設定</button>
@@ -1175,12 +1154,9 @@
 </header>
 
 <!-- 現行予定表：取り込んだ予定をリスト表示 -->
-<section id="currentScheduleSection" class="current-schedule">
-  <div class="current-schedule-header">
-    <h2>📅 現行予定表</h2>
-    <button id="btnCloseSchedule" class="ghost small" title="現行予定表を閉じる">✕</button>
-  </div>
-  <div class="current-schedule-body">
+<section id="sectionCurrentSchedule" class="panel modal-only">
+  <h2>📅 現行予定表</h2>
+  <div class="panel-body">
     <table id="currentScheduleTable" style="width:100%; border-collapse:collapse; font-size:13px;">
       <thead>
         <tr style="background:rgba(43,63,99,0.1); border-bottom:1px solid var(--border);">
@@ -1997,7 +1973,8 @@
     reminder: "sectionReminder",
     contacts: "sectionContacts",
     import: "sectionImport",
-    archive: "sectionArchive"
+    archive: "sectionArchive",
+    currentSchedule: "sectionCurrentSchedule"
   };
   const panelModal = document.getElementById("panelModal");
   const panelModalBody = document.getElementById("panelModalBody");
@@ -2702,7 +2679,6 @@
   }
 
   function renderCurrentSchedule() {
-    const sect = document.getElementById("currentScheduleSection");
     const tbody = document.getElementById("currentScheduleBody");
 
     if (!impCandidates.length) {
@@ -4786,6 +4762,10 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     renderContacts();
     openPanelModal("contacts");
   });
+  document.getElementById("btnOpenCurrentSchedule").addEventListener("click", () => {
+    renderCurrentSchedule();
+    openPanelModal("currentSchedule");
+  });
 
   // N: タスク追加 / B: 背景変更 / "/": 検索へフォーカス / Esc: 検索クリア・選択解除・メニューを閉じる
   document.addEventListener("keydown", e => {
@@ -4827,7 +4807,6 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     renderBgPin();
     renderSettings();
     renderContacts();
-    renderCurrentSchedule();
     renderBoard();
     reminderLog.textContent = "";
   }
