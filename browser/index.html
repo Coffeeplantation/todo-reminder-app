@@ -1712,10 +1712,18 @@
   function boardLabel(key) {
     return boardsOfKey(key).map(id => (boardById(id) || { name: "?" }).name).join("＋");
   }
-  // 折りたたみタイル用の短縮ラベル。単独ボードは名前の先頭2文字、結合ボードは各名の頭文字を","区切りで。
+  // 折りたたみタイル用の短縮ラベル。単独ボードは miniName（未設定なら作成順の数字）、結合ボードは各名の頭文字を","区切りで。
   function boardShortLabel(key) {
     const ids = boardsOfKey(key);
-    if (ids.length === 1) return [...(boardById(ids[0]) || { name: "?" }).name].slice(0, 2).join("");
+    if (ids.length === 1) {
+      const board = boardById(ids[0]);
+      if (board) {
+        const boardIdx = state.boards.indexOf(board);
+        const defaultMiniName = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"][boardIdx] || `#${boardIdx + 1}`;
+        return board.miniName || defaultMiniName;
+      }
+      return "?";
+    }
     return ids.map(id => [...(boardById(id) || { name: "?" }).name][0] || "?").join(",");
   }
   function canMergeBoards(a, b) {
