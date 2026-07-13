@@ -580,6 +580,35 @@
     border-radius: 4px;
     color: var(--text);
   }
+  /* 見た目の設定をまとめる折りたたみセクション */
+  .kb-col-menu-config {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-top: 2px;
+    background: rgba(15, 23, 42, 0.02);
+  }
+  .kb-col-menu-config > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 6px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    user-select: none;
+  }
+  .kb-col-menu-config > summary::-webkit-details-marker { display: none; }
+  .kb-col-menu-config > summary::before {
+    content: "▸";
+    font-size: 10px;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  .kb-col-menu-config[open] > summary::before { transform: rotate(90deg); }
+  .kb-col-menu-config > summary:hover { background: #eef1f6; }
   /* ボードのリサイズ：右下コーナー（大型・ホバーで強調）＋右端/下端のグリップ帯 */
   .kb-col-resize {
     position: absolute;
@@ -2979,6 +3008,8 @@
   const ICON_OPTIONS = [["", "なし"], ["📌", "📌"], ["⭐", "⭐"], ["🔥", "🔥"], ["📅", "📅"]];
   let selectedTaskId = null;
   let openMenuMonthKey = null;
+  // 「⚙ 表示設定」を開いているボードキー（再描画後も開閉状態を保つ）
+  let openConfigMonthKey = null;
   let searchQuery = "";
   let zCounter = state.tasks.reduce((max, t) => Math.max(max, t.z || 0), 0);
   let colZCounter = Object.values(state.boardPos).reduce((max, p) => Math.max(max, p.z || 0), 0);
@@ -3764,26 +3795,6 @@
           menu.appendChild(addBtn);
 
           if (!isGroupKey(key)) {
-            const renameBtn = document.createElement("button");
-            renameBtn.type = "button";
-            renameBtn.className = "kb-col-menu-item";
-            renameBtn.textContent = "✏ 名前を変更";
-            renameBtn.addEventListener("click", () => {
-              openMenuMonthKey = null;
-              renameBoard(key);
-            });
-            menu.appendChild(renameBtn);
-
-            const renameMiniBtn = document.createElement("button");
-            renameMiniBtn.type = "button";
-            renameMiniBtn.className = "kb-col-menu-item";
-            renameMiniBtn.textContent = "✏ 最小サイズ表示名を変更";
-            renameMiniBtn.addEventListener("click", () => {
-              openMenuMonthKey = null;
-              renameBoardMiniName(key);
-            });
-            menu.appendChild(renameMiniBtn);
-
             const doneBtn = document.createElement("button");
             doneBtn.type = "button";
             doneBtn.className = "kb-col-menu-item";
@@ -3856,6 +3867,41 @@
             menu.appendChild(item);
           });
 
+          // 見た目に関する設定（色・形・枠線など）は「⚙ 表示設定」として折りたたみにまとめる
+          const configSection = document.createElement("details");
+          configSection.className = "kb-col-menu-config";
+          if (openConfigMonthKey === key) configSection.open = true;
+          const configSummary = document.createElement("summary");
+          configSummary.textContent = "⚙ ボード設定";
+          configSection.appendChild(configSummary);
+          // 開閉状態を覚えておき、再描画（色変更など）でも開いたままにする
+          configSection.addEventListener("toggle", () => {
+            openConfigMonthKey = configSection.open ? key : (openConfigMonthKey === key ? null : openConfigMonthKey);
+          });
+
+          // 名前の変更・最小サイズ表示名の変更（結合ボードでは不可）も設定内にまとめる
+          if (!isGroupKey(key)) {
+            const renameBtn = document.createElement("button");
+            renameBtn.type = "button";
+            renameBtn.className = "kb-col-menu-item";
+            renameBtn.textContent = "✏ 名前を変更";
+            renameBtn.addEventListener("click", () => {
+              openMenuMonthKey = null;
+              renameBoard(key);
+            });
+            configSection.appendChild(renameBtn);
+
+            const renameMiniBtn = document.createElement("button");
+            renameMiniBtn.type = "button";
+            renameMiniBtn.className = "kb-col-menu-item";
+            renameMiniBtn.textContent = "✏ 最小サイズ表示名を変更";
+            renameMiniBtn.addEventListener("click", () => {
+              openMenuMonthKey = null;
+              renameBoardMiniName(key);
+            });
+            configSection.appendChild(renameMiniBtn);
+          }
+
           const buildSelectRow = (labelText, options, currentValue, onPick) => {
             const row = document.createElement("label");
             row.className = "kb-col-menu-field-row";
@@ -3889,25 +3935,27 @@
             renderBoard();
           });
           colorRow.appendChild(colorInput);
-          menu.appendChild(colorRow);
+          configSection.appendChild(colorRow);
 
-          menu.appendChild(buildSelectRow("形（折りたたみ時）", [["square", "四角"], ["circle", "〇"]],
+          configSection.appendChild(buildSelectRow("形（折りたたみ時）", [["square", "四角"], ["circle", "〇"]],
             pos.shape || "square", v => { state.boardPos[key].shape = v; }));
 
-          menu.appendChild(buildSelectRow("枠線", [["normal", "通常"], ["double", "二重"]],
+          configSection.appendChild(buildSelectRow("枠線", [["normal", "通常"], ["double", "二重"]],
             pos.border || "normal", v => { state.boardPos[key].border = v; }));
 
-          menu.appendChild(buildSelectRow("文字サイズ", [["small", "小"], ["normal", "標準"], ["large", "大"]],
+          configSection.appendChild(buildSelectRow("文字サイズ", [["small", "小"], ["normal", "標準"], ["large", "大"]],
             pos.fontSize || "normal", v => { state.boardPos[key].fontSize = v; }));
 
-          menu.appendChild(buildSelectRow("影の強さ", [["none", "なし"], ["normal", "標準"], ["strong", "強"]],
+          configSection.appendChild(buildSelectRow("影の強さ", [["none", "なし"], ["normal", "標準"], ["strong", "強"]],
             pos.shadow || "none", v => { state.boardPos[key].shadow = v; }));
 
-          menu.appendChild(buildSelectRow("折りたたみの大きさ", [["small", "小"], ["normal", "標準"], ["large", "大"]],
+          configSection.appendChild(buildSelectRow("折りたたみの大きさ", [["small", "小"], ["normal", "標準"], ["large", "大"]],
             pos.tileSize || "normal", v => { state.boardPos[key].tileSize = v; }));
 
-          menu.appendChild(buildSelectRow("アイコン", ICON_OPTIONS,
+          configSection.appendChild(buildSelectRow("アイコン", ICON_OPTIONS,
             pos.icon || "", v => { state.boardPos[key].icon = v; }));
+
+          menu.appendChild(configSection);
 
           col.appendChild(menu);
         }
