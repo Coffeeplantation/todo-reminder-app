@@ -1294,37 +1294,36 @@
   </section>
 
   <section class="panel modal-only" id="sectionReminder">
-    <h2>
-      リマインダーチェック
-      <span class="btn-row">
-        <button id="btnCheck">リマインド送信チェック</button>
-        <button id="btnMailList" class="secondary">📧 送信リストを作成</button>
-        <button id="btnReset" class="secondary">送信済みフラグをリセット</button>
-      </span>
-    </h2>
+    <h2>🔔 リマインダー</h2>
     <div class="panel-body" id="reminderPanelBody">
-      <div id="mailListWrap" hidden>
-        <h3 style="font-size:13.5px; margin:0 0 6px;">通知メール送信リスト（期限とリマインド日数から自動作成）</h3>
-        <div style="overflow-x:auto;">
-          <table style="width:100%; border-collapse:collapse; font-size:12px;">
-            <thead>
-              <tr style="background:#2b3f63; color:#fff;">
-                <th style="text-align:left; padding:5px 8px;">送信予定日</th>
-                <th style="text-align:left; padding:5px 8px;">内容（タスク名）</th>
-                <th style="text-align:left; padding:5px 8px;">期限</th>
-                <th style="text-align:left; padding:5px 8px;">送信予定者（宛先）</th>
-                <th style="text-align:left; padding:5px 8px;">状態</th>
-                <th style="padding:5px 8px;"></th>
-              </tr>
-            </thead>
-            <tbody id="mailListBody"></tbody>
-          </table>
-        </div>
-        <div style="display:flex; gap:8px; margin:8px 0 12px;">
-          <button type="button" id="btnMailListCsv" class="secondary small">⬇ CSVダウンロード（Excel対応）</button>
-        </div>
+      <p style="font-size:12.5px; color:var(--muted); margin:0 0 10px; line-height:1.5;">
+        未完了タスクを「送信予定日（期限−リマインド日数）」の早い順に並べています。<br>
+        <strong style="color:var(--red);">期日超過</strong>・<strong style="color:#c47f00;">要送信</strong>のタスクから対応しましょう。「✉ 下書き」で既定メールソフトに下書きを作成できます。
+      </p>
+
+      <!-- 状況サマリー：クリックで絞り込み -->
+      <div id="reminderSummary" style="display:flex; gap:8px; flex-wrap:wrap; margin:0 0 12px;"></div>
+
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+          <thead>
+            <tr style="background:#2b3f63; color:#fff;">
+              <th style="text-align:left; padding:6px 8px;">状態</th>
+              <th style="text-align:left; padding:6px 8px;">タスク名</th>
+              <th style="text-align:left; padding:6px 8px;">期限</th>
+              <th style="text-align:left; padding:6px 8px;">送信予定日</th>
+              <th style="text-align:left; padding:6px 8px;">宛先</th>
+              <th style="padding:6px 8px;"></th>
+            </tr>
+          </thead>
+          <tbody id="mailListBody"></tbody>
+        </table>
       </div>
-      <div id="reminderLog"></div>
+
+      <div style="display:flex; gap:8px; margin:12px 0 0; flex-wrap:wrap;">
+        <button type="button" id="btnMailListCsv" class="secondary small">⬇ CSVダウンロード（Excel対応）</button>
+        <button type="button" id="btnReset" class="ghost small">送信済みフラグをリセット</button>
+      </div>
     </div>
   </section>
 
@@ -2083,11 +2082,19 @@
   const panelModal = document.getElementById("panelModal");
   const panelModalBody = document.getElementById("panelModalBody");
   let modalReturn = null;
+  // ボードメニューからパネルを開いた場合、閉じたときに戻すメニューのキー
+  let modalReturnMenuKey = null;
 
-  function openPanelModal(key) {
+  function openPanelModal(key, returnMenuKey = null) {
     const el = document.getElementById(PANEL_SECTION_IDS[key]);
     modalReturn = { el, parent: el.parentElement, nextSibling: el.nextSibling };
+    modalReturnMenuKey = returnMenuKey;
     panelModalBody.appendChild(el);
+    // リマインダーは開いた瞬間に最新の一覧を表示する（絞り込みはリセット）
+    if (key === "reminder") {
+      reminderFilter = null;
+      renderMailList();
+    }
     panelModal.showModal();
   }
 
@@ -2102,6 +2109,12 @@
       contactsScopeKey = null;
       expandedContactName = null;
       renderContacts();
+    }
+    // ボードメニューから開いていた場合は、閉じたときに元のメニューを再表示する
+    if (modalReturnMenuKey !== null) {
+      openMenuMonthKey = modalReturnMenuKey;
+      modalReturnMenuKey = null;
+      renderBoard();
     }
   });
 
@@ -2238,81 +2251,20 @@
   // ---------------------------------------------------------------
   // リマインダーチェック（ドライラン。spec.md 4章のロジックを踏襲）
   // ---------------------------------------------------------------
-  const reminderLog = document.getElementById("reminderLog");
-
   function getEmailByName(name) {
     const c = state.contacts.find(c => c.name.trim() === (name || "").trim());
     return c ? c.email.trim() : "";
   }
 
-  function checkAndSendReminders() {
-    const today = todayDate();
-    let sentCount = 0, skipCount = 0;
-    const lines = [];
-
-    for (const task of state.tasks) {
-      if (task.status === "完了") continue;
-      if (taskIsArchived(task)) continue; // 終了ボードのタスクはリマインド対象外
-      if (task.sentFlag === "済") { skipCount++; continue; }
-
-      const due = parseDue(task.due);
-      if (!due) continue;
-
-      const reminderDays = task.reminderDays > 0 ? task.reminderDays : state.settings.reminderDays;
-      const daysLeft = daysBetween(today, due);
-
-      if (daysLeft < 0) {
-        task.sentFlag = "期日超過";
-        lines.push(`[期日超過] ${task.name}（担当: ${task.assignee} / 期日: ${formatDate(due)}）`);
-      } else if (daysLeft <= reminderDays) {
-        const email = getEmailByName(task.assignee);
-        if (email) {
-          const subject = `【リマインド】${task.name}（期日：${formatDate(due)}）`;
-          const bodyIntro = daysLeft === 0
-            ? "本日が期日のタスクがあります。ご確認をお願いいたします。"
-            : `期日まで残り ${daysLeft} 日となりました。ご対応をお願いいたします。`;
-          const body = `${task.assignee} 様\n\n${bodyIntro}\n\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-            `  タスク名：${task.name}\n` +
-            `  期　　日：${formatDateJP(due)}\n` +
-            `  残り日数：${daysLeft} 日\n` +
-            `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
-            `このメールは${state.settings.signature}より自動送信されています。`;
-          task.sentFlag = "済";
-          sentCount++;
-          const ccEmails = [...new Set((task.participants || []).map(getEmailByName).filter(Boolean))].filter(e => e !== email);
-          lines.push(`[送信対象] To: ${email}${ccEmails.length ? `\nCc: ${ccEmails.join(", ")}` : ""}\n件名: ${subject}\n${body}`);
-        } else {
-          task.sentFlag = "アドレス不明";
-          lines.push(`[アドレス不明] ${task.name}（担当: ${task.assignee}）`);
-        }
-      }
-    }
-
-    save();
-    renderBoard();
-
-    let msg;
-    if (sentCount > 0) {
-      msg = `${sentCount} 件のリマインド対象を検出しました。\n（送信済みスキップ: ${skipCount} 件）\n※ブラウザ版は実際のメール送信を行いません（プレビューのみ）。\n\n`;
-    } else {
-      msg = `送信対象のタスクはありませんでした。\n（スキップ済: ${skipCount} 件）\n\n`;
-    }
-    reminderLog.textContent = msg + (lines.length ? lines.join("\n\n") : "");
-    toast(sentCount > 0
-      ? `${sentCount} 件のリマインド対象を検出しました`
-      : "送信対象のタスクはありませんでした");
-  }
-
   function resetSentFlags() {
-    if (!confirm("送信済みフラグを全てリセットしますか？\n（「済」「アドレス不明」「期日超過」を全て空白に戻します）")) return;
+    if (!confirm("送信済みフラグを全てリセットしますか？\n（「済」を全て空白に戻します）")) return;
     for (const task of state.tasks) task.sentFlag = "";
     save();
     renderBoard();
-    reminderLog.textContent = "";
+    renderMailList();
+    toast("送信済みフラグをリセットしました");
   }
 
-  document.getElementById("btnCheck").addEventListener("click", checkAndSendReminders);
   document.getElementById("btnReset").addEventListener("click", resetSentFlags);
 
   // ---------------------------------------------------------------
@@ -2320,9 +2272,11 @@
   // 未完了タスクの期限とリマインド日数から「送信予定日・内容・期限・宛先（担当者＋参加者）」を自動作成する。
   // CSVダウンロード（Excel対応）と、既定メールソフトでの下書き作成（mailto）に対応。
   // ---------------------------------------------------------------
-  const mailListWrap = document.getElementById("mailListWrap");
   const mailListBody = document.getElementById("mailListBody");
+  const reminderSummary = document.getElementById("reminderSummary");
   let mailListRows = [];
+  // 状態フィルタ（null=すべて表示）。サマリーのチップで切り替える
+  let reminderFilter = null;
 
   function taskRecipients(task) {
     const names = [task.assignee, ...(task.participants || [])].map(s => (s || "").trim()).filter(Boolean);
@@ -2363,32 +2317,72 @@
       const { subject, body } = buildMailContent(task, due, daysLeft, recipients);
       const status = task.sentFlag === "済" ? "送信済"
         : daysLeft < 0 ? "期日超過"
-        : daysBetween(today, sendDate) <= 0 ? "送信対象"
+        : daysBetween(today, sendDate) <= 0 ? "要送信"
         : "予定";
       mailListRows.push({ task, due, sendDate, daysLeft, recipients, subject, body, status });
     }
     mailListRows.sort((a, b) => a.sendDate - b.sendDate);
   }
 
+  // 状態ごとの色（サマリー・行の状態表示で共通利用）
+  const REMINDER_STATUS_COLORS = {
+    "期日超過": "#c22",
+    "要送信": "#c47f00",
+    "予定": "var(--muted)",
+    "送信済": "var(--green, #16a34a)"
+  };
+
+  function renderReminderSummary() {
+    const counts = { "期日超過": 0, "要送信": 0, "予定": 0, "送信済": 0 };
+    mailListRows.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
+    const total = mailListRows.length;
+    const chips = [["すべて", null, total], ...Object.keys(counts).map(st => [st, st, counts[st]])];
+    reminderSummary.innerHTML = chips.map(([label, filterVal, n]) => {
+      const active = reminderFilter === filterVal;
+      const color = filterVal ? (REMINDER_STATUS_COLORS[filterVal] || "var(--text)") : "var(--accent)";
+      return `<button type="button" class="reminder-chip${active ? " active" : ""}" data-filter="${filterVal === null ? "" : filterVal}"
+        style="border:1.5px solid ${active ? color : "var(--border)"}; ${active ? `background:${color}; color:#fff;` : "background:rgba(255,255,255,0.5);"}
+        border-radius:999px; padding:4px 12px; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;">
+        ${label} ${n}</button>`;
+    }).join("");
+    reminderSummary.querySelectorAll(".reminder-chip").forEach(btn => {
+      btn.addEventListener("click", () => {
+        reminderFilter = btn.dataset.filter === "" ? null : btn.dataset.filter;
+        renderMailList();
+      });
+    });
+  }
+
   function renderMailList() {
     buildMailList();
-    mailListWrap.hidden = false;
+    renderReminderSummary();
+    const rows = reminderFilter ? mailListRows.filter(r => r.status === reminderFilter) : mailListRows;
     if (!mailListRows.length) {
-      mailListBody.innerHTML = `<tr><td colspan="6" style="padding:8px; color:var(--muted);">対象タスクがありません（期日ありの未完了タスクが対象です）</td></tr>`;
+      mailListBody.innerHTML = `<tr><td colspan="6" style="padding:12px 8px; color:var(--muted);">対象タスクがありません（期日ありの未完了タスクが対象です）</td></tr>`;
       return;
     }
-    mailListBody.innerHTML = mailListRows.map(r => {
+    if (!rows.length) {
+      mailListBody.innerHTML = `<tr><td colspan="6" style="padding:12px 8px; color:var(--muted);">「${reminderFilter}」のタスクはありません</td></tr>`;
+      return;
+    }
+    mailListBody.innerHTML = rows.map(r => {
       const rcpt = r.recipients.length
-        ? r.recipients.map(x => `${escapeHtml(x.name)}${x.email ? `（${escapeHtml(x.email)}）` : "（アドレス不明）"}`).join("<br>")
+        ? r.recipients.map(x => `${escapeHtml(x.name)}${x.email ? "" : `<span style="color:#c22;">（アドレス無）</span>`}`).join("、")
         : `<span style="color:#c22;">宛先未設定</span>`;
-      const stColor = r.status === "送信対象" ? "#c47f00" : r.status === "期日超過" ? "#c22" : r.status === "送信済" ? "var(--muted)" : "inherit";
-      return `<tr>
-        <td>${formatDate(r.sendDate)}</td>
+      const stColor = REMINDER_STATUS_COLORS[r.status] || "inherit";
+      const dueColor = r.daysLeft < 0 ? "#c22" : r.daysLeft <= 1 ? "#c47f00" : "inherit";
+      const dueText = r.daysLeft < 0 ? `${-r.daysLeft}日超過` : r.daysLeft === 0 ? "本日" : `残${r.daysLeft}日`;
+      const done = r.status === "送信済";
+      return `<tr style="${done ? "opacity:0.6;" : ""}">
+        <td style="white-space:nowrap;"><span style="display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; color:#fff; background:${stColor};">${r.status}</span></td>
         <td>${escapeHtml(r.task.name)}</td>
-        <td>${formatDate(r.due)}（残${r.daysLeft}日）</td>
+        <td style="white-space:nowrap; color:${dueColor};">${formatDate(r.due)}<br><small>${dueText}</small></td>
+        <td style="white-space:nowrap; color:var(--muted);">${formatDate(r.sendDate)}</td>
         <td>${rcpt}</td>
-        <td style="color:${stColor};">${r.status}</td>
-        <td><button type="button" class="secondary small" data-mailto="${r.task.id}" title="既定のメールソフトで下書きを作成">✉ 作成</button></td>
+        <td style="white-space:nowrap;">
+          <button type="button" class="secondary small" data-mailto="${r.task.id}" title="既定のメールソフトで下書きを作成">✉ 下書き</button>
+          <button type="button" class="ghost small" data-toggledone="${r.task.id}" title="${done ? "送信済みを取り消す" : "送信済みにする"}">${done ? "↩" : "✓"}</button>
+        </td>
       </tr>`;
     }).join("");
     mailListBody.querySelectorAll("[data-mailto]").forEach(btn => {
@@ -2400,6 +2394,16 @@
         if (!emails.length) { alert("宛先のメールアドレスが名簿にありません。👥名簿でメールアドレスを登録してください。"); return; }
         location.href = `mailto:${emails[0]}?cc=${encodeURIComponent(emails.slice(1).join(","))}` +
           `&subject=${encodeURIComponent(r.subject)}&body=${encodeURIComponent(r.body)}`;
+      });
+    });
+    mailListBody.querySelectorAll("[data-toggledone]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const task = state.tasks.find(t => t.id === Number(btn.dataset.toggledone));
+        if (!task) return;
+        task.sentFlag = task.sentFlag === "済" ? "" : "済";
+        save();
+        renderBoard();
+        renderMailList();
       });
     });
   }
@@ -2426,7 +2430,6 @@
     toast("送信リストのCSVをダウンロードしました");
   }
 
-  document.getElementById("btnMailList").addEventListener("click", renderMailList);
   document.getElementById("btnMailListCsv").addEventListener("click", downloadMailListCsv);
 
   // ---------------------------------------------------------------
@@ -3860,6 +3863,7 @@
             item.className = "kb-col-menu-item";
             item.textContent = label;
             item.addEventListener("click", () => {
+              const returnMenuKey = key; // 閉じたときに戻すメニュー
               openMenuMonthKey = null;
               renderBoard();
               // 月メニューからの名簿は、そのボードのタスク参加者のみに絞った名簿を表示する
@@ -3867,7 +3871,7 @@
                 contactsScopeKey = key;
                 renderContacts();
               }
-              openPanelModal(panelKey);
+              openPanelModal(panelKey, returnMenuKey);
             });
             menu.appendChild(item);
           });
@@ -5051,7 +5055,6 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     renderSettings();
     renderContacts();
     renderBoard();
-    reminderLog.textContent = "";
   }
 
   renderAll();
