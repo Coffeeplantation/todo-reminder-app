@@ -1147,8 +1147,16 @@
 
   /* ---- 予定の取り込みパネル・参加者チップ ---- */
   .imp-src { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
-  #impPreviewBody td { padding: 4px 6px; border-bottom: 1px solid var(--border); }
-  #impPreviewBody input[type="text"] { width: 100%; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 12.5px; box-sizing: border-box; }
+  /* 読み取った予定リストは 1.5倍サイズで見やすく・操作しやすく（2026-07-14） */
+  #impPreviewTable { font-size: 18px !important; }
+  #impPreviewTable thead tr { font-size: 16px !important; }
+  #impPreviewTable thead th { padding: 10px 12px !important; }
+  #impPreviewBody td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  #impPreviewBody input[type="text"] { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 18px; box-sizing: border-box; }
+  /* チェックボックスも拡大して押しやすく */
+  #impPreviewTable input[type="checkbox"] { width: 22px; height: 22px; cursor: pointer; accent-color: var(--accent, #2563eb); }
+  #impPreviewTitle { font-size: 18px !important; }
+  #impPreviewBody .reminder-badge { font-size: 13px; padding: 3px 9px; }
   .pt-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
   .pt-chip { display: inline-flex; align-items: center; gap: 4px; background: rgba(37, 99, 235, 0.10); color: var(--accent); border-radius: 999px; padding: 2px 8px; font-size: 11.5px; }
   .pt-chip .pt-x { border: none; background: none; cursor: pointer; color: inherit; font-size: 11px; padding: 0 0 0 2px; line-height: 1; }
@@ -1289,6 +1297,12 @@
     width: 480px;
     max-width: 92vw;
   }
+  /* 自動タスク作成パネルは 1.5倍サイズの予定リストが収まるよう広めに開く（2026-07-14） */
+  dialog.panel-modal:has(#sectionImport) {
+    width: 940px;
+  }
+  /* 予定リストが狭い画面でも崩れないよう、必要なら横スクロールで逃がす */
+  #impPreviewWrap { overflow-x: auto; }
   .panel-modal-body {
     padding: 16px;
     max-height: 70vh;
@@ -1588,8 +1602,8 @@
       </div>
 
       <div id="impPreviewWrap" hidden>
-        <h3 style="font-size:13.5px; margin:10px 0 6px;">読み取った予定（チェックした行が追加されます・内容は編集できます）</h3>
-        <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+        <h3 id="impPreviewTitle" style="font-size:13.5px; margin:10px 0 6px;">読み取った予定（チェックした行が追加されます・内容は編集できます）</h3>
+        <table id="impPreviewTable" style="width:100%; border-collapse:collapse; font-size:12.5px;">
           <thead>
             <tr style="background:#2b3f63; color:#fff; font-size:12px;">
               <th style="padding:6px;"><input type="checkbox" id="impCheckAll" checked></th>
