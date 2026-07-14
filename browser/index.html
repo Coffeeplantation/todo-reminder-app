@@ -397,9 +397,9 @@
   }
   .kb-col-hdr {
     font-weight: 700;
-    font-size: 13px;
+    font-size: 17px; /* ボードを1.5倍サイズで見やすく（2026-07-14） */
     letter-spacing: 0.01em;
-    padding: 8px 10px;
+    padding: 10px 14px;
     border-radius: 13px 13px 0 0;
     cursor: grab;
     user-select: none;
@@ -422,11 +422,11 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     background: rgba(255,255,255,0.35);
-    font-size: 10px;
+    font-size: 13px;
     line-height: 1;
     font-weight: bold;
   }
@@ -441,10 +441,10 @@
   }
   .kb-col-pct-badge {
     flex: none;
-    padding: 2px 7px;
+    padding: 3px 9px;
     border-radius: 10px;
     background: rgba(255,255,255,0.35);
-    font-size: 10px;
+    font-size: 13px;
     font-weight: bold;
     white-space: nowrap;
   }
@@ -454,10 +454,10 @@
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
-    padding: 2px 8px;
+    padding: 3px 10px;
     border-radius: 10px;
     background: rgba(255,255,255,0.35);
-    font-size: 10px;
+    font-size: 13px;
     font-weight: bold;
     white-space: nowrap;
     pointer-events: none;
@@ -470,13 +470,13 @@
   }
   .kb-col-menu-btn {
     flex: none;
-    width: 20px;
-    height: 20px;
+    width: 28px;
+    height: 28px;
     border: none;
-    border-radius: 4px;
+    border-radius: 6px;
     background: rgba(255,255,255,0.25);
     color: inherit;
-    font-size: 12px;
+    font-size: 16px;
     line-height: 1;
     cursor: pointer;
     padding: 0;
@@ -508,7 +508,7 @@
     position: relative;
     min-height: 0;
     overflow: auto;
-    font-size: calc(11px * var(--kb-font-scale, 1));
+    font-size: calc(16px * var(--kb-font-scale, 1)); /* 1.5倍サイズで見やすく（2026-07-14） */
     /* 「カードを自由に置けるキャンバス」であることを示す微細なドットグリッド */
     background-image: radial-gradient(rgba(15, 23, 42, 0.07) 1px, transparent 1.5px);
     background-size: 16px 16px;
@@ -655,13 +655,13 @@
   .kb-col-resize-e:hover, .kb-col-resize-s:hover { background: rgba(37, 99, 235, 0.20); border-radius: 4px; }
   .kb-card {
     position: absolute;
-    width: 128px;
+    width: 190px; /* 1.5倍サイズで見やすく（2026-07-14） */
     background: var(--panel-solid);
     background: linear-gradient(180deg, #ffffff, #f7f9fc);
     border: 1px solid var(--border);
     border-left: 4px solid #999;
     border-radius: 12px;
-    padding: 7px 9px;
+    padding: 10px 13px;
     font-size: 1em;
     line-height: 1.35;
     cursor: grab;
@@ -732,8 +732,8 @@
   .kb-card.selected {
     outline: 2px solid var(--accent);
     /* 開いたときだけ大きく表示して読みやすくする（枠外へのはみ出しは .has-open-card 側で許可） */
-    width: 300px;
-    font-size: calc(12.5px * var(--kb-font-scale, 1));
+    width: 400px;
+    font-size: calc(17px * var(--kb-font-scale, 1));
     box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14), var(--shadow-md);
   }
   /* ドラッグ中：pointer-events を切って真下のドロップ先を正しく検出させる。演出（発光・拡大・半透明）は廃止 */
@@ -789,8 +789,8 @@
   }
   .kb-card .t-avatar {
     flex: none;
-    width: 18px;
-    height: 18px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
     display: inline-flex;
     align-items: center;
@@ -2035,7 +2035,7 @@
   function groupStepX(groupPos) {
     return groupPos.collapsed
       ? TILE_SIZE_PRESET[groupPos.tileSize || "normal"].tile + 24
-      : (groupPos.w || 240) + 16;
+      : (groupPos.w || 340) + 16;
   }
   function unmergeBoard(boardKey) {
     const label = boardLabel(boardKey);
@@ -3571,7 +3571,7 @@
   });
 
   function clampPos(wrap, x, y) {
-    const cardW = 128, cardH = 70;
+    const cardW = 190, cardH = 100; /* カード1.5倍化に合わせて更新（2026-07-14） */
     const w = Math.max(wrap.clientWidth, cardW + 8);
     const h = Math.max(wrap.clientHeight, cardH + 8);
     return {
@@ -3594,7 +3594,7 @@
   // 月パネルの既定配置（未配置のキーにのみ、簡単なグリッド状の初期位置を割り当てる）。既定では折りたたみ状態（月名のみ）。
   function ensureColPos(keys) {
     let assigned = false;
-    const perRow = 4, colW = 260, rowH = 320;
+    const perRow = 4, colW = 380, rowH = 420; /* ボード1.5倍化に合わせて初期配置の間隔も拡大 */
     keys.forEach((key, i) => {
       if (!state.boardPos[key]) {
         assigned = true;
@@ -3704,13 +3704,13 @@
     });
   }
 
-  const COL_MIN_W = 90, COL_HEADER_H = 34, COL_MIN_H = COL_HEADER_H;
+  const COL_MIN_W = 90, COL_HEADER_H = 44, COL_MIN_H = COL_HEADER_H; /* ヘッダー1.5倍化に合わせて高さ更新 */
 
   // 月パネル右下のハンドルをドラッグして大きさを自由に変更する。
   // 見出しの高さまで縮めると、折りたたみ状態（月名のみ表示）に切り替わる。
   // ボードの拡大縮小。右下コーナー（縦横）に加えて、右端（幅のみ）・下端（高さのみ）の
   // グリップ帯からもドラッグできる。Pointer Events ベースでタッチ・ペンにも対応。
-  // コーナーのダブルクリックで既定サイズ（幅240px・高さ自動）に戻せる。
+  // コーナーのダブルクリックで既定サイズ（幅340px・高さ自動）に戻せる。
   function attachColResize(col, key) {
     function startResize(e, mode) { // mode: "se"=縦横 / "e"=幅のみ / "s"=高さのみ
       if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -3750,7 +3750,7 @@
     corner.addEventListener("pointerdown", e => startResize(e, "se"));
     corner.addEventListener("dblclick", e => {
       e.stopPropagation();
-      state.boardPos[key].w = 240;
+      state.boardPos[key].w = 340; /* 既定幅（1.5倍サイズ） */
       delete state.boardPos[key].h;
       save();
       renderBoard();
@@ -4171,7 +4171,7 @@
       // 結合ボードの折りたたみタイルは「7,8」のようにラベルが長くなるため幅を内容に合わせる
       col.style.width = collapsed
         ? (isGroupKey(key) ? "auto" : tileSize.tile + "px")
-        : (pos.w || 240) + "px";
+        : (pos.w || 340) + "px"; /* 既定幅を1.5倍化に合わせて 240→340 */
       if (!collapsed && pos.h) col.style.height = pos.h + "px";
       col.style.borderStyle = pos.border === "double" ? "double" : "";
       col.style.borderWidth = pos.border === "double" ? "4px" : "";
@@ -4264,7 +4264,7 @@
         const hdrActions = document.createElement("div");
         hdrActions.className = "kb-col-hdr-actions";
         // 幅240pxで6px、広げるほど最大24pxまで間隔を広げる
-        const actionsGap = Math.min(24, 6 + Math.max(0, ((pos.w || 240) - 240) / 22));
+        const actionsGap = Math.min(24, 6 + Math.max(0, ((pos.w || 340) - 340) / 22));
         hdrActions.style.gap = actionsGap.toFixed(1) + "px";
 
         const pct = monthCompletionPercent(tasks);
