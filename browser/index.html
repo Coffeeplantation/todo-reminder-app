@@ -1584,6 +1584,20 @@
         更新版の予定表を読み込むと、既存の予定と<b>同じ名前で期日などが異なるもの</b>は「変更」として検出します。反映時に変更点の確認チェックが出るので、内容を確かめてからスケジュールを更新できます。
       </p>
 
+      <!-- 取り込んだ予定の反映先：新規タスクを作るか、既存タスクへ予定を追加するかを選ぶ -->
+      <div id="impModeRow" style="display:flex; flex-direction:column; gap:8px; margin:0 0 12px; padding:10px 12px; background:rgba(37,99,235,0.06); border:1px solid rgba(37,99,235,0.2); border-radius:8px;">
+        <span style="font-weight:700; font-size:13px;">取り込んだ予定の反映先</span>
+        <label style="display:flex; flex-direction:row; align-items:center; gap:8px; font-size:13px; color:var(--text); cursor:pointer;">
+          <input type="radio" name="impMode" value="new" checked style="width:18px; height:18px; flex:none; cursor:pointer;">
+          新しいタスクとして作成する（自動でボードに追加）
+        </label>
+        <label style="display:flex; flex-direction:row; align-items:center; gap:8px; font-size:13px; color:var(--text); cursor:pointer; flex-wrap:wrap;">
+          <input type="radio" name="impMode" value="existing" style="width:18px; height:18px; flex:none; cursor:pointer;">
+          既存のタスクに予定を追加する：
+          <select id="impTargetTask" disabled style="flex:1; min-width:180px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;"></select>
+        </label>
+      </div>
+
       <div class="imp-src">
         <span class="f-label" style="font-weight:600;">🔗 参照リンク</span>
         <span style="display:flex; gap:6px;">
@@ -2708,8 +2722,23 @@
   let impCandidates = [];
   let impUidSeq = 1; // 候補行の一意ID（配列インデックスを識別子に使わないため）
   let impFileStats = {}; // ファイル名 → 読み込み件数
+  let impMode = "new"; // "new"=新規タスクを作成 / "existing"=既存タスクに予定を追加
 
   function impSetStatus(msg) { impStatus.textContent = msg; }
+
+  // 「既存のタスクに予定を追加する」で選べる、稼働中タスクの一覧をセレクトに反映する
+  function renderImpTargetOptions() {
+    const sel = document.getElementById("impTargetTask");
+    if (!sel) return;
+    const prev = sel.value;
+    const tasks = state.tasks
+      .filter(t => !taskIsArchived(t))
+      .sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999"));
+    sel.innerHTML = `<option value="">― タスクを選択 ―</option>` + tasks.map(t =>
+      `<option value="${t.id}">${escapeHtml(t.name)}${t.due ? `（${escapeHtml(t.due)}）` : ""}</option>`
+    ).join("");
+    if (prev && tasks.some(t => String(t.id) === prev)) sel.value = prev;
+  }
 
   // 日本語ファイルは Shift_JIS が多いため、UTF-8で読めなければ Shift_JIS で読み直す
   function decodeFileBuffer(buf) {
@@ -3160,6 +3189,7 @@
   function renderImpPreview() {
     impPreviewWrap.hidden = impCandidates.length === 0;
     renderImpFolderInfo();
+    renderImpTargetOptions();
     renderCurrentSchedule();
     impPreviewBody.innerHTML = impCandidates.map(c => {
       const isUpdate = c.changeType === "update";
@@ -3194,7 +3224,21 @@
   }
 
   const btnOpenImport = document.getElementById("btnOpenImport");
-  if (btnOpenImport) btnOpenImport.addEventListener("click", () => openPanelModal("import"));
+  if (btnOpenImport) btnOpenImport.addEventListener("click", () => {
+    renderImpTargetOptions(); // 開くたびに既存タスク一覧を最新化
+    openPanelModal("import");
+  });
+
+  // 反映先モード（新規作成／既存タスクに追加）の切り替え
+  const impTargetTask = document.getElementById("impTargetTask");
+  document.querySelectorAll('input[name="impMode"]').forEach(radio => {
+    radio.addEventListener("change", () => {
+      if (!radio.checked) return;
+      impMode = radio.value;
+      if (impTargetTask) impTargetTask.disabled = (impMode !== "existing");
+      if (impMode === "existing") renderImpTargetOptions();
+    });
+  });
 
   // 「フォルダを選択」「ファイルを選択」は label[for] でネイティブに開くため、JSのクリック処理は不要。
   // 選択後の change だけを受け取ってファイルを取り込む。
@@ -3326,6 +3370,50 @@
     btnImpAdd.addEventListener("click", async () => {
       const sel = impCandidates.filter(c => c.include && c.name);
       if (!sel.length) { impSetStatus("反映する行にチェックを入れてください"); return; }
+
+      // 【既存タスクに予定を追加】モード：選んだ既存タスクへ、チェックした予定の内容を反映する
+      if (impMode === "existing") {
+        const targetId = impTargetTask ? impTargetTask.value : "";
+        const t = state.tasks.find(x => String(x.id) === String(targetId));
+        if (!t) { impSetStatus("追加先の既存タスクを選んでください"); return; }
+        // 期日は「選択した予定のうち最も新しい日付」を新しいスケジュールとして採用
+        const dues = sel.map(c => (c.due ? (normalizeDueInput(c.due.replace(/-/g, "/")) || "") : "")).filter(Boolean).sort();
+        const newDue = dues.length ? dues[dues.length - 1] : (t.due || "");
+        // 参加者は既存＋取り込み分の和集合（重複は除く）
+        const mergedParticipants = (t.participants || []).slice();
+        const addedParticipants = [];
+        for (const c of sel) for (const p of (c.participants || [])) {
+          if (p && !mergedParticipants.includes(p)) { mergedParticipants.push(p); addedParticipants.push(p); }
+        }
+        const newAssignee = sel.map(c => c.assignee).filter(Boolean).slice(-1)[0] || "";
+
+        const detail = [];
+        if ((t.due || "") !== (newDue || "")) detail.push(`期日: <b>${escapeHtml(t.due || "未定")}</b> → <b style="color:var(--accent,#2563eb);">${escapeHtml(newDue || "未定")}</b>`);
+        if (addedParticipants.length) detail.push(`参加者を追加: <b>${escapeHtml(addedParticipants.join("、"))}</b>`);
+        if (newAssignee && newAssignee !== (t.assignee || "")) detail.push(`担当者: <b>${escapeHtml(t.assignee || "未設定")}</b> → <b>${escapeHtml(newAssignee)}</b>`);
+        if (!detail.length) { impSetStatus("追加する変更がありません（同じ内容です）"); return; }
+
+        const ok = await openConfirm({
+          title: "既存タスクに予定を追加しますか？",
+          html: `<p style="margin:0 0 8px;">既存タスク <b>「${escapeHtml(t.name)}」</b> に、選択した予定を反映します。</p>
+                 <div style="font-size:13px; padding:8px 10px; background:rgba(37,99,235,0.06); border-left:3px solid var(--accent,#2563eb); border-radius:6px;">${detail.join("<br>")}</div>`,
+          okLabel: "予定を追加", cancelLabel: "キャンセル"
+        });
+        if (!ok) { impSetStatus("追加をキャンセルしました"); return; }
+
+        const oldMonth = (t.due || "").slice(0, 7), newMonth = (newDue || "").slice(0, 7);
+        t.due = newDue;
+        t.participants = mergedParticipants;
+        if (newAssignee) t.assignee = newAssignee;
+        if (oldMonth !== newMonth) t.boards = [impBoardIdFor(newDue)];
+        impCandidates = impCandidates.filter(c => !(c.include && c.name));
+        save();
+        renderBoard();
+        renderImpPreview();
+        toast(`「${t.name}」に予定を追加しました`);
+        impSetStatus(`既存タスク「${t.name}」に予定を反映しました`);
+        return;
+      }
 
       const updates = sel.filter(c => c.changeType === "update" && state.tasks.some(t => t.id === c.targetTaskId));
       const news = sel.filter(c => !(c.changeType === "update" && state.tasks.some(t => t.id === c.targetTaskId)));
