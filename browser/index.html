@@ -1538,7 +1538,8 @@
     <div class="panel-body" id="importPanelBody">
       <p style="font-size:12.5px; color:var(--muted); margin:0 0 10px;">
         参照リンク（URL）や、フォルダ内のファイル（Excel / CSV / カレンダー(.ics) / テキスト）から予定を読み取り、タスクボードへ自動登録します。<br>
-        表形式のファイルはそのまま解析し、自由な文章は選択中のAI（オフライン時はローカルAI）が予定を抽出します。
+        表形式のファイルはそのまま解析し、自由な文章は選択中のAI（オフライン時はローカルAI）が予定を抽出します。<br>
+        更新版の予定表を読み込むと、既存の予定と<b>同じ名前で期日などが異なるもの</b>は「変更」として検出します。反映時に変更点の確認チェックが出るので、内容を確かめてからスケジュールを更新できます。
       </p>
 
       <div class="imp-src">
@@ -1589,6 +1590,7 @@
           <thead>
             <tr style="background:#2b3f63; color:#fff; font-size:12px;">
               <th style="padding:6px;"><input type="checkbox" id="impCheckAll" checked></th>
+              <th style="text-align:left; padding:6px 8px;">種別</th>
               <th style="text-align:left; padding:6px 8px;">タスク名</th>
               <th style="text-align:left; padding:6px 8px;">期日</th>
               <th style="text-align:left; padding:6px 8px;">担当者</th>
@@ -1599,7 +1601,7 @@
           <tbody id="impPreviewBody"></tbody>
         </table>
         <div style="display:flex; gap:8px; margin-top:10px; align-items:center;">
-          <button type="button" id="btnImpAdd">✔ 選択したタスクをボードに追加</button>
+          <button type="button" id="btnImpAdd">✔ 選択した予定をボードに反映（追加・変更）</button>
           <button type="button" id="btnImpClear" class="secondary small">クリア</button>
         </div>
       </div>
@@ -1653,6 +1655,18 @@
       <button type="submit">保存</button>
     </div>
   </form>
+</dialog>
+
+<!-- 汎用確認ダイアログ（予定表の変更点チェックなどで OK/キャンセルを問う） -->
+<dialog id="confirmDialog" style="max-width:440px;">
+  <div style="padding:18px; display:flex; flex-direction:column; gap:10px;">
+    <h3 id="confirmDialogTitle" style="margin:0 0 4px; font-size:15px;">確認</h3>
+    <div id="confirmDialogBody" style="font-size:13px; max-height:50vh; overflow:auto;"></div>
+    <div class="dlg-actions">
+      <button type="button" class="plain" id="confirmDialogCancel">キャンセル</button>
+      <button type="button" id="confirmDialogOk">OK</button>
+    </div>
+  </div>
 </dialog>
 
 <!-- AIアシスタントパネル（ヘッダーの🤖AIボタンで開閉） -->
@@ -2693,18 +2707,47 @@
       const name = String(c.name || "").trim();
       if (!name) continue;
       const due = impNormalizeDate(c.due);
-      // 既存タスク・既出候補との重複は除外
-      if (state.tasks.some(t => t.name === name && (t.due || "") === due)) continue;
-      if (impCandidates.some(t => t.name === name && t.due === due)) continue;
+      const assignee = impCleanName(c.assignee);
       const participants = Array.isArray(c.participants)
         ? c.participants.map(impCleanName).filter(Boolean) : [];
+
+      // すでに同じ候補（同名・同期日）を読み込み済みなら除外
+      if (impCandidates.some(t => t.name === name && t.due === due)) continue;
+
+      // 既存タスクとの照合。同名で期日も同じなら「変更なし」として除外し、
+      // 同名だが期日が違えば「予定表が更新された＝変更」候補として扱う。
+      const sameName = state.tasks.filter(t => t.name === name);
+      if (sameName.some(t => (t.due || "") === due)) continue;
+      const target = sameName.find(t => (t.due || "") !== due);
+      if (target) {
+        // 同じ既存タスクに対する変更候補が既にあれば重複させない
+        if (impCandidates.some(t => t.changeType === "update" && t.targetTaskId === target.id)) continue;
+        impCandidates.push({
+          uid: "c" + impUidSeq++,
+          include: true, name, due,
+          assignee: assignee || (target.assignee || ""),
+          // 参加者が読み取れなければ既存タスクの参加者を引き継ぐ
+          participants: participants.length ? participants : (target.participants || []).slice(),
+          source,
+          changeType: "update",
+          targetTaskId: target.id,
+          oldDue: target.due || "",
+          oldAssignee: target.assignee || "",
+          oldParticipants: (target.participants || []).slice()
+        });
+        added++;
+        impFileStats[source] = (impFileStats[source] || 0) + 1;
+        continue;
+      }
+
+      // どの既存タスクにも該当しない → 新規予定
       impCandidates.push({
         uid: "c" + impUidSeq++, // 行の識別は配列インデックスではなく一意IDで行う
-        include: true, name, due,
-        assignee: impCleanName(c.assignee),
+        include: true, name, due, assignee,
         // 参加者が読み取れなければ、過去の類似タスクから初期草案を提案
         participants: participants.length ? participants : suggestParticipants(name),
-        source
+        source,
+        changeType: "new"
       });
       added++;
       impFileStats[source] = (impFileStats[source] || 0) + 1;
@@ -3073,15 +3116,26 @@
     impPreviewWrap.hidden = impCandidates.length === 0;
     renderImpFolderInfo();
     renderCurrentSchedule();
-    impPreviewBody.innerHTML = impCandidates.map(c => `
+    impPreviewBody.innerHTML = impCandidates.map(c => {
+      const isUpdate = c.changeType === "update";
+      const typeBadge = isUpdate
+        ? `<span class="reminder-badge" style="background:#c47f00;">変更</span>`
+        : `<span class="reminder-badge" style="background:var(--green, #16a34a);">新規</span>`;
+      // 変更行は、期日セルの下に「変更前の期日」を小さく表示して差分をわかりやすくする
+      const oldDueHint = isUpdate && (c.oldDue || "") !== (c.due || "")
+        ? `<div style="font-size:10.5px; color:var(--muted); margin-top:2px;">旧: ${escapeHtml(c.oldDue || "未定")}</div>`
+        : "";
+      return `
       <tr>
         <td style="text-align:center;"><input type="checkbox" data-f="include" data-uid="${c.uid}" ${c.include ? "checked" : ""}></td>
+        <td style="text-align:center; white-space:nowrap;">${typeBadge}</td>
         <td style="min-width:140px;"><input type="text" data-f="name" data-uid="${c.uid}" value="${escapeHtml(c.name)}"></td>
-        <td style="min-width:96px;"><input type="text" data-f="due" data-uid="${c.uid}" value="${escapeHtml(c.due)}" placeholder="yyyy-mm-dd"></td>
+        <td style="min-width:96px;"><input type="text" data-f="due" data-uid="${c.uid}" value="${escapeHtml(c.due)}" placeholder="yyyy-mm-dd">${oldDueHint}</td>
         <td style="min-width:80px;"><input type="text" data-f="assignee" data-uid="${c.uid}" value="${escapeHtml(c.assignee)}" list="assigneeList"></td>
         <td style="min-width:110px;"><input type="text" data-f="participants" data-uid="${c.uid}" value="${escapeHtml(c.participants.join("、"))}"></td>
         <td style="font-size:11px; color:var(--muted); max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(c.source)}">${escapeHtml(c.source)}</td>
-      </tr>`).join("");
+      </tr>`;
+    }).join("");
     impPreviewBody.querySelectorAll("input").forEach(inp => {
       inp.addEventListener("change", () => {
         const c = impCandidates.find(x => x.uid === inp.dataset.uid); // 一意IDで行を特定（行の増減でズレない）
@@ -3174,13 +3228,82 @@
     return activeBoards()[0].id;
   }
 
+  // 汎用の確認ダイアログ。OK なら true、キャンセル／Escなら false を Promise で返す。
+  const confirmDialog = document.getElementById("confirmDialog");
+  function openConfirm({ title, html, okLabel = "OK", cancelLabel = "キャンセル" }) {
+    document.getElementById("confirmDialogTitle").textContent = title || "確認";
+    document.getElementById("confirmDialogBody").innerHTML = html || "";
+    const okBtn = document.getElementById("confirmDialogOk");
+    const cancelBtn = document.getElementById("confirmDialogCancel");
+    okBtn.textContent = okLabel;
+    cancelBtn.textContent = cancelLabel;
+    return new Promise(resolve => {
+      function cleanup(result) {
+        okBtn.removeEventListener("click", onOk);
+        cancelBtn.removeEventListener("click", onCancel);
+        confirmDialog.removeEventListener("cancel", onCancel);
+        if (confirmDialog.open) confirmDialog.close();
+        resolve(result);
+      }
+      function onOk() { cleanup(true); }
+      function onCancel(e) { if (e) e.preventDefault(); cleanup(false); }
+      okBtn.addEventListener("click", onOk);
+      cancelBtn.addEventListener("click", onCancel);
+      confirmDialog.addEventListener("cancel", onCancel); // Escキー
+      confirmDialog.showModal();
+    });
+  }
+
+  // 変更候補の差分（期日・担当者・参加者）を人が読める説明に整形する
+  function impChangeDetailHtml(c, newDue) {
+    const parts = [];
+    if ((c.oldDue || "") !== (newDue || "")) {
+      parts.push(`期日: <b>${escapeHtml(c.oldDue || "未定")}</b> → <b style="color:var(--accent, #2563eb);">${escapeHtml(newDue || "未定")}</b>`);
+    }
+    const newAssignee = c.assignee || "";
+    if ((c.oldAssignee || "") !== newAssignee) {
+      parts.push(`担当者: <b>${escapeHtml(c.oldAssignee || "未設定")}</b> → <b>${escapeHtml(newAssignee || "未設定")}</b>`);
+    }
+    const oldP = (c.oldParticipants || []).join("、");
+    const newP = (c.participants || []).join("、");
+    if (oldP !== newP) {
+      parts.push(`参加者: <b>${escapeHtml(oldP || "なし")}</b> → <b>${escapeHtml(newP || "なし")}</b>`);
+    }
+    return parts.join("<br>");
+  }
+
   const btnImpAdd = document.getElementById("btnImpAdd");
   if (btnImpAdd) {
-    btnImpAdd.addEventListener("click", () => {
+    btnImpAdd.addEventListener("click", async () => {
       const sel = impCandidates.filter(c => c.include && c.name);
-      if (!sel.length) { impSetStatus("追加する行にチェックを入れてください"); return; }
-      let added = 0;
-      for (const c of sel) {
+      if (!sel.length) { impSetStatus("反映する行にチェックを入れてください"); return; }
+
+      const updates = sel.filter(c => c.changeType === "update" && state.tasks.some(t => t.id === c.targetTaskId));
+      const news = sel.filter(c => !(c.changeType === "update" && state.tasks.some(t => t.id === c.targetTaskId)));
+
+      // 既存予定に対する「変更」がある場合は、反映前に変更点の確認チェックを行う
+      if (updates.length) {
+        const rows = updates.map(c => {
+          const newDue = c.due ? (normalizeDueInput(c.due.replace(/-/g, "/")) || c.due) : "";
+          return `<li style="margin:8px 0; list-style:none; padding:8px 10px; background:rgba(196,127,0,0.08); border-left:3px solid #c47f00; border-radius:6px;">
+            <b>${escapeHtml(c.name)}</b><br>
+            <span style="font-size:12px;">${impChangeDetailHtml(c, newDue)}</span>
+          </li>`;
+        }).join("");
+        const ok = await openConfirm({
+          title: "予定表の変更点を反映しますか？",
+          html: `<p style="margin:0 0 8px;">読み込んだ予定表では、次の既存の予定が変更されています。変更後の内容でスケジュールを更新してよろしいですか？</p>
+                 <ul style="margin:0; padding:0;">${rows}</ul>`,
+          okLabel: "変更を反映",
+          cancelLabel: "キャンセル"
+        });
+        if (!ok) { impSetStatus("変更の反映をキャンセルしました"); return; }
+      }
+
+      let added = 0, changed = 0;
+
+      // 新規予定 → 新しいタスクとして追加
+      for (const c of news) {
         const due = c.due ? (normalizeDueInput(c.due.replace(/-/g, "/")) || "") : "";
         state.tasks.push({
           id: state.nextTaskId++,
@@ -3195,12 +3318,29 @@
         });
         added++;
       }
+
+      // 変更予定 → 既存タスクを更新
+      for (const c of updates) {
+        const t = state.tasks.find(x => x.id === c.targetTaskId);
+        if (!t) continue;
+        const newDue = c.due ? (normalizeDueInput(c.due.replace(/-/g, "/")) || "") : "";
+        const oldMonth = (t.due || "").slice(0, 7);
+        const newMonth = (newDue || "").slice(0, 7);
+        t.due = newDue;
+        if (c.assignee) t.assignee = c.assignee;
+        if (c.participants && c.participants.length) t.participants = c.participants.slice();
+        // 期日の月が変わったら、該当月のボードへ移動する（例: 8月 → 9月）
+        if (oldMonth !== newMonth) t.boards = [impBoardIdFor(newDue)];
+        changed++;
+      }
+
       impCandidates = impCandidates.filter(c => !(c.include && c.name));
       save();
       renderBoard();
       renderImpPreview();
-      toast(`${added} 件のタスクをボードに追加しました`);
-      impSetStatus(`${added} 件をボードに追加しました`);
+      const msg = [added ? `${added} 件を追加` : "", changed ? `${changed} 件を変更` : ""].filter(Boolean).join("・") || "反映";
+      toast(`予定を${msg}しました`);
+      impSetStatus(`${msg}しました`);
     });
   }
 
