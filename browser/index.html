@@ -1782,6 +1782,27 @@
   </form>
 </dialog>
 
+<!-- JSエラー可視化：どのスクリプトより前に置き、初期化エラーも赤帯で画面に表示する（環境依存の不具合切り分け用） -->
+<script>
+(function () {
+  function showErr(msg) {
+    var bar = document.getElementById("globalErrorBar");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "globalErrorBar";
+      bar.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:99999;background:#c22;color:#fff;font:13px/1.5 sans-serif;padding:8px 12px;white-space:pre-wrap;box-shadow:0 2px 8px rgba(0,0,0,.3)";
+      (document.body || document.documentElement).appendChild(bar);
+    }
+    bar.textContent = "⚠ エラーが発生し一部機能が停止している可能性があります（この内容を開発者へ伝えてください）:\n" + msg;
+  }
+  window.addEventListener("error", function (e) {
+    showErr((e.message || "不明なエラー") + (e.filename ? "  @ " + e.filename.split("/").pop() + ":" + e.lineno : ""));
+  });
+  window.addEventListener("unhandledrejection", function (e) {
+    showErr("Promise: " + ((e.reason && (e.reason.message || e.reason)) || "不明"));
+  });
+})();
+</script>
 <!-- ローカル設定（git管理外の browser/config.local.js。無ければ404で単に無視される） -->
 <script src="config.local.js"></script>
 <!-- Excel読み取り用 SheetJS（オフラインでも動くようローカル同梱。無ければ .xlsx 取り込みだけ使えなくなる） -->
@@ -2342,9 +2363,17 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-15 (13)";
+  const APP_VERSION = "2026-07-15 (14)";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
+  // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
+  (function () {
+    const b = document.createElement("div");
+    b.textContent = "v" + APP_VERSION;
+    b.title = "実行中のバージョン";
+    b.style.cssText = "position:fixed;right:6px;bottom:4px;z-index:9998;font:11px/1 sans-serif;color:rgba(255,255,255,.85);background:rgba(0,0,0,.35);padding:3px 7px;border-radius:8px;pointer-events:none;";
+    document.body.appendChild(b);
+  })();
 
   // 表示中（または未返却）のパネルを元の位置へ戻す。closeイベントとopenの競合でも壊れないよう一元化。
   function restoreModalPanel() {
