@@ -2338,7 +2338,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-14 (9)";
+  const APP_VERSION = "2026-07-14 (11)";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
 
@@ -3065,16 +3065,31 @@
     );
   }
 
+  // 直接 fetch → 失敗（多くは CORS）したら公開 CORS プロキシ経由で再取得する。
+  // プロキシはオンライン時のみ有効（オフラインでは直接取得のみ試す）。
+  async function impFetchUrl(url) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return res;
+    } catch (_) { /* CORS/ネットワーク失敗 → プロキシへ */ }
+    // フォールバック: allorigins（raw でそのまま本文を返す）。ブラウザから直接読めないサイト対策。
+    const proxied = "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
+    const res = await fetch(proxied);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res;
+  }
+
   async function impHandleUrl(url) {
+    // スキームが無ければ https:// を補う（"example.com/..." をそのまま扱えるように）
+    if (!/^[a-z]+:\/\//i.test(url)) url = "https://" + url;
     impSetStatus("リンクを読み込み中…");
     let res;
     try {
-      res = await fetch(url);
-    } catch (_) {
-      impSetStatus("リンクを読み込めませんでした（オフラインか、サイト側がブラウザからの直接取得を許可していない可能性）。\nページを開いて本文をコピーし「テキスト貼り付け」へ貼るか、ファイルとして保存して「フォルダ/ファイル選択」から読み込んでください。");
+      res = await impFetchUrl(url);
+    } catch (e) {
+      impSetStatus("リンクを読み込めませんでした（" + (e.message || "取得エラー") + "）。\nオフラインか、URLが正しくない可能性があります。ページを開いて本文をコピーし「テキスト貼り付け」へ貼るか、ファイルとして保存して「📄 ファイルを選択」から読み込んでください。");
       return;
     }
-    if (!res.ok) { impSetStatus(`リンクの読み込みに失敗しました（HTTP ${res.status}）`); return; }
     const ct = res.headers.get("content-type") || "";
     if (/text\/calendar/i.test(ct) || /\.ics(\?|#|$)/i.test(url)) {
       const n = impAddCandidates(parseIcsText(await res.text()), url);
@@ -3083,11 +3098,13 @@
       return;
     }
     let text = await res.text();
-    if (/html/i.test(ct)) {
+    // allorigins 経由だと content-type が取れないことがあるため、中身が HTML っぽければタグ除去する
+    if (/html/i.test(ct) || /^\s*<(!doctype|html|head|body)/i.test(text)) {
       const doc = new DOMParser().parseFromString(text, "text/html");
       doc.querySelectorAll("script,style,noscript,nav,footer,header").forEach(el => el.remove());
       text = (doc.body ? doc.body.textContent : text).replace(/\n{3,}/g, "\n\n").trim();
     }
+    if (!text.trim()) { impSetStatus("リンク先から本文を読み取れませんでした。別のURLか、テキスト貼り付けをお試しください。"); return; }
     impSetStatus("AIで予定を抽出中…（ローカルAIは1分ほどかかることがあります）");
     const n = impAddCandidates(await aiExtractTasks(text), url);
     renderImpPreview();
@@ -3279,16 +3296,6 @@
       impHandleFiles(e.target.files).catch(err => impSetStatus("エラー: " + err.message));
       e.target.value = "";
     });
-  }
-
-  // クリックが届いているかを画面上で確認できるようにする（ダイアログがウィンドウの背面に隠れる環境の切り分け用）。
-  // preventDefault はしない＝ネイティブのダイアログ表示はそのまま label に任せる。
-  for (const [sel, msg] of [
-    ['label[for="impFolderInput"]', "📂 フォルダ選択ダイアログを開いています…（表示されない場合、他のウィンドウの背面に隠れていないか確認してください）"],
-    ['label[for="impFilesInput"]', "📄 ファイル選択ダイアログを開いています…（表示されない場合、他のウィンドウの背面に隠れていないか確認してください）"]
-  ]) {
-    const el = document.querySelector(sel);
-    if (el) el.addEventListener("click", () => impSetStatus(msg));
   }
 
   // ドラッグ＆ドロップでも取り込めるようにする（ファイル選択ダイアログが使えない環境のフォールバックにもなる）
@@ -3625,7 +3632,7 @@
     tasks.forEach((t, i) => {
       if (!t.pos) {
         assigned = true;
-        t.pos = { x: 6, y: 6 + i * 64 };
+        t.pos = { x: 6, y: 6 + i * 112 }; /* カード1.5倍化に合わせて既定の縦間隔を拡大 */
       }
     });
     return assigned;
@@ -4364,10 +4371,16 @@
           cardsWrap.innerHTML = `<div class="empty-msg">タスクなし<br>ダブルクリックで追加</div>`;
         } else {
           if (ensureDefaultPos(tasks)) needsSave = true;
-          if (!pos.h) {
-            const maxY = Math.max(...tasks.map(t => t.pos.y + 90));
-            cardsWrap.style.minHeight = Math.max(220, maxY) + "px";
-          }
+          const maxRight = Math.max(...tasks.map(t => t.pos.x + ((t.size && t.size.w) || 190)));
+          const maxBottom = Math.max(...tasks.map(t => t.pos.y + ((t.size && t.size.h) || 110)));
+          // 高さが未指定のボードは、全カードが縦に収まるよう自動で背を伸ばす（従来動作）。
+          if (!pos.h) cardsWrap.style.minHeight = Math.max(220, maxBottom + 12) + "px";
+          // 枠外に置かれた／ボードを小さくして枠外になったカードにもスクロールで到達できるよう、
+          // スクロール領域を全カードを含む大きさに広げる「不可視スペーサー」を置く。
+          // （幅を widen するとボード枠からはみ出るので、スペーサーで overflow:auto のスクロール範囲だけを拡張する）
+          const spacer = document.createElement("div");
+          spacer.style.cssText = `position:absolute; left:0; top:0; width:${maxRight + 12}px; height:${maxBottom + 12}px; pointer-events:none; opacity:0;`;
+          cardsWrap.appendChild(spacer);
           for (const task of tasks) cardsWrap.appendChild(buildCardEl(task, key));
         }
         col.appendChild(cardsWrap);
