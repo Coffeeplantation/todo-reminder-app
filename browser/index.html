@@ -1558,6 +1558,9 @@
           <input type="file" id="impFolderInput" webkitdirectory multiple hidden>
           <input type="file" id="impFilesInput" multiple accept=".txt,.md,.csv,.ics,.xlsx,.xlsm,.xls,.json" hidden>
         </span>
+        <label id="impDropZone" for="impFilesInput" style="display:block; margin-top:6px; padding:10px 12px; border:1.5px dashed var(--border); border-radius:8px; font-size:12px; color:var(--muted); text-align:center; cursor:pointer;">
+          ここに Excel / CSV / .ics / テキストファイルを<b>ドラッグ＆ドロップ</b>、またはクリックしてファイルを選択
+        </label>
       </div>
 
       <div class="imp-src">
@@ -3170,6 +3173,23 @@
     document.getElementById(id).addEventListener("change", e => {
       impHandleFiles(e.target.files).catch(err => impSetStatus("エラー: " + err.message));
       e.target.value = "";
+    });
+  }
+
+  // ドラッグ＆ドロップでも取り込めるようにする（ファイル選択ダイアログが使えない環境のフォールバックにもなる）
+  const impDropZone = document.getElementById("impDropZone");
+  if (impDropZone) {
+    const stop = e => { e.preventDefault(); e.stopPropagation(); };
+    ["dragenter", "dragover"].forEach(ev => impDropZone.addEventListener(ev, e => {
+      stop(e); impDropZone.style.background = "rgba(59,130,246,0.12)"; impDropZone.style.borderColor = "var(--accent, #2563eb)";
+    }));
+    ["dragleave", "dragend"].forEach(ev => impDropZone.addEventListener(ev, e => {
+      stop(e); impDropZone.style.background = ""; impDropZone.style.borderColor = "";
+    }));
+    impDropZone.addEventListener("drop", e => {
+      stop(e); impDropZone.style.background = ""; impDropZone.style.borderColor = "";
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) impHandleFiles(files).catch(err => impSetStatus("エラー: " + err.message));
     });
   }
   const btnImpUrl = document.getElementById("btnImpUrl");
