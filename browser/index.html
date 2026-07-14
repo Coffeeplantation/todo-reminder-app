@@ -1615,7 +1615,7 @@
           <input type="file" id="impFilesInput" multiple accept=".txt,.md,.csv,.ics,.xlsx,.xlsm,.xls,.json" hidden>
         </span>
         <label id="impDropZone" for="impFilesInput" style="display:block; margin-top:6px; padding:10px 12px; border:1.5px dashed var(--border); border-radius:8px; font-size:12px; color:var(--muted); text-align:center; cursor:pointer;">
-          ここに Excel / CSV / .ics / テキストファイルを<b>ドラッグ＆ドロップ</b>、またはクリックしてファイルを選択
+          デスクトップなどから、Excel / CSV / .ics / テキストの<b>ファイルやフォルダをドラッグ＆ドロップ</b>、またはクリックして選択
         </label>
       </div>
 
@@ -3240,14 +3240,63 @@
     });
   });
 
-  // 「フォルダを選択」「ファイルを選択」は label[for] でネイティブに開くため、JSのクリック処理は不要。
-  // 選択後の change だけを受け取ってファイルを取り込む。
+  // 「フォルダを選択」「ファイルを選択」は基本 label[for] でネイティブに開く（JS非依存で確実）。
+  // 選択後の change を受け取ってファイルを取り込む。
   for (const id of ["impFolderInput", "impFilesInput"]) {
     document.getElementById(id).addEventListener("change", e => {
       impHandleFiles(e.target.files).catch(err => impSetStatus("エラー: " + err.message));
       e.target.value = "";
     });
   }
+
+  // File System Access API が使える環境（http/https）では、ピッカーを「デスクトップ」起点で開く。
+  // file://（デスクトップのショートカット）や非対応ブラウザでは label のネイティブ動作にそのまま任せる。
+  const canUseFsApi = !!window.showOpenFilePicker && !!window.showDirectoryPicker && location.protocol !== "file:";
+
+  // 選択したフォルダ配下のファイルを再帰的に集める（深さは念のため制限）
+  async function collectDirFiles(dirHandle, acc, depth) {
+    for await (const entry of dirHandle.values()) {
+      if (entry.kind === "file") acc.push(await entry.getFile());
+      else if (entry.kind === "directory" && depth < 6) await collectDirFiles(entry, acc, depth + 1);
+    }
+    return acc;
+  }
+
+  const impFolderLabel = document.querySelector('label[for="impFolderInput"]');
+  const impFilesLabel = document.querySelector('label[for="impFilesInput"]');
+
+  if (impFolderLabel) impFolderLabel.addEventListener("click", async e => {
+    if (!canUseFsApi) return; // ネイティブの label 動作にまかせる
+    e.preventDefault();
+    let dir;
+    try {
+      dir = await window.showDirectoryPicker({ startIn: "desktop" });
+    } catch (err) {
+      if (err && err.name === "AbortError") return;          // ユーザーがキャンセル
+      document.getElementById("impFolderInput").click();     // 失敗時は通常の入力にフォールバック
+      return;
+    }
+    try {
+      impSetStatus("フォルダを読み取り中…");
+      await impHandleFiles(await collectDirFiles(dir, [], 0));
+    } catch (err) { impSetStatus("エラー: " + err.message); }
+  });
+
+  if (impFilesLabel) impFilesLabel.addEventListener("click", async e => {
+    if (!canUseFsApi) return;
+    e.preventDefault();
+    let handles;
+    try {
+      handles = await window.showOpenFilePicker({ startIn: "desktop", multiple: true });
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      document.getElementById("impFilesInput").click();
+      return;
+    }
+    try {
+      await impHandleFiles(await Promise.all(handles.map(h => h.getFile())));
+    } catch (err) { impSetStatus("エラー: " + err.message); }
+  });
 
   // ドラッグ＆ドロップでも取り込めるようにする（ファイル選択ダイアログが使えない環境のフォールバックにもなる）
   const impDropZone = document.getElementById("impDropZone");
@@ -3259,10 +3308,42 @@
     ["dragleave", "dragend"].forEach(ev => impDropZone.addEventListener(ev, e => {
       stop(e); impDropZone.style.background = ""; impDropZone.style.borderColor = "";
     }));
-    impDropZone.addEventListener("drop", e => {
+    impDropZone.addEventListener("drop", async e => {
       stop(e); impDropZone.style.background = ""; impDropZone.style.borderColor = "";
-      const files = e.dataTransfer && e.dataTransfer.files;
+      const dt = e.dataTransfer;
+      if (!dt) return;
+      // フォルダのドロップにも対応する（webkitGetAsEntry で中のファイルを再帰的に集める）
+      const entries = dt.items
+        ? [...dt.items].map(it => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean)
+        : [];
+      if (entries.some(en => en.isDirectory)) {
+        try {
+          impSetStatus("フォルダを読み取り中…");
+          const files = [];
+          for (const en of entries) await readDropEntry(en, files, 0);
+          await impHandleFiles(files);
+        } catch (err) { impSetStatus("エラー: " + err.message); }
+        return;
+      }
+      const files = dt.files;
       if (files && files.length) impHandleFiles(files).catch(err => impSetStatus("エラー: " + err.message));
+    });
+  }
+
+  // ドロップされた FileSystemEntry（ファイル/フォルダ）を再帰的にたどって File を集める
+  function readDropEntry(entry, acc, depth) {
+    return new Promise(resolve => {
+      if (entry.isFile) {
+        entry.file(f => { acc.push(f); resolve(); }, () => resolve());
+      } else if (entry.isDirectory && depth < 6) {
+        const reader = entry.createReader();
+        const readBatch = () => reader.readEntries(async ents => {
+          if (!ents.length) { resolve(); return; } // これ以上ない
+          for (const en of ents) await readDropEntry(en, acc, depth + 1);
+          readBatch(); // readEntries はバッチで返るため続きを読む
+        }, () => resolve());
+        readBatch();
+      } else resolve();
     });
   }
   const btnImpUrl = document.getElementById("btnImpUrl");
