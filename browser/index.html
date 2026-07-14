@@ -1167,6 +1167,18 @@
   }
   .imp-pick:hover { filter: brightness(1.06); transform: translateY(-1px); }
   .imp-pick:active { transform: translateY(0) scale(0.98); }
+  /* display:none だと環境により label 経由でダイアログが開かないため、不可視だが存在する形で隠す */
+  .imp-input-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
   /* すべてのポップアップ（モーダル）内のリストを 1.5倍サイズで見やすく・操作しやすく（2026-07-14）
      現行予定表・名簿・参加者リスト・終了ボード・自動タスク作成の各表に共通で適用する。 */
   .panel-modal-body table { font-size: 18px !important; }
@@ -1614,9 +1626,11 @@
           <label for="impFolderInput" class="imp-pick">📂 フォルダを選択</label>
           <label for="impFilesInput" class="imp-pick">📄 ファイルを選択</label>
           <!-- accept は付けない：付けると選択ダイアログで他のファイルがグレー表示になり「選べない」ように見えるため。
-               対応形式のチェックは取り込み時（impHandleFiles）に行い、対象外はメッセージで知らせる。 -->
-          <input type="file" id="impFolderInput" webkitdirectory multiple hidden>
-          <input type="file" id="impFilesInput" multiple hidden>
+               対応形式のチェックは取り込み時（impHandleFiles）に行い、対象外はメッセージで知らせる。
+               display:none（hidden属性）だと環境により label からダイアログが開かないことがあるため、
+               「見えないが存在する」visually-hidden 方式にする。 -->
+          <input type="file" id="impFolderInput" webkitdirectory multiple class="imp-input-hidden">
+          <input type="file" id="impFilesInput" multiple class="imp-input-hidden">
         </span>
         <label id="impDropZone" for="impFilesInput" style="display:block; margin-top:6px; padding:10px 12px; border:1.5px dashed var(--border); border-radius:8px; font-size:12px; color:var(--muted); text-align:center; cursor:pointer;">
           デスクトップなどから、Excel / CSV / .ics / テキストの<b>ファイルやフォルダをドラッグ＆ドロップ</b>、またはクリックして選択
@@ -2322,7 +2336,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-14 (7)";
+  const APP_VERSION = "2026-07-14 (8)";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
 
@@ -3263,6 +3277,16 @@
       impHandleFiles(e.target.files).catch(err => impSetStatus("エラー: " + err.message));
       e.target.value = "";
     });
+  }
+
+  // クリックが届いているかを画面上で確認できるようにする（ダイアログがウィンドウの背面に隠れる環境の切り分け用）。
+  // preventDefault はしない＝ネイティブのダイアログ表示はそのまま label に任せる。
+  for (const [sel, msg] of [
+    ['label[for="impFolderInput"]', "📂 フォルダ選択ダイアログを開いています…（表示されない場合、他のウィンドウの背面に隠れていないか確認してください）"],
+    ['label[for="impFilesInput"]', "📄 ファイル選択ダイアログを開いています…（表示されない場合、他のウィンドウの背面に隠れていないか確認してください）"]
+  ]) {
+    const el = document.querySelector(sel);
+    if (el) el.addEventListener("click", () => impSetStatus(msg));
   }
 
   // ドラッグ＆ドロップでも取り込めるようにする（ファイル選択ダイアログが使えない環境のフォールバックにもなる）
