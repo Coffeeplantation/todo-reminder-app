@@ -1388,6 +1388,7 @@
         <button type="button" id="btnBgChange" class="ghost" title="背景をランダムに変更（B）">🖼 背景</button>
         <button type="button" id="btnBgPin" class="ghost" title="背景を固定（自動切替を停止し、次回起動時も同じ背景を表示）">📌 固定</button>
       </div>
+      <button type="button" id="btnArrangeBoards" class="ghost" title="すべてのボードを画面内に並べ直す（画面外に出て操作できないときに）">🧭 ボードを画面内に整列</button>
       <button type="button" id="btnOpenArchive" class="ghost" title="終了したボードの確認・復元（ゴミ箱）">🗑 終了ボード</button>
       <button type="button" id="btnOpenReminder" class="ghost" title="リマインダーチェックを開く">🔔 リマインダー</button>
       <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
@@ -2284,6 +2285,9 @@
     openPanelModal("archive");
   });
 
+  // 画面外に出て操作できなくなったボードを、まとめて画面内へ並べ直す
+  document.getElementById("btnArrangeBoards").addEventListener("click", () => arrangeBoardsIntoView());
+
   // その月のタスク達成率を10%刻み（10段階）に丸めて返す。タスクが無い月は null（達成率表示なし）。
   function monthCompletionStep(tasks) {
     if (tasks.length === 0) return null;
@@ -2338,7 +2342,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-15 (12)";
+  const APP_VERSION = "2026-07-15 (13)";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
 
@@ -3649,6 +3653,22 @@
       }
     });
     return assigned;
+  }
+
+  // すべての稼働ボードを、画面の左上から順にグリッド状へ並べ直す（画面外に出て操作できなくなったボードの救済）。
+  // サイズ（w/h）や折りたたみ状態は保持し、位置だけ画面内に整列する。
+  function arrangeBoardsIntoView() {
+    const keys = getBoardKeys();
+    const perRow = Math.max(1, Math.floor((boardView.clientWidth - 20) / 380)) || 1;
+    keys.forEach((key, i) => {
+      const p = state.boardPos[key] || (state.boardPos[key] = {});
+      p.x = 20 + (i % perRow) * 380;
+      p.y = 20 + Math.floor(i / perRow) * 440;
+    });
+    save();
+    renderBoard();
+    boardView.scrollTo({ left: 0, top: 0, behavior: "smooth" });
+    toast("ボードを画面内に整列しました");
   }
 
   // 月パネル同士が自由配置後にどこまで広がっても収まるよう、キャンバスのサイズを実測して合わせる
