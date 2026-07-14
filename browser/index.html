@@ -1379,6 +1379,8 @@
       <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
       <button type="button" id="btnOpenAiSettings" class="ghost" title="AIプロバイダ・APIキーの設定">🤖 AI設定</button>
       <button type="button" id="btnOpenSettings" class="ghost" title="設定を開く">⚙ 設定</button>
+      <!-- 実行中のバージョン確認用（キャッシュで古い版が動いていないかを見分ける） -->
+      <div id="appVersion" style="padding:4px 10px; font-size:10.5px; color:var(--muted); text-align:right;"></div>
     </div>
   </span>
 </header>
@@ -2319,13 +2321,25 @@
   // ボードメニューからパネルを開いた場合、閉じたときに戻すメニューのキー
   let modalReturnMenuKey = null;
 
+  // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
+  const APP_VERSION = "2026-07-14 (7)";
+  document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
+  console.log("Todoリマインダー バージョン:", APP_VERSION);
+
+  // 表示中（または未返却）のパネルを元の位置へ戻す。closeイベントとopenの競合でも壊れないよう一元化。
+  function restoreModalPanel() {
+    if (!modalReturn) return;
+    const { el, parent, nextSibling } = modalReturn;
+    if (nextSibling && nextSibling.parentElement === parent) parent.insertBefore(el, nextSibling);
+    else parent.appendChild(el);
+    modalReturn = null;
+  }
+
   function openPanelModal(key, returnMenuKey = null) {
     const el = document.getElementById(PANEL_SECTION_IDS[key]);
-    // すでに別パネルを表示中なら、その要素を元の位置へ戻してから差し替える（二重showModalを防ぐ）
-    if (panelModal.open && modalReturn) {
-      const p = modalReturn;
-      if (p.nextSibling) p.parent.insertBefore(p.el, p.nextSibling); else p.parent.appendChild(p.el);
-    }
+    // 前のパネルが残っていれば（モーダルの開閉状態に関わらず）必ず元の位置へ戻してから差し替える。
+    // close() 直後の close イベント発火前に次のパネルを開いても、取り違えが起きないようにする。
+    restoreModalPanel();
     modalReturn = { el, parent: el.parentElement, nextSibling: el.nextSibling };
     modalReturnMenuKey = returnMenuKey;
     panelModalBody.appendChild(el);
@@ -2339,10 +2353,10 @@
 
   document.getElementById("panelModalClose").addEventListener("click", () => panelModal.close());
   panelModal.addEventListener("close", () => {
+    // close() 直後に別パネルで再オープン済みの場合は何もしない（新しいパネルを引き抜いてしまう事故を防ぐ）
+    if (panelModal.open) return;
     if (!modalReturn) return;
-    const { el, parent, nextSibling } = modalReturn;
-    if (nextSibling) parent.insertBefore(el, nextSibling); else parent.appendChild(el);
-    modalReturn = null;
+    restoreModalPanel();
     // 名簿の月スコープ・展開状態は開いている間だけ有効
     if (contactsScopeKey !== null || expandedContactName !== null) {
       contactsScopeKey = null;
