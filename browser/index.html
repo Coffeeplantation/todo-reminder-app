@@ -1147,6 +1147,26 @@
 
   /* ---- 予定の取り込みパネル・参加者チップ ---- */
   .imp-src { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+  /* フォルダ選択／ファイル選択は label[for] だが、ボタンと同じ緑スタイルで同幅・横並びに表示する（2026-07-14） */
+  .imp-pick {
+    flex: 1;
+    cursor: pointer;
+    border: none;
+    border-radius: 10px;
+    padding: 9px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--green);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), var(--shadow-sm);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: filter 0.15s ease, transform 0.18s var(--ease-out);
+  }
+  .imp-pick:hover { filter: brightness(1.06); transform: translateY(-1px); }
+  .imp-pick:active { transform: translateY(0) scale(0.98); }
   /* すべてのポップアップ（モーダル）内のリストを 1.5倍サイズで見やすく・操作しやすく（2026-07-14）
      現行予定表・名簿・参加者リスト・終了ボード・自動タスク作成の各表に共通で適用する。 */
   .panel-modal-body table { font-size: 18px !important; }
@@ -1573,11 +1593,10 @@
       </div>
 
       <div class="imp-src">
-        <span class="f-label" style="font-weight:600;">📁 フォルダ / ファイル</span>
-        <span style="display:flex; gap:6px; flex-wrap:wrap;">
-          <!-- ボタンではなく label[for] にすることで、JSに依存せずネイティブにファイル/フォルダ選択ダイアログを開く -->
-          <label for="impFolderInput" class="secondary small" style="cursor:pointer; display:inline-flex; align-items:center;">📂 フォルダを選択</label>
-          <label for="impFilesInput" class="secondary small" style="cursor:pointer; display:inline-flex; align-items:center;">📄 ファイルを選択</label>
+        <span style="display:flex; gap:8px;">
+          <!-- ボタンではなく label[for] にすることで、JSに依存せずネイティブにファイル/フォルダ選択ダイアログを開く。2つを同じ幅で横並びにする。 -->
+          <label for="impFolderInput" class="imp-pick">📂 フォルダを選択</label>
+          <label for="impFilesInput" class="imp-pick">📄 ファイルを選択</label>
           <input type="file" id="impFolderInput" webkitdirectory multiple hidden>
           <input type="file" id="impFilesInput" multiple accept=".txt,.md,.csv,.ics,.xlsx,.xlsm,.xls,.json" hidden>
         </span>
