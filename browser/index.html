@@ -1133,17 +1133,19 @@
   @starting-style {
     dialog[open]::backdrop { background: rgba(15, 23, 42, 0); }
   }
-  dialog form { padding: 18px; display: flex; flex-direction: column; gap: 10px; }
-  dialog h3 { margin: 0 0 4px; font-size: 15px; }
-  dialog label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+  /* ダイアログ全般を1.5倍サイズで見やすく（2026-07-14）。#dialogCreateBoard は個別スタイルなので form 配下の taskDialog/contactDialog に効く */
+  dialog form { padding: 26px 28px; display: flex; flex-direction: column; gap: 15px; min-width: 380px; max-width: 92vw; }
+  dialog h3 { margin: 0 0 8px; font-size: 21px; }
+  dialog label { font-size: 15px; font-weight: 600; color: var(--text); display: flex; flex-direction: column; gap: 6px; }
   dialog input {
-    padding: 7px 9px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    padding: 11px 13px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
     font-family: inherit;
-    font-size: 13px;
+    font-size: 17px;
   }
-  dialog .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+  dialog .dlg-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+  dialog .dlg-actions button { padding: 10px 22px; font-size: 16px; }
 
   /* ---- 予定の取り込みパネル・参加者チップ ---- */
   .imp-src { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
@@ -1541,23 +1543,23 @@
     </div>
   </section>
 
-  <!-- ボード作成ダイアログ -->
-  <dialog id="dialogCreateBoard" style="max-width:400px; border-radius:var(--radius-sm); border:1px solid var(--border); backdrop-filter:var(--glass-blur);">
-    <h3 style="margin:0 0 16px; font-size:16px;">新しいボードを作成</h3>
-    <div style="display:flex; flex-direction:column; gap:12px;">
+  <!-- ボード作成ダイアログ（1.5倍サイズ・見やすいUI。2026-07-14拡大） -->
+  <dialog id="dialogCreateBoard" style="width:560px; max-width:92vw; padding:28px 32px; border-radius:16px; border:1px solid var(--border); backdrop-filter:var(--glass-blur); box-shadow:var(--shadow-md);">
+    <h3 style="margin:0 0 20px; font-size:22px; display:flex; align-items:center; gap:10px;">▦ 新しいボードを作成</h3>
+    <div style="display:flex; flex-direction:column; gap:18px;">
       <div>
-        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">ボード名</label>
-        <input type="text" id="inputBoardName" placeholder="例：プロジェクトA" style="width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; font-size:14px;">
+        <label for="inputBoardName" style="display:block; font-size:16px; font-weight:700; margin-bottom:6px;">ボード名</label>
+        <input type="text" id="inputBoardName" placeholder="例：プロジェクトA" style="width:100%; padding:12px 14px; border:1.5px solid var(--border); border-radius:10px; font-size:18px; font-family:inherit; box-sizing:border-box;">
       </div>
       <div>
-        <label style="display:block; font-size:13px; font-weight:600; margin-bottom:4px;">最小サイズ表示名（1-3文字）</label>
-        <input type="text" id="inputBoardMiniName" placeholder="例：PA、①" maxlength="3" style="width:100%; padding:8px; border:1px solid var(--border); border-radius:6px; font-size:14px;">
-        <p style="font-size:12px; color:var(--muted); margin:4px 0 0; line-height:1.4;">ボードを最小化したときに表示される名前です</p>
+        <label for="inputBoardMiniName" style="display:block; font-size:16px; font-weight:700; margin-bottom:6px;">最小サイズ表示名（1〜3文字）</label>
+        <input type="text" id="inputBoardMiniName" placeholder="例：PA、①" maxlength="3" style="width:100%; padding:12px 14px; border:1.5px solid var(--border); border-radius:10px; font-size:18px; font-family:inherit; box-sizing:border-box;">
+        <p style="font-size:14px; color:var(--muted); margin:6px 0 0; line-height:1.5;">💡 ボードを最小化（折りたたみ）したときにタイルへ表示される短い名前です。空欄ならボード名の先頭文字を使います。</p>
       </div>
     </div>
-    <div style="display:flex; gap:8px; margin-top:16px; justify-content:flex-end;">
-      <button type="button" id="btnBoardDialogCancel" class="secondary" style="padding:6px 16px;">キャンセル</button>
-      <button type="button" id="btnBoardDialogCreate" class="primary" style="padding:6px 16px;">作成</button>
+    <div style="display:flex; gap:12px; margin-top:24px; justify-content:flex-end;">
+      <button type="button" id="btnBoardDialogCancel" class="plain" style="padding:10px 24px; font-size:16px;">キャンセル</button>
+      <button type="button" id="btnBoardDialogCreate" style="padding:10px 28px; font-size:16px; font-weight:700;">✔ 作成</button>
     </div>
   </dialog>
 
@@ -2336,7 +2338,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-14 (8)";
+  const APP_VERSION = "2026-07-14 (9)";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
 
