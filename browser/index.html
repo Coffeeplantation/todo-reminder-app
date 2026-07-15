@@ -1556,6 +1556,12 @@
           <input type="text" id="cfgOllamaModel" placeholder="qwen2.5:3b" autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
           <small style="color:var(--muted); display:block; margin-top:2px;">「ローカルAI（Ollama）」で使うモデル名。PC内の Ollama で動くため、APIキー不要・完全オフラインで利用できます。<br>初回のみオンライン時にコマンドプロンプトで「ollama pull qwen2.5:3b」を実行してモデルを取得してください。</small>
         </span>
+
+        <label for="cfgOllamaVisionModel">AI：画像読み取りモデル名</label>
+        <span>
+          <input type="text" id="cfgOllamaVisionModel" placeholder="llava" autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
+          <small style="color:var(--muted); display:block; margin-top:2px;">画像（スクリーンショット/写真）から予定を読み取るときに使う、Ollamaの<b>ビジョン対応モデル</b>名。PC内で動くためオフラインでも画像を読めます。<br>初回のみオンライン時に「ollama pull llava」（または「ollama pull minicpm-v」等）でモデルを取得してください。</small>
+        </span>
       </div>
     </div>
   </section>
@@ -1691,9 +1697,19 @@
       </div>
 
       <div class="imp-src">
-        <span class="f-label" style="font-weight:600;">📋 テキスト貼り付け</span>
-        <textarea id="impText" rows="3" placeholder="メールや議事録などの文章を貼り付けて「抽出」を押すと、AIが予定を読み取ります" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; resize:vertical;"></textarea>
-        <button type="button" id="btnImpText" class="secondary small" style="align-self:flex-start;">🤖 抽出</button>
+        <span class="f-label" style="font-weight:600;">📋 テキスト・画像の貼り付け</span>
+        <textarea id="impText" rows="3" placeholder="メールや議事録などの文章を貼り付け、または予定表のスクリーンショット/写真をこの欄に貼り付け（Ctrl+V）て「抽出」を押すと、AIが予定を読み取ります" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; resize:vertical;"></textarea>
+        <!-- 画像の貼り付け/選択。accept=image/* で画像だけ選べるようにする -->
+        <input type="file" id="impImageInput" accept="image/*" class="imp-input-hidden">
+        <div id="impImagePreview" hidden style="margin-top:6px; display:flex; align-items:flex-start; gap:8px;">
+          <img id="impImageThumb" alt="貼り付けた画像" style="max-width:180px; max-height:120px; border:1px solid var(--border); border-radius:8px; object-fit:contain; background:#fff;">
+          <button type="button" id="btnImpImageClear" class="secondary small" title="画像を外す">✕ 画像を外す</button>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+          <button type="button" id="btnImpText" class="secondary small">🤖 抽出</button>
+          <label for="impImageInput" class="secondary small" style="cursor:pointer; display:inline-flex; align-items:center;">📷 画像を選択</label>
+          <span style="font-size:11px; color:var(--muted);">画像はローカルAI（Ollamaのビジョンモデル）で読み取ります。オフラインのまま利用できます。</span>
+        </div>
       </div>
 
       <div id="impStatus" style="font-size:12.5px; color:var(--muted); min-height:18px; margin:6px 0;"></div>
@@ -1878,6 +1894,7 @@
       anthropicApiKey: "",
       geminiApiKey: "",
       ollamaModel: "qwen2.5:3b",
+      ollamaVisionModel: "llava", // 画像から予定を読み取るときに使う Ollama のビジョン対応モデル
       localOnly: true // 完全ローカル：読み込んだ内容・タスク情報を外部（クラウドAI/画像/プロキシ）へ送らない
     },
     tasks: [
@@ -2414,7 +2431,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-15 (15) 完全ローカル";
+  const APP_VERSION = "2026-07-15 (16) 画像読み取り対応";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -2486,6 +2503,7 @@
   const cfgAiProvider = document.getElementById("cfgAiProvider");
   const cfgGeminiKey = document.getElementById("cfgGeminiKey");
   const cfgOllamaModel = document.getElementById("cfgOllamaModel");
+  const cfgOllamaVisionModel = document.getElementById("cfgOllamaVisionModel");
   const cfgLocalOnly = document.getElementById("cfgLocalOnly");
   const cfgLocalOnlyLabel = document.getElementById("cfgLocalOnlyLabel");
 
@@ -2509,6 +2527,7 @@
     cfgAiProvider.value = state.settings.aiProvider || "anthropic";
     cfgGeminiKey.value = state.settings.geminiApiKey || "";
     cfgOllamaModel.value = state.settings.ollamaModel || "qwen2.5:3b";
+    cfgOllamaVisionModel.value = state.settings.ollamaVisionModel || "llava";
   }
   cfgLocalOnly.addEventListener("change", () => {
     state.settings.localOnly = cfgLocalOnly.checked;
@@ -2587,6 +2606,11 @@
   });
   cfgOllamaModel.addEventListener("change", () => {
     state.settings.ollamaModel = cfgOllamaModel.value.trim() || "qwen2.5:3b";
+    renderSettings();
+    save();
+  });
+  cfgOllamaVisionModel.addEventListener("change", () => {
+    state.settings.ollamaVisionModel = cfgOllamaVisionModel.value.trim() || "llava";
     renderSettings();
     save();
   });
@@ -3086,15 +3110,25 @@
     return Array.isArray(data.tasks) ? data.tasks : [];
   }
 
-  async function aiExtractTasks(text) {
+  // text だけでなく、image（{ base64, mediaType }。base64は data: 接頭辞なし）からも予定を抽出できる。
+  // 画像を渡した場合は、各プロバイダのビジョン（画像入力）機能を使う。
+  async function aiExtractTasks(text, image) {
     // 完全ローカルモード（既定ON）では、読み込んだ内容を外部に送らないため
     // 抽出は必ずローカルAI（Ollama）だけを使う。クラウドAI（Claude/Gemini）へは一切送信しない。
     const localOnly = state.settings.localOnly !== false;
     const provider = localOnly ? "ollama" : (state.settings.aiProvider || "anthropic");
     const sys = impExtractionPrompt();
-    if (localOnly && provider === "ollama") { /* 外部送信なし。以降のollama分岐でローカル処理 */ }
+    // 画像のときは、文章が無くても画像から読み取るよう指示を添える
+    const userText = image
+      ? ((text || "").slice(0, 6000) + "\nこの画像は予定表です。画像から予定・タスク・締め切りをすべて読み取り、指定のJSON形式で返してください。").trim()
+      : (text || "");
     if (provider === "ollama") {
-      const model = (state.settings.ollamaModel || "qwen2.5:3b").trim();
+      // 画像は Ollama のビジョン対応モデル（llava 等）で読む。文章のみのときは通常モデル。
+      const model = image
+        ? (state.settings.ollamaVisionModel || "llava").trim()
+        : (state.settings.ollamaModel || "qwen2.5:3b").trim();
+      const userMsg = { role: "user", content: userText.slice(0, 6000) };
+      if (image) userMsg.images = [image.base64]; // Ollama は base64（接頭辞なし）の配列を受け取る
       let res;
       try {
         res = await fetch(`${OLLAMA_URL}/api/chat`, {
@@ -3103,19 +3137,24 @@
           body: JSON.stringify({
             model, stream: false, format: "json",
             options: { num_ctx: 8192 },
-            messages: [{ role: "system", content: sys }, { role: "user", content: text.slice(0, 6000) }]
+            messages: [{ role: "system", content: sys }, userMsg]
           })
         });
       } catch (_) {
         throw new Error("ローカルAI（Ollama）に接続できません。Ollama を起動してから再試行してください。");
       }
-      if (!res.ok) throw new Error(`ローカルAIエラー（${res.status}）`);
+      if (!res.ok) {
+        if (image && res.status === 404) throw new Error(`画像読み取りモデル「${model}」が見つかりません。オンライン時に「ollama pull ${model}」で取得するか、⚙設定の「AI：画像読み取りモデル名」を変更してください。`);
+        throw new Error(`ローカルAIエラー（${res.status}）`);
+      }
       const data = await res.json();
       return impParseJson((data.message && data.message.content) || "");
     }
     if (provider === "gemini") {
       const key = (state.settings.geminiApiKey || "").trim();
       if (!key) throw new Error("Gemini APIキーが未設定です（⚙設定）。オフラインの場合はプロバイダを「ローカルAI」にしてください。");
+      const parts = [{ text: userText.slice(0, 20000) }];
+      if (image) parts.push({ inline_data: { mime_type: image.mediaType, data: image.base64 } });
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`,
         {
@@ -3123,20 +3162,22 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: sys }] },
-            contents: [{ role: "user", parts: [{ text: text.slice(0, 20000) }] }],
+            contents: [{ role: "user", parts }],
             generationConfig: { responseMimeType: "application/json" }
           })
         }
       );
       if (!res.ok) throw new Error(`Gemini APIエラー（${res.status}）`);
       const data = await res.json();
-      const parts = (((data.candidates || [])[0] || {}).content || {}).parts || [];
-      return impParseJson(parts.map(p => p.text || "").join(""));
+      const outParts = (((data.candidates || [])[0] || {}).content || {}).parts || [];
+      return impParseJson(outParts.map(p => p.text || "").join(""));
     }
     const client = await ensureAiClient();
+    const content = [{ type: "text", text: userText.slice(0, 20000) }];
+    if (image) content.unshift({ type: "image", source: { type: "base64", media_type: image.mediaType, data: image.base64 } });
     const msg = await client.messages.create({
       model: AI_MODEL, max_tokens: 8192, system: sys,
-      messages: [{ role: "user", content: text.slice(0, 20000) }]
+      messages: [{ role: "user", content }]
     });
     return impParseJson(msg.content.filter(b => b.type === "text").map(b => b.text).join(""));
   }
@@ -3583,14 +3624,71 @@
     });
   }
 
+  // ---- 画像の貼り付け／選択（予定表のスクリーンショット・写真をAIで読み取る） ----
+  // impPastedImage = { base64（data:接頭辞なし）, mediaType, dataUrl（プレビュー表示用） } または null
+  let impPastedImage = null;
+  const impImageInput = document.getElementById("impImageInput");
+  const impImagePreview = document.getElementById("impImagePreview");
+  const impImageThumb = document.getElementById("impImageThumb");
+  const btnImpImageClear = document.getElementById("btnImpImageClear");
+
+  // File/Blob を dataURL 化して、base64 部分と MIME を取り出して保持する
+  function impSetImageFromFile(file) {
+    if (!file || !/^image\//.test(file.type)) return;
+    if (file.size > 12 * 1024 * 1024) { impSetStatus("画像が大きすぎます（12MBまで）。"); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || "");
+      const comma = dataUrl.indexOf(",");
+      const base64 = comma >= 0 ? dataUrl.slice(comma + 1) : "";
+      if (!base64) return;
+      impPastedImage = { base64, mediaType: file.type || "image/png", dataUrl };
+      if (impImageThumb) impImageThumb.src = dataUrl;
+      if (impImagePreview) impImagePreview.hidden = false;
+      impSetStatus("画像を読み込みました。「🤖 抽出」を押すと画像から予定を読み取ります。");
+    };
+    reader.readAsDataURL(file);
+  }
+  function impClearImage() {
+    impPastedImage = null;
+    if (impImageThumb) impImageThumb.removeAttribute("src");
+    if (impImagePreview) impImagePreview.hidden = true;
+    if (impImageInput) impImageInput.value = "";
+  }
+  if (impImageInput) {
+    impImageInput.addEventListener("change", e => {
+      const f = e.target.files && e.target.files[0];
+      if (f) impSetImageFromFile(f);
+    });
+  }
+  if (btnImpImageClear) btnImpImageClear.addEventListener("click", impClearImage);
+  // テキスト欄への貼り付け（Ctrl+V）で、クリップボードに画像があれば取り込む
+  const impTextArea = document.getElementById("impText");
+  if (impTextArea) {
+    impTextArea.addEventListener("paste", e => {
+      const items = (e.clipboardData && e.clipboardData.items) || [];
+      for (const it of items) {
+        if (it.kind === "file" && /^image\//.test(it.type)) {
+          const f = it.getAsFile();
+          if (f) { e.preventDefault(); impSetImageFromFile(f); return; }
+        }
+      }
+    });
+  }
+
   const btnImpText = document.getElementById("btnImpText");
   if (btnImpText) {
     btnImpText.addEventListener("click", async () => {
       const t = document.getElementById("impText").value.trim();
-      if (!t) { impSetStatus("テキストを貼り付けてください"); return; }
-      impSetStatus("AIで予定を抽出中…（ローカルAIは1分ほどかかることがあります）");
+      // 画像があれば画像から、無ければテキストから抽出する
+      if (!t && !impPastedImage) { impSetStatus("テキストを貼り付けるか、画像を貼り付け／選択してください"); return; }
+      const usingImage = !!impPastedImage;
+      impSetStatus(usingImage
+        ? "AIで画像から予定を抽出中…（ローカルAIは画像読み取りに数分かかることがあります）"
+        : "AIで予定を抽出中…（ローカルAIは1分ほどかかることがあります）");
       try {
-        const n = impAddCandidates(await aiExtractTasks(t), "貼り付けテキスト");
+        const tasks = await aiExtractTasks(t, impPastedImage || undefined);
+        const n = impAddCandidates(tasks, usingImage ? "貼り付け画像" : "貼り付けテキスト");
         renderImpPreview();
         impSetStatus(`${n} 件の新しい予定を読み取りました`);
       } catch (e) {
@@ -3612,6 +3710,7 @@
     btnImpClear.addEventListener("click", () => {
       impCandidates = [];
       impFileStats = {};
+      impClearImage();
       renderImpPreview();
       impSetStatus("");
     });
