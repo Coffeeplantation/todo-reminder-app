@@ -1925,6 +1925,7 @@
     nextBoardId: 2,
     boardPos: {},
     boardGroups: [],
+    lockedGroups: [], // 「完全に1つ」に固定した結合ボードのキー一覧（分離不可にする）
     aiPanelPos: null
   });
 
@@ -2128,6 +2129,28 @@
   function canMergeBoards(a, b) {
     return !!a && !!b && a !== b;
   }
+  // ---- 結合ボードの「完全に1つ（固定）」管理（分離できなくする / できるようにする） ----
+  function isGroupLocked(key) { return (state.lockedGroups || []).includes(key); }
+  // 結合構成が変わって存在しなくなった固定キーを掃除する（結合・終了などでキーが変わったとき用）
+  function pruneLockedGroups() {
+    if (!state.lockedGroups || !state.lockedGroups.length) return;
+    const existing = new Set(state.boardGroups.map(g => groupKeyOf(g)));
+    state.lockedGroups = state.lockedGroups.filter(k => existing.has(k));
+  }
+  function lockGroup(key) {
+    if (!isGroupKey(key)) return;
+    if (!state.lockedGroups) state.lockedGroups = [];
+    if (!state.lockedGroups.includes(key)) state.lockedGroups.push(key);
+    save();
+    renderBoard();
+    toast(`「${boardLabel(key)}」を完全に1つに固定しました（分離できません）`);
+  }
+  function unlockGroup(key) {
+    state.lockedGroups = (state.lockedGroups || []).filter(k => k !== key);
+    save();
+    renderBoard();
+    toast(`「${boardLabel(key)}」を分離できるようにしました`);
+  }
   function mergeBoards(sourceKey, targetKey) {
     if (!canMergeBoards(sourceKey, targetKey)) return;
     const ids = [...new Set([...boardsOfKey(sourceKey), ...boardsOfKey(targetKey)])].sort();
@@ -2136,6 +2159,7 @@
     const hadPos = Object.prototype.hasOwnProperty.call(state.boardPos, newKey);
     state.boardGroups = state.boardGroups.filter(g => !g.some(m => ids.includes(m)));
     state.boardGroups.push(ids);
+    pruneLockedGroups(); // 結合でキーが変わるので、存在しなくなった固定キーは掃除する
     // 結合後のボードは、結合先（ドロップされた側）の位置・見た目を引き継ぐ
     state.boardPos[newKey] = Object.assign({}, state.boardPos[targetKey]);
     save();
@@ -2161,6 +2185,7 @@
       : (groupPos.w || 340) + 16;
   }
   function unmergeBoard(boardKey) {
+    if (isGroupLocked(boardKey)) { toast("この結合ボードは「完全に1つ」に固定されています。☰メニューの「🔗 結合ボードの管理」で分離を許可してください"); return; }
     const label = boardLabel(boardKey);
     const ids = boardsOfKey(boardKey);
     const groupPos = state.boardPos[boardKey] || {};
@@ -2185,6 +2210,7 @@
   // 結合ボードから指定した1枚だけを分離する（残りは結合されたまま）。
   // 分離したボードは結合ボードの右隣に、見た目設定を引き継いで置く。
   function detachBoardFromGroup(groupKey, boardId) {
+    if (isGroupLocked(groupKey)) { toast("この結合ボードは「完全に1つ」に固定されています。☰メニューの「🔗 結合ボードの管理」で分離を許可してください"); return; }
     const ids = boardsOfKey(groupKey);
     if (!ids.includes(boardId)) return;
     if (ids.length <= 2) { unmergeBoard(groupKey); return; }
@@ -2259,6 +2285,7 @@
     state.boardGroups = state.boardGroups
       .map(g => g.filter(i => i !== id))
       .filter(g => g.length >= 2);
+    pruneLockedGroups(); // 終了で結合キーが変わることがあるので固定キーを掃除
     Object.keys(state.boardPos).forEach(k => {
       if (isGroupKey(k) && boardsOfKey(k).includes(id)) delete state.boardPos[k];
     });
@@ -2446,7 +2473,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-16 (18) 予定表で項目編集";
+  const APP_VERSION = "2026-07-16 (19) 結合ボード固定・戻る";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -3381,6 +3408,14 @@
       });
     });
 
+    // 詳細の「← 戻る」：詳細を閉じて一覧に戻る（編集内容は入力時点で保存済み）
+    tbody.querySelectorAll(".sched-close").forEach(btn => {
+      btn.addEventListener("click", () => {
+        scheduleExpandedUid = null;
+        renderCurrentSchedule();
+      });
+    });
+
     // 詳細行：各項目（タスク名・期日・担当者・参加者）の編集。
     // change（フォーカスが外れた時）で反映する。全再描画せず一覧セルだけ直接更新してフォーカスを保つ。
     tbody.querySelectorAll(".sched-edit").forEach(inp => {
@@ -3524,7 +3559,10 @@
       <tr class="sched-detail-row">
         <td colspan="5" style="padding:0;">
           <div style="padding:12px 16px; border-top:1px dashed var(--border);">
-            <div class="sched-detail-title" data-uid="${uid}" style="font-weight:700; font-size:14px; margin-bottom:8px;">🗂 ${escapeHtml(c.name)} の詳細</div>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
+              <div class="sched-detail-title" data-uid="${uid}" style="font-weight:700; font-size:14px;">🗂 ${escapeHtml(c.name)} の詳細</div>
+              <button type="button" class="secondary small sched-close" data-uid="${uid}" title="変更は入力時点で保存済みです。この詳細を閉じて一覧に戻ります">← 戻る</button>
+            </div>
             ${info}
             ${boardArea}
           </div>
@@ -4907,36 +4945,66 @@
           menu.appendChild(addBtn);
 
           if (isGroupKey(key)) {
-            // 結合解除：どのボードを分離するか選べる（1枚ずつ分離 or すべて解除）
-            const unmergeLabel = document.createElement("div");
-            unmergeLabel.className = "kb-col-menu-label";
-            unmergeLabel.textContent = "結合を解除（分離するボードを選択）";
-            unmergeLabel.style.cssText = "padding:6px 8px 2px; font-size:0.9em; color:var(--muted); font-weight:600;";
-            menu.appendChild(unmergeLabel);
+            // 結合ボードの管理：完全に1つに固定（分離不可）↔ 分離できるようにする
+            const locked = isGroupLocked(key);
+            const mgmtLabel = document.createElement("div");
+            mgmtLabel.className = "kb-col-menu-label";
+            mgmtLabel.textContent = "🔗 結合ボードの管理";
+            mgmtLabel.style.cssText = "padding:6px 8px 2px; font-size:0.9em; color:var(--muted); font-weight:600;";
+            menu.appendChild(mgmtLabel);
 
-            memberIds.forEach(id => {
-              const b = boardById(id);
-              if (!b) return;
-              const item = document.createElement("button");
-              item.type = "button";
-              item.className = "kb-col-menu-item";
-              item.textContent = `↳ 「${b.name}」を分離`;
-              item.addEventListener("click", () => {
+            if (locked) {
+              // 固定中：分離メニューは出さず、固定解除だけ出す
+              const note = document.createElement("div");
+              note.style.cssText = "padding:2px 8px 6px; font-size:0.82em; color:var(--muted);";
+              note.textContent = "🔒 完全に1つに固定中（分離できません）";
+              menu.appendChild(note);
+
+              const unlockBtn = document.createElement("button");
+              unlockBtn.type = "button";
+              unlockBtn.className = "kb-col-menu-item";
+              unlockBtn.textContent = "🔓 分離できるようにする";
+              unlockBtn.addEventListener("click", () => {
                 openMenuMonthKey = null;
-                detachBoardFromGroup(key, id);
+                unlockGroup(key);
               });
-              menu.appendChild(item);
-            });
+              menu.appendChild(unlockBtn);
+            } else {
+              // 分離できる状態：1枚ずつ分離／すべて分離／完全に1つに固定
+              memberIds.forEach(id => {
+                const b = boardById(id);
+                if (!b) return;
+                const item = document.createElement("button");
+                item.type = "button";
+                item.className = "kb-col-menu-item";
+                item.textContent = `↳ 「${b.name}」を分離`;
+                item.addEventListener("click", () => {
+                  openMenuMonthKey = null;
+                  detachBoardFromGroup(key, id);
+                });
+                menu.appendChild(item);
+              });
 
-            const unmergeAllBtn = document.createElement("button");
-            unmergeAllBtn.type = "button";
-            unmergeAllBtn.className = "kb-col-menu-item";
-            unmergeAllBtn.textContent = "↳ すべて解除";
-            unmergeAllBtn.addEventListener("click", () => {
-              openMenuMonthKey = null;
-              unmergeBoard(key);
-            });
-            menu.appendChild(unmergeAllBtn);
+              const unmergeAllBtn = document.createElement("button");
+              unmergeAllBtn.type = "button";
+              unmergeAllBtn.className = "kb-col-menu-item";
+              unmergeAllBtn.textContent = "↳ すべて分離（結合を解除）";
+              unmergeAllBtn.addEventListener("click", () => {
+                openMenuMonthKey = null;
+                unmergeBoard(key);
+              });
+              menu.appendChild(unmergeAllBtn);
+
+              const lockBtn = document.createElement("button");
+              lockBtn.type = "button";
+              lockBtn.className = "kb-col-menu-item";
+              lockBtn.textContent = "🔒 完全に1つにする（分離できなくする）";
+              lockBtn.addEventListener("click", () => {
+                openMenuMonthKey = null;
+                lockGroup(key);
+              });
+              menu.appendChild(lockBtn);
+            }
           }
 
           // 「設定」パネルは「⚙ ボード設定」内に統合したため、ここでは扱わない
@@ -5542,6 +5610,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
         if (!g) return { content: `エラー: 「${b.name}」は結合されていません`, isError: true };
         const gKey = groupKeyOf(g);
         const label = boardLabel(gKey);
+        if (isGroupLocked(gKey)) return { content: `エラー: 「${label}」は「完全に1つ」に固定されているため分離できません。先に☰メニューの「🔗 結合ボードの管理」で固定を解除してください`, isError: true };
         if (input.all) {
           unmergeBoard(gKey); // 内部で save・再描画・トーストまで行う
           return { content: `「${label}」ボードの結合をすべて解除しました` };
