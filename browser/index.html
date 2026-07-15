@@ -2446,7 +2446,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-15 (17) 予定表からボード割当";
+  const APP_VERSION = "2026-07-16 (18) 予定表で項目編集";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -3356,9 +3356,9 @@
         <tr style="border-bottom:1px solid var(--border);">
           <td style="text-align:left; padding:8px 10px; font-size:12px; color:var(--muted);">${escapeHtml(boardName)}</td>
           <td style="text-align:left; padding:8px 10px;">
-            <button type="button" class="sched-name" data-uid="${uid}" title="クリックで詳細・所属ボードの変更">${escapeHtml(c.name)}</button>
+            <button type="button" class="sched-name" data-uid="${uid}" title="クリックで詳細・各項目の編集・所属ボードの変更">${escapeHtml(c.name)}</button>
           </td>
-          <td style="text-align:left; padding:8px 10px;">${escapeHtml(c.due || "未定")}</td>
+          <td class="sched-due-cell" data-uid="${uid}" style="text-align:left; padding:8px 10px;">${escapeHtml(c.due || "未定")}</td>
           <td style="text-align:left; padding:8px 10px;">
             <button type="button" class="participants-btn" data-uid="${uid}" style="background:none; border:none; color:var(--accent); cursor:pointer; text-decoration:underline; padding:0; font-size:inherit;">
               ${escapeHtml(participantDisplay)}
@@ -3378,6 +3378,36 @@
         const uid = btn.dataset.uid;
         scheduleExpandedUid = (scheduleExpandedUid === uid) ? null : uid;
         renderCurrentSchedule();
+      });
+    });
+
+    // 詳細行：各項目（タスク名・期日・担当者・参加者）の編集。
+    // change（フォーカスが外れた時）で反映する。全再描画せず一覧セルだけ直接更新してフォーカスを保つ。
+    tbody.querySelectorAll(".sched-edit").forEach(inp => {
+      inp.addEventListener("change", () => {
+        const uid = inp.dataset.uid;
+        const f = inp.dataset.f;
+        const boarded = uid.startsWith("task-");
+        const obj = boarded
+          ? state.tasks.find(t => `task-${t.id}` === uid)
+          : impCandidates.find(x => x.uid === uid);
+        if (!obj) return;
+        if (f === "participants") obj.participants = inp.value.split(/[、,]/).map(s => s.trim()).filter(Boolean);
+        else obj[f] = inp.value.trim();
+        if (boarded) { save(); renderBoard(); } // ボード上のカードにも反映（モーダル背面なのでフォーカスは保たれる）
+        // 一覧行の表示だけ直接更新（全再描画しないので編集中のフォーカスが飛ばない）
+        if (f === "name") {
+          const nb = tbody.querySelector(`.sched-name[data-uid="${uid}"]`);
+          if (nb) nb.textContent = obj.name;
+          const ti = tbody.querySelector(`.sched-detail-title[data-uid="${uid}"]`);
+          if (ti) ti.textContent = `🗂 ${obj.name} の詳細`;
+        } else if (f === "due") {
+          const dc = tbody.querySelector(`.sched-due-cell[data-uid="${uid}"]`);
+          if (dc) dc.textContent = obj.due || "未定";
+        } else if (f === "participants") {
+          const pb = tbody.querySelector(`.participants-btn[data-uid="${uid}"]`);
+          if (pb) pb.textContent = obj.participants.length || "0";
+        }
       });
     });
 
@@ -3447,13 +3477,25 @@
     });
   }
 
-  // 現行予定表のタスク詳細（インライン展開）。詳細＋所属ボードの割り当て（新規作成／既存に合わせる）。
+  // 現行予定表のタスク詳細（インライン展開）。各項目の編集＋所属ボードの割り当て（新規作成／既存に合わせる）。
   function scheduleDetailRowHtml(c, uid) {
+    // 各項目（タスク名・期日・担当者・参加者）をこの画面から直接編集できるフォーム
     const info = `
-      <div style="display:flex; flex-wrap:wrap; gap:16px; font-size:13px; margin-bottom:12px;">
-        <span>📅 期日: <b>${escapeHtml(c.due || "未定")}</b></span>
-        <span>👤 担当者: <b>${escapeHtml(c.assignee || "—")}</b></span>
-        <span>👥 参加者: <b>${c.participants.length ? escapeHtml(c.participants.join("、")) : "なし"}</b></span>
+      <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:12px; max-width:560px;">
+        <label style="font-size:12px; color:var(--muted);">📝 タスク名
+          <input type="text" class="sched-edit" data-f="name" data-uid="${uid}" value="${escapeHtml(c.name)}" style="width:100%; margin-top:3px;">
+        </label>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <label style="font-size:12px; color:var(--muted); flex:1; min-width:150px;">📅 期日 <span style="font-weight:normal;">yyyy-mm-dd</span>
+            <input type="text" class="sched-edit" data-f="due" data-uid="${uid}" value="${escapeHtml(c.due || "")}" placeholder="yyyy-mm-dd" style="width:100%; margin-top:3px;">
+          </label>
+          <label style="font-size:12px; color:var(--muted); flex:1; min-width:150px;">👤 担当者
+            <input type="text" class="sched-edit" data-f="assignee" data-uid="${uid}" value="${escapeHtml(c.assignee || "")}" list="assigneeList" style="width:100%; margin-top:3px;">
+          </label>
+        </div>
+        <label style="font-size:12px; color:var(--muted);">👥 参加者 <span style="font-weight:normal;">（、または , 区切り）</span>
+          <input type="text" class="sched-edit" data-f="participants" data-uid="${uid}" value="${escapeHtml(c.participants.join("、"))}" placeholder="参加者名" style="width:100%; margin-top:3px;">
+        </label>
       </div>`;
 
     let boardArea;
@@ -3482,7 +3524,7 @@
       <tr class="sched-detail-row">
         <td colspan="5" style="padding:0;">
           <div style="padding:12px 16px; border-top:1px dashed var(--border);">
-            <div style="font-weight:700; font-size:14px; margin-bottom:8px;">🗂 ${escapeHtml(c.name)} の詳細</div>
+            <div class="sched-detail-title" data-uid="${uid}" style="font-weight:700; font-size:14px; margin-bottom:8px;">🗂 ${escapeHtml(c.name)} の詳細</div>
             ${info}
             ${boardArea}
           </div>
