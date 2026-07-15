@@ -1219,6 +1219,7 @@
 
   /* 取り込みリスト（読み取った予定）の参加者を名簿から選ぶピッカー（2026-07-15） */
   .imp-pt-cell { display: flex; flex-direction: column; gap: 5px; }
+  .imp-similar-hint { font-size: 11px; color: var(--accent); background: rgba(37, 99, 235, 0.08); border-radius: 6px; padding: 2px 6px; align-self: flex-start; }
   .imp-pt-pick {
     align-self: flex-start;
     border: 1px solid rgba(37, 99, 235, 0.35);
@@ -2840,6 +2841,21 @@
     return [...scores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(e => e[0]);
   }
 
+  // 前回の類似イベント（正規化名が一致する過去タスクのうち最新のもの）を1件返す。
+  // 取り込みリストで担当者などのデフォルトを「前回の内容」から引くために使う。
+  function findSimilarPastTask(taskName) {
+    const key = normalizeTaskName(taskName);
+    if (key.length < 2) return null;
+    let best = null;
+    for (const t of state.tasks) {
+      const k2 = normalizeTaskName(t.name);
+      if (k2.length < 2) continue;
+      if (!(k2 === key || k2.includes(key) || key.includes(k2))) continue;
+      if (!best || t.id > best.id) best = t; // idが大きい＝新しいタスクを優先
+    }
+    return best;
+  }
+
   // ---------------------------------------------------------------
   // 予定の取り込み（参照リンク・フォルダ内ファイル・貼り付けテキスト → タスク自動作成）
   // 表形式（CSV / Excel / .ics カレンダー）は決定的にパースし、自由文は選択中のAIが抽出する。
@@ -2943,14 +2959,21 @@
         continue;
       }
 
-      // どの既存タスクにも該当しない → 新規予定
+      // どの既存タスクにも該当しない → 新規予定。
+      // 読み取れなかった項目は「前回の類似イベント」を参照してデフォルトにする。
+      const similar = findSimilarPastTask(name);
+      const defParticipants = participants.length ? participants : suggestParticipants(name);
+      const defAssignee = assignee || (similar ? impCleanName(similar.assignee) : "");
+      // 取り込み元に無かった値を前回類似イベントから補ったときだけ、参照元を表示用に持つ
+      const usedSimilar = similar && ((!participants.length && defParticipants.length) || (!assignee && defAssignee));
       impCandidates.push({
         uid: "c" + impUidSeq++, // 行の識別は配列インデックスではなく一意IDで行う
-        include: true, name, due, assignee,
-        // 参加者が読み取れなければ、過去の類似タスクから初期草案を提案
-        participants: participants.length ? participants : suggestParticipants(name),
+        include: true, name, due,
+        assignee: defAssignee,
+        participants: defParticipants,
         source,
-        changeType: "new"
+        changeType: "new",
+        similarRef: usedSimilar ? similar.name : ""
       });
       added++;
       impFileStats[source] = (impFileStats[source] || 0) + 1;
@@ -3356,6 +3379,7 @@
           <div class="imp-pt-cell">
             <input type="text" data-f="participants" data-uid="${c.uid}" value="${escapeHtml(c.participants.join("、"))}" placeholder="参加者名">
             <button type="button" class="imp-pt-pick" data-uid="${c.uid}">👥 名簿から選択</button>
+            ${c.similarRef ? `<div class="imp-similar-hint" title="前回の類似イベントから担当者・参加者の初期値を引き継ぎました">🔁 前回「${escapeHtml(c.similarRef)}」を参照</div>` : ""}
           </div>
         </td>
         <td style="font-size:11px; color:var(--muted); max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(c.source)}">${escapeHtml(c.source)}</td>
