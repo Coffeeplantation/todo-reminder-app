@@ -2473,7 +2473,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-16 (19) 結合ボード固定・戻る";
+  const APP_VERSION = "2026-07-16 (20) 予定表とボード連携";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -3334,8 +3334,9 @@
   function renderCurrentSchedule() {
     const tbody = document.getElementById("currentScheduleBody");
 
-    // ボード内のタスクとインポート予定を統合
-    const boardTasks = state.tasks.map(t => ({
+    // ボード内のタスクとインポート予定を統合。現行予定表は「稼働中ボードにある予定の総合確認リスト」なので、
+    // 終了（アーカイブ）ボードだけに属するタスクは除外し、いま各ボードに出ているタスクと一致させる。
+    const boardTasks = state.tasks.filter(t => !taskIsArchived(t)).map(t => ({
       id: `task-${t.id}`,
       name: t.name,
       due: t.due,
@@ -3370,14 +3371,14 @@
       const uid = c.id || c.uid;
       const participantCount = c.participants.length;
       const participantDisplay = participantCount > 0 ? participantCount : "0";
-      // ボード名を取得
+      // ボード名を取得（複数所属なら全部・「・」区切り。終了ボードは除き、いま画面に出ているボードだけ対応づける）
       let boardName = "未取込";
       if (c.isBoarded && c.originalTask) {
-        const boardIds = c.originalTask.boards || [];
-        if (boardIds.length > 0) {
-          const board = state.boards.find(b => b.id === boardIds[0]);
-          boardName = board ? board.name : "不明";
-        }
+        const names = taskBoardIds(c.originalTask)
+          .map(id => boardById(id))
+          .filter(b => b && !b.archived)
+          .map(b => b.name);
+        boardName = names.length ? names.join("・") : "不明";
       }
       const row = `
         <tr style="border-bottom:1px solid var(--border);">
@@ -3413,6 +3414,14 @@
       btn.addEventListener("click", () => {
         scheduleExpandedUid = null;
         renderCurrentSchedule();
+      });
+    });
+
+    // 詳細の「▶ ボードで開く」：現行予定表とタスクボードをリンク。モーダルを閉じてそのタスクへ移動・選択する
+    tbody.querySelectorAll(".sched-jump").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const task = state.tasks.find(t => `task-${t.id}` === btn.dataset.uid);
+        if (task) jumpToTask(task); // 内部で panelModal.close・該当ボード展開・スクロール・選択まで行う
       });
     });
 
@@ -3559,9 +3568,12 @@
       <tr class="sched-detail-row">
         <td colspan="5" style="padding:0;">
           <div style="padding:12px 16px; border-top:1px dashed var(--border);">
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
               <div class="sched-detail-title" data-uid="${uid}" style="font-weight:700; font-size:14px;">🗂 ${escapeHtml(c.name)} の詳細</div>
-              <button type="button" class="secondary small sched-close" data-uid="${uid}" title="変更は入力時点で保存済みです。この詳細を閉じて一覧に戻ります">← 戻る</button>
+              <span style="display:flex; gap:6px;">
+                ${c.isBoarded ? `<button type="button" class="secondary small sched-jump" data-uid="${uid}" title="このタスクをタスクボード上で開いて選択します">▶ ボードで開く</button>` : ""}
+                <button type="button" class="secondary small sched-close" data-uid="${uid}" title="変更は入力時点で保存済みです。この詳細を閉じて一覧に戻ります">← 戻る</button>
+              </span>
             </div>
             ${info}
             ${boardArea}
@@ -5235,7 +5247,9 @@
   function jumpToTask(task) {
     panelModal.close();
     selectedTaskId = task.id;
-    const first = taskBoardIds(task)[0];
+    // 稼働中ボードを優先（先頭が終了ボードだと画面に出ず飛べないため）
+    const ids = taskBoardIds(task);
+    const first = ids.find(id => { const b = boardById(id); return b && !b.archived; }) || ids[0];
     const g = findGroup(first);
     const boardKey = g ? groupKeyOf(g) : first;
     if (state.boardPos[boardKey]) {
