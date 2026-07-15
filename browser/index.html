@@ -1266,6 +1266,21 @@
     text-decoration-color: var(--accent) !important;
     opacity: 0.8;
   }
+  /* タスク名クリックで詳細を開けることを示す（下線＋色）。行の詳細はインライン展開する（2026-07-15） */
+  #currentScheduleBody .sched-name {
+    background: none; border: none; padding: 0; cursor: pointer;
+    color: var(--accent); text-decoration: underline; font: inherit; text-align: left;
+  }
+  #currentScheduleBody .sched-name:hover { opacity: 0.8; }
+  #currentScheduleBody .sched-detail-row > td { background: rgba(37, 99, 235, 0.05); }
+  .sched-board-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sched-board-btn {
+    padding: 5px 12px; border-radius: 8px; font-size: 13px; cursor: pointer;
+    background: #e8ecf2; color: var(--text); border: 1px solid var(--border); box-shadow: none; font-weight: normal;
+  }
+  .sched-board-btn:hover { filter: none; background: #dfe5ee; box-shadow: none; }
+  .sched-board-btn.on { background: var(--blue); color: #fff; border-color: var(--blue); font-weight: bold; }
+  .sched-newboard-input { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; font-size: 13px; box-sizing: border-box; }
 
   /* ---- AIアシスタントパネル ---- */
   #aiPanel {
@@ -2431,7 +2446,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-15 (16) 画像読み取り対応";
+  const APP_VERSION = "2026-07-15 (17) 予定表からボード割当";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -3286,6 +3301,9 @@
     document.getElementById("impFolderTaskCount").textContent = Object.values(impFileStats).reduce((a, b) => a + b, 0);
   }
 
+  // 現行予定表で、タスク名クリックにより詳細を展開している行のuid（1件だけ開く）
+  let scheduleExpandedUid = null;
+
   function renderCurrentSchedule() {
     const tbody = document.getElementById("currentScheduleBody");
 
@@ -3294,6 +3312,7 @@
       id: `task-${t.id}`,
       name: t.name,
       due: t.due,
+      assignee: t.assignee || "",
       participants: t.participants || [],
       include: true,
       isBoarded: true,
@@ -3310,9 +3329,10 @@
     });
 
     if (!allTasks.length) {
+      scheduleExpandedUid = null;
       tbody.innerHTML = `
         <tr>
-          <td colspan="4" style="text-align:center; padding:20px 10px; color:var(--muted); font-size:13px;">
+          <td colspan="5" style="text-align:center; padding:20px 10px; color:var(--muted); font-size:13px;">
             📭 現在、予定はありません
           </td>
         </tr>`;
@@ -3320,6 +3340,7 @@
     }
 
     tbody.innerHTML = allTasks.map(c => {
+      const uid = c.id || c.uid;
       const participantCount = c.participants.length;
       const participantDisplay = participantCount > 0 ? participantCount : "0";
       // ボード名を取得
@@ -3331,21 +3352,76 @@
           boardName = board ? board.name : "不明";
         }
       }
-      return `
+      const row = `
         <tr style="border-bottom:1px solid var(--border);">
           <td style="text-align:left; padding:8px 10px; font-size:12px; color:var(--muted);">${escapeHtml(boardName)}</td>
-          <td style="text-align:left; padding:8px 10px;">${escapeHtml(c.name)}</td>
+          <td style="text-align:left; padding:8px 10px;">
+            <button type="button" class="sched-name" data-uid="${uid}" title="クリックで詳細・所属ボードの変更">${escapeHtml(c.name)}</button>
+          </td>
           <td style="text-align:left; padding:8px 10px;">${escapeHtml(c.due || "未定")}</td>
           <td style="text-align:left; padding:8px 10px;">
-            <button type="button" class="participants-btn" data-uid="${c.id || c.uid}" style="background:none; border:none; color:var(--accent); cursor:pointer; text-decoration:underline; padding:0; font-size:inherit;">
+            <button type="button" class="participants-btn" data-uid="${uid}" style="background:none; border:none; color:var(--accent); cursor:pointer; text-decoration:underline; padding:0; font-size:inherit;">
               ${escapeHtml(participantDisplay)}
             </button>
           </td>
           <td style="text-align:center; padding:8px 10px;">
-            <input type="checkbox" class="schedule-include" data-uid="${c.id || c.uid}" ${c.include ? "checked" : ""} style="cursor:pointer;" ${c.isBoarded ? "disabled" : ""}>
+            <input type="checkbox" class="schedule-include" data-uid="${uid}" ${c.include ? "checked" : ""} style="cursor:pointer;" ${c.isBoarded ? "disabled" : ""}>
           </td>
         </tr>`;
+      const detail = (scheduleExpandedUid === uid) ? scheduleDetailRowHtml(c, uid) : "";
+      return row + detail;
     }).join("");
+
+    // タスク名クリック：詳細行の開閉
+    tbody.querySelectorAll(".sched-name").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const uid = btn.dataset.uid;
+        scheduleExpandedUid = (scheduleExpandedUid === uid) ? null : uid;
+        renderCurrentSchedule();
+      });
+    });
+
+    // 詳細行：既存ボードへの割り当て（トグル）
+    tbody.querySelectorAll('.sched-board-btn[data-act="toggle"]').forEach(btn => {
+      btn.addEventListener("click", () => {
+        const task = state.tasks.find(t => `task-${t.id}` === btn.dataset.uid);
+        if (!task) return;
+        const ids = taskBoardIds(task);
+        const bid = btn.dataset.bid;
+        const i = ids.indexOf(bid);
+        if (i >= 0) {
+          if (ids.length === 1) { toast("最後の所属ボードは外せません"); return; }
+          ids.splice(i, 1);
+        } else {
+          ids.push(bid);
+        }
+        task.boards = ids;
+        save();
+        renderBoard();
+        renderCurrentSchedule();
+      });
+    });
+
+    // 詳細行：新規ボードを作成して割り当て
+    tbody.querySelectorAll(".sched-newboard-btn").forEach(btn => {
+      const apply = () => {
+        const task = state.tasks.find(t => `task-${t.id}` === btn.dataset.uid);
+        if (!task) return;
+        const input = tbody.querySelector(`.sched-newboard-input[data-uid="${btn.dataset.uid}"]`);
+        const name = input ? input.value.trim() : "";
+        const newId = createBoard(name); // save()・renderBoard() は createBoard 内で実行される
+        const ids = taskBoardIds(task);
+        if (!ids.includes(newId)) ids.push(newId);
+        task.boards = ids;
+        save();
+        renderBoard();
+        renderCurrentSchedule();
+        toast(`「${boardById(newId).name}」を作成して割り当てました`);
+      };
+      btn.addEventListener("click", apply);
+      const input = tbody.querySelector(`.sched-newboard-input[data-uid="${btn.dataset.uid}"]`);
+      if (input) input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); apply(); } });
+    });
 
     tbody.querySelectorAll(".participants-btn").forEach(btn => {
       btn.addEventListener("click", (e) => {
@@ -3369,6 +3445,49 @@
         }
       });
     });
+  }
+
+  // 現行予定表のタスク詳細（インライン展開）。詳細＋所属ボードの割り当て（新規作成／既存に合わせる）。
+  function scheduleDetailRowHtml(c, uid) {
+    const info = `
+      <div style="display:flex; flex-wrap:wrap; gap:16px; font-size:13px; margin-bottom:12px;">
+        <span>📅 期日: <b>${escapeHtml(c.due || "未定")}</b></span>
+        <span>👤 担当者: <b>${escapeHtml(c.assignee || "—")}</b></span>
+        <span>👥 参加者: <b>${c.participants.length ? escapeHtml(c.participants.join("、")) : "なし"}</b></span>
+      </div>`;
+
+    let boardArea;
+    if (c.isBoarded && c.originalTask) {
+      const ids = taskBoardIds(c.originalTask);
+      const btns = activeBoards().map(b =>
+        `<button type="button" class="sched-board-btn${ids.includes(b.id) ? " on" : ""}" data-act="toggle" data-bid="${b.id}" data-uid="${uid}">${escapeHtml(b.name)}</button>`
+      ).join("");
+      boardArea = `
+        <div style="margin-bottom:12px;">
+          <div style="font-size:12.5px; font-weight:600; margin-bottom:6px;">📌 既存のタスクボードに合わせる<span style="color:var(--muted); font-weight:normal;">（クリックで所属を切替・複数可）</span></div>
+          <div class="sched-board-btns">${btns}</div>
+        </div>
+        <div>
+          <div style="font-size:12.5px; font-weight:600; margin-bottom:6px;">➕ 新規のタスクボードを作成して割り当て</div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <input type="text" class="sched-newboard-input" data-uid="${uid}" placeholder="新しいボード名（例：請求書チェック）" style="flex:1; min-width:180px;">
+            <button type="button" class="secondary small sched-newboard-btn" data-uid="${uid}">作成して割り当て</button>
+          </div>
+        </div>`;
+    } else {
+      boardArea = `<div style="font-size:12.5px; color:var(--muted);">この予定はまだボードに反映されていません。上の一覧でチェックして「選択した予定をボードに反映」すると、期日の月に応じてボードへ振り分けられます。</div>`;
+    }
+
+    return `
+      <tr class="sched-detail-row">
+        <td colspan="5" style="padding:0;">
+          <div style="padding:12px 16px; border-top:1px dashed var(--border);">
+            <div style="font-weight:700; font-size:14px; margin-bottom:8px;">🗂 ${escapeHtml(c.name)} の詳細</div>
+            ${info}
+            ${boardArea}
+          </div>
+        </td>
+      </tr>`;
   }
 
   function showParticipantsList(taskName, participants, returnMenuKey = null) {
