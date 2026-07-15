@@ -1559,8 +1559,8 @@
 
         <label for="cfgOllamaVisionModel">AI：画像読み取りモデル名</label>
         <span>
-          <input type="text" id="cfgOllamaVisionModel" placeholder="llava" autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
-          <small style="color:var(--muted); display:block; margin-top:2px;">画像（スクリーンショット/写真）から予定を読み取るときに使う、Ollamaの<b>ビジョン対応モデル</b>名。PC内で動くためオフラインでも画像を読めます。<br>初回のみオンライン時に「ollama pull llava」（または「ollama pull minicpm-v」等）でモデルを取得してください。</small>
+          <input type="text" id="cfgOllamaVisionModel" placeholder="minicpm-v" autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
+          <small style="color:var(--muted); display:block; margin-top:2px;">画像（スクリーンショット/写真）から予定を読み取るときに使う、Ollamaの<b>ビジョン対応モデル</b>名。PC内で動くためオフラインでも画像を読めます。<br>初回のみオンライン時に「ollama pull minicpm-v」（日本語向け。または「ollama pull llava」等）でモデルを取得してください。</small>
         </span>
       </div>
     </div>
@@ -1894,7 +1894,7 @@
       anthropicApiKey: "",
       geminiApiKey: "",
       ollamaModel: "qwen2.5:3b",
-      ollamaVisionModel: "llava", // 画像から予定を読み取るときに使う Ollama のビジョン対応モデル
+      ollamaVisionModel: "minicpm-v", // 画像から予定を読み取るときに使う Ollama のビジョン対応モデル（日本語向け）
       localOnly: true // 完全ローカル：読み込んだ内容・タスク情報を外部（クラウドAI/画像/プロキシ）へ送らない
     },
     tasks: [
@@ -2527,7 +2527,7 @@
     cfgAiProvider.value = state.settings.aiProvider || "anthropic";
     cfgGeminiKey.value = state.settings.geminiApiKey || "";
     cfgOllamaModel.value = state.settings.ollamaModel || "qwen2.5:3b";
-    cfgOllamaVisionModel.value = state.settings.ollamaVisionModel || "llava";
+    cfgOllamaVisionModel.value = state.settings.ollamaVisionModel || "minicpm-v";
   }
   cfgLocalOnly.addEventListener("change", () => {
     state.settings.localOnly = cfgLocalOnly.checked;
@@ -2610,7 +2610,7 @@
     save();
   });
   cfgOllamaVisionModel.addEventListener("change", () => {
-    state.settings.ollamaVisionModel = cfgOllamaVisionModel.value.trim() || "llava";
+    state.settings.ollamaVisionModel = cfgOllamaVisionModel.value.trim() || "minicpm-v";
     renderSettings();
     save();
   });
@@ -3125,7 +3125,7 @@
     if (provider === "ollama") {
       // 画像は Ollama のビジョン対応モデル（llava 等）で読む。文章のみのときは通常モデル。
       const model = image
-        ? (state.settings.ollamaVisionModel || "llava").trim()
+        ? (state.settings.ollamaVisionModel || "minicpm-v").trim()
         : (state.settings.ollamaModel || "qwen2.5:3b").trim();
       const userMsg = { role: "user", content: userText.slice(0, 6000) };
       if (image) userMsg.images = [image.base64]; // Ollama は base64（接頭辞なし）の配列を受け取る
