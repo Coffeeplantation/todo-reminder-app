@@ -1629,6 +1629,24 @@
         <label for="cfgBgInterval">背景の自動切替間隔（分）</label>
         <input type="number" id="cfgBgInterval" min="1" value="10">
 
+        <label for="cfgAutoDraft">📧 自動リマインダー下書き（Outlook）</label>
+        <span>
+          <span class="toggle">
+            <input type="checkbox" id="cfgAutoDraft">
+            <span id="cfgAutoDraftLabel">OFF</span>
+          </span>
+          <small style="color:var(--muted); display:block; margin-top:2px;">ONにすると、リーダーのログイン中に30分ごと＋起動時にタスクをチェックし、<b>指定日（期日−リマインド日数前）</b>と<b>直前</b>にリマインダーメールの下書き（.emlファイル）を自動作成します。<br>ダウンロードされた .eml をダブルクリックするとOutlookで編集可能な下書きとして開くので、確認して送信してください。初回はブラウザの「複数ファイルのダウンロード」を許可してください。</small>
+        </span>
+
+        <label for="cfgLastReminderDays">📧 直前リマインダー（期日の何日前）</label>
+        <input type="number" id="cfgLastReminderDays" min="0" value="1">
+
+        <label for="cfgLeaderEmail">📧 リーダー通知メールアドレス</label>
+        <span>
+          <input type="email" id="cfgLeaderEmail" placeholder="leader@example.com" autocomplete="off" spellcheck="false" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
+          <small style="color:var(--muted); display:block; margin-top:2px;">下書きを作成したとき、その一覧を知らせるメール（これも下書き）をこの宛先向けに作成します。空欄なら通知メールは作りません。</small>
+        </span>
+
         <label for="cfgSupabaseUrl">🔐 ログイン：Supabase URL</label>
         <span>
           <input type="text" id="cfgSupabaseUrl" placeholder="https://xxxxx.supabase.co" autocomplete="off" spellcheck="false" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
@@ -1762,6 +1780,16 @@
       <div class="reminder-footer">
         <button type="button" id="btnMailListCsv" class="ghost small">⬇ CSVダウンロード</button>
         <button type="button" id="btnReset" class="ghost small">送信済みをリセット</button>
+      </div>
+
+      <!-- 自動リマインダー下書き（Outlook連携）：作成履歴と手動実行 -->
+      <div id="autoDraftSection" style="margin-top:14px; border-top:1px solid var(--border); padding-top:10px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+          <b style="font-size:13px;">🤖 自動リマインダー下書き（Outlook）</b>
+          <button type="button" id="btnRunAutoDrafts" class="secondary small" title="今すぐタスクをチェックして、対象があれば下書き（.eml）を作成します">▶ 今すぐチェック</button>
+        </div>
+        <div id="autoDraftStatus" style="font-size:12px; color:var(--muted); margin-bottom:6px;"></div>
+        <div id="autoDraftLog" style="font-size:12px; max-height:180px; overflow-y:auto;"></div>
       </div>
     </div>
   </section>
@@ -2063,7 +2091,10 @@
       ollamaVisionModel: "minicpm-v", // 画像から予定を読み取るときに使う Ollama のビジョン対応モデル（日本語向け）
       localOnly: true, // 完全ローカル：読み込んだ内容・タスク情報を外部（クラウドAI/画像/プロキシ）へ送らない
       supabaseUrl: "",    // ログイン認証用 Supabase プロジェクトURL（未設定なら内蔵アカウントで認証）
-      supabaseAnonKey: "" // 同 anon（public）キー
+      supabaseAnonKey: "", // 同 anon（public）キー
+      autoDraftOn: false,  // 自動リマインダー下書き（Outlook用 .eml）を作成するか
+      lastReminderDays: 1, // 「直前」リマインダーは期日の何日前か
+      leaderEmail: ""      // 下書き作成をリーダーへ知らせる通知メールの宛先
     },
     tasks: [
       { id: 1, name: "プロジェクト報告書提出", assignee: "山田太郎", due: "2026-07-15", reminderDays: 3, status: "未完了", sentFlag: "", boards: ["b1"] },
@@ -2079,7 +2110,8 @@
     boardPos: {},
     boardGroups: [],
     lockedGroups: [], // 「完全に1つ」に固定した結合ボードのキー一覧（分離不可にする）
-    aiPanelPos: null
+    aiPanelPos: null,
+    autoDraftLog: [] // 自動リマインダー下書きの作成履歴（最新50件）
   });
 
   let state = load();
@@ -2637,7 +2669,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-19 (22) ログイン管理・履歴";
+  const APP_VERSION = "2026-07-19 (23) 自動リマインダー下書き（Outlook）";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -2714,6 +2746,10 @@
   const cfgLocalOnlyLabel = document.getElementById("cfgLocalOnlyLabel");
   const cfgSupabaseUrl = document.getElementById("cfgSupabaseUrl");
   const cfgSupabaseAnonKey = document.getElementById("cfgSupabaseAnonKey");
+  const cfgAutoDraft = document.getElementById("cfgAutoDraft");
+  const cfgAutoDraftLabel = document.getElementById("cfgAutoDraftLabel");
+  const cfgLastReminderDays = document.getElementById("cfgLastReminderDays");
+  const cfgLeaderEmail = document.getElementById("cfgLeaderEmail");
 
   function renderSettings() {
     const localOnly = state.settings.localOnly !== false;
@@ -2738,6 +2774,12 @@
     cfgOllamaVisionModel.value = state.settings.ollamaVisionModel || "minicpm-v";
     cfgSupabaseUrl.value = state.settings.supabaseUrl || "";
     cfgSupabaseAnonKey.value = state.settings.supabaseAnonKey || "";
+    cfgAutoDraft.checked = !!state.settings.autoDraftOn;
+    cfgAutoDraftLabel.textContent = state.settings.autoDraftOn
+      ? "ON（リーダーのログイン中、対象タスクの下書きを自動作成）"
+      : "OFF";
+    cfgLastReminderDays.value = state.settings.lastReminderDays ?? 1;
+    cfgLeaderEmail.value = state.settings.leaderEmail || "";
   }
   cfgLocalOnly.addEventListener("change", () => {
     state.settings.localOnly = cfgLocalOnly.checked;
@@ -2836,6 +2878,22 @@
     save();
     startSync();
   });
+  cfgAutoDraft.addEventListener("change", () => {
+    state.settings.autoDraftOn = cfgAutoDraft.checked;
+    renderSettings();
+    save();
+    if (state.settings.autoDraftOn) runAutoDrafts(); // ONにした瞬間に一度チェック
+  });
+  cfgLastReminderDays.addEventListener("change", () => {
+    state.settings.lastReminderDays = Math.max(0, parseInt(cfgLastReminderDays.value, 10) || 0);
+    renderSettings();
+    save();
+  });
+  cfgLeaderEmail.addEventListener("change", () => {
+    state.settings.leaderEmail = cfgLeaderEmail.value.trim();
+    renderSettings();
+    save();
+  });
   // Ctrl+V が使えない環境向けのフォールバック：ボタン1つでクリップボードのキーを貼り付ける
   function wirePasteButton(btnId, apply) {
     document.getElementById(btnId).addEventListener("click", async () => {
@@ -2917,6 +2975,147 @@
       `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
       `このメールは${state.settings.signature}より自動送信されています。`;
     return { subject, body };
+  }
+
+  // ---- 自動リマインダー下書き（Outlook連携） ----
+  // タスク作成 → 指定日（期日−リマインド日数前）に1回目 → 直前（既定：期日前日）に2回目の
+  // リマインダーメール下書きを自動作成する。ブラウザから直接は送信できないため、
+  // X-Unsent ヘッダ付き .eml ファイルとして保存し、ダブルクリックでOutlookの「編集可能な下書き」として開く方式。
+  // 併せてリーダー宛の「作成しました」通知メール（これも下書き）を作る。リーダーのログイン中のみ動作。
+  function b64utf8(str) {
+    const bytes = new TextEncoder().encode(str);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 8192) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+    }
+    return btoa(bin);
+  }
+
+  function makeEml({ to, cc, subject, body }) {
+    const wrap76 = s => (s.match(/.{1,76}/g) || [""]).join("\r\n");
+    const lines = [
+      "X-Unsent: 1", // Outlookで「送信済み表示」ではなく編集可能な下書きとして開くためのヘッダ
+      `To: ${to}`,
+      ...(cc ? [`Cc: ${cc}`] : []),
+      `Subject: =?UTF-8?B?${b64utf8(subject)}?=`,
+      "MIME-Version: 1.0",
+      'Content-Type: text/plain; charset="utf-8"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      wrap76(b64utf8(body))
+    ];
+    return lines.join("\r\n");
+  }
+
+  function downloadTextFile(filename, text, mime) {
+    const blob = new Blob([text], { type: mime || "message/rfc822" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  }
+
+  function sanitizeFilename(s) {
+    return (s || "").replace(/[\\/:*?"<>|]/g, "_").slice(0, 40);
+  }
+
+  let autoDraftTimer = null;
+
+  function runAutoDrafts(manual = false) {
+    if (!isAuthedLeader()) { if (manual) toast("自動下書きはリーダーでログイン中のみ実行できます"); return; }
+    if (!state.settings.autoDraftOn && !manual) return;
+    const today = todayDate();
+    const created = [];
+    const noAddress = [];
+    for (const task of state.tasks) {
+      if (task.status === "完了" || taskIsArchived(task)) continue;
+      const due = parseDue(task.due);
+      if (!due) continue;
+      if (!task.autoMail) task.autoMail = { first: null, last: null };
+      const reminderDays = task.reminderDays > 0 ? task.reminderDays : state.settings.reminderDays;
+      const firstDate = new Date(due); firstDate.setDate(firstDate.getDate() - reminderDays);
+      const lastDate = new Date(due); lastDate.setDate(lastDate.getDate() - Math.max(0, state.settings.lastReminderDays ?? 1));
+      // 直前が来ていれば直前を優先（1日で2通作らない）。指定日と直前が同日でも1通にまとまる
+      let kind = null;
+      if (daysBetween(lastDate, today) >= 0 && !task.autoMail.last) kind = "直前";
+      else if (daysBetween(firstDate, today) >= 0 && !task.autoMail.first) kind = "指定日";
+      if (!kind) continue;
+      const recipients = taskRecipients(task);
+      const emails = recipients.filter(x => x.email).map(x => x.email);
+      if (!emails.length) { noAddress.push(task.name); continue; }
+      const daysLeft = daysBetween(today, due);
+      const { subject, body } = buildMailContent(task, due, daysLeft, recipients);
+      created.push({
+        task, kind, recipients,
+        filename: `リマインダー_${kind}_${sanitizeFilename(task.name)}.eml`,
+        eml: makeEml({ to: emails[0], cc: emails.slice(1).join(", "), subject, body })
+      });
+      if (kind === "直前") {
+        task.autoMail.last = formatDate(today);
+        if (!task.autoMail.first) task.autoMail.first = formatDate(today); // 追い越した指定日分はまとめて済み扱い
+      } else {
+        task.autoMail.first = formatDate(today);
+      }
+      state.autoDraftLog.unshift({
+        at: Date.now(), taskId: task.id, name: task.name, kind,
+        to: recipients.map(r => r.name).join("、")
+      });
+    }
+    state.autoDraftLog = (state.autoDraftLog || []).slice(0, 50);
+    if (created.length) {
+      // リーダー通知（設定があれば）。下書き一覧の先頭に付けて一緒にダウンロードする
+      if (state.settings.leaderEmail) {
+        const lines = created.map(c => `・【${c.kind}】${c.task.name}（期日：${c.task.due || "未定"}／宛先：${c.recipients.map(r => r.name).join("、")}）`);
+        const body = `リマインダーメールの下書きを ${created.length} 件作成しました。\n\n${lines.join("\n")}\n\n` +
+          `ダウンロードされた .eml ファイルをダブルクリックするとOutlookで下書きが開きます。\n` +
+          `内容を確認のうえ、送信してください。\n\n${state.settings.signature}`;
+        created.unshift({
+          filename: "リマインダー通知_リーダー宛.eml",
+          eml: makeEml({ to: state.settings.leaderEmail, cc: "", subject: `【Todoリマインダー】下書きを${created.length}件作成しました`, body })
+        });
+      }
+      // ブラウザの連続ダウンロード制限を避けるため少しずつ間隔を空けて保存
+      created.forEach((c, i) => setTimeout(() => downloadTextFile(c.filename, c.eml), i * 400));
+      save();
+      const n = created.filter(c => c.task).length;
+      toast(`🤖 リマインダー下書きを ${n} 件作成しました（.eml をOutlookで開いて送信してください）`);
+    } else if (manual) {
+      toast(noAddress.length
+        ? `作成対象はありましたが、宛先メール未登録のためスキップしました（${noAddress.length}件）。👥名簿でアドレスを登録してください`
+        : "いま作成が必要なリマインダーはありません");
+    }
+    if (noAddress.length && created.length) {
+      toast(`⚠ 宛先メール未登録でスキップ：${noAddress.slice(0, 3).join("、")}${noAddress.length > 3 ? " ほか" : ""}`);
+    }
+    renderAutoDraftLog();
+  }
+
+  function renderAutoDraftLog() {
+    const statusEl = document.getElementById("autoDraftStatus");
+    const logEl = document.getElementById("autoDraftLog");
+    if (!statusEl || !logEl) return;
+    statusEl.textContent = state.settings.autoDraftOn
+      ? `自動チェック：ON（起動時＋30分ごと。指定日＝期日の${state.settings.reminderDays}日前※タスク個別設定優先、直前＝期日の${state.settings.lastReminderDays ?? 1}日前）`
+      : "自動チェック：OFF（⚙設定の「📧 自動リマインダー下書き」で有効化できます）";
+    const log = state.autoDraftLog || [];
+    logEl.innerHTML = log.length
+      ? log.slice(0, 20).map(e => {
+          const d = new Date(e.at);
+          const when = `${d.getMonth() + 1}/${d.getDate()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+          return `<div style="padding:3px 0; border-bottom:1px dashed var(--border);">
+            <span style="color:var(--muted);">${when}</span>
+            【${e.kind}】${escapeHtml(e.name)} <span style="color:var(--muted);">→ ${escapeHtml(e.to || "")}</span>
+          </div>`;
+        }).join("")
+      : `<span style="color:var(--muted);">まだ作成履歴はありません</span>`;
+  }
+
+  function startAutoDrafts() {
+    if (!isAuthedLeader() || autoDraftTimer) return;
+    setTimeout(() => runAutoDrafts(), 3000); // 起動直後に一度チェック
+    autoDraftTimer = setInterval(() => runAutoDrafts(), 30 * 60 * 1000);
   }
 
   function buildMailList() {
@@ -3010,6 +3209,7 @@
         </div>
       </div>`;
     }).join("");
+    renderAutoDraftLog();
     reminderList.querySelectorAll("[data-mailto]").forEach(btn => {
       btn.addEventListener("click", () => {
         // 行の特定はタスクid（一意）で行う。表示後にリストが再構築されてもズレない
@@ -6359,6 +6559,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     openPanelModal("loginAdmin");
   });
   document.getElementById("btnOpenReminder").addEventListener("click", () => openPanelModal("reminder"));
+  document.getElementById("btnRunAutoDrafts").addEventListener("click", () => runAutoDrafts(true));
   document.getElementById("btnOpenContacts").addEventListener("click", () => {
     // ヘッダーからの名簿は常に総合名簿（全員）
     contactsScopeKey = null;
@@ -6712,6 +6913,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
       toast(`ようこそ、${auth.displayName || auth.username} さん`);
       recordLoginHistory(auth, "ログイン");
       startSync();
+      startAutoDrafts();
     });
 
     document.getElementById("btnLogout").addEventListener("click", () => logout());
@@ -6722,6 +6924,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
       applyAuthUi(auth);
       recordLoginHistory(auth, "自動"); // 保存済みセッションでの起動も履歴に残す
       startSync();
+      startAutoDrafts();
     } else {
       overlay.hidden = false;
       setTimeout(() => inputUser.focus(), 0);
