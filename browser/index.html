@@ -2075,6 +2075,8 @@
 
   function save() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    // リーダーの変更は Supabase の共有データへも保存する（未設定・メンバー時は何もしない）
+    scheduleSyncPush();
   }
 
   // 旧形式（1〜12月の固定月ボード＋期日から所属を導出）からの移行。
@@ -2776,11 +2778,13 @@
     state.settings.supabaseUrl = cfgSupabaseUrl.value.trim().replace(/\/+$/, "");
     renderSettings();
     save();
+    startSync(); // URL・キーが揃ったら再起動なしで同期を開始
   });
   cfgSupabaseAnonKey.addEventListener("change", () => {
     state.settings.supabaseAnonKey = cfgSupabaseAnonKey.value.trim();
     renderSettings();
     save();
+    startSync();
   });
   // Ctrl+V が使えない環境向けのフォールバック：ボタン1つでクリップボードのキーを貼り付ける
   function wirePasteButton(btnId, apply) {
@@ -6404,6 +6408,101 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     location.reload();
   }
 
+  // ---- Supabase 同期（タスクボードの共有） ----
+  // リーダーの変更を shared_state 表（1行のJSON）へ保存し、全員が定期的に読み込んで表示を合わせる。
+  // Supabase 未設定・オフライン時は何もせず、従来どおり localStorage のみで動く。
+  // 設定（APIキー等）は共有せず、各自のブラウザに残す。
+  const SYNC_FIELDS = ["tasks", "contacts", "boards", "nextTaskId", "nextBoardId", "boardPos", "boardGroups", "lockedGroups"];
+  const SYNC_ROW_ID = "main";
+  const SYNC_PULL_MS = 10000; // メンバーが最新を取り込む間隔
+  let syncPushTimer = null;
+  let syncKnownRemoteAt = null; // 取り込み済み／書き込み済みの updated_at（自分の書いたデータを再取り込みしない）
+  let syncPolling = null;
+
+  function syncApi() {
+    const url = (state.settings.supabaseUrl || "").trim().replace(/\/+$/, "");
+    const key = (state.settings.supabaseAnonKey || "").trim();
+    return url && key ? { url, key } : null;
+  }
+
+  function syncHeaders(key) {
+    return { apikey: key, Authorization: "Bearer " + key, "Content-Type": "application/json" };
+  }
+
+  function isAuthedLeader() {
+    const a = currentAuth();
+    return !!(a && a.role === "leader");
+  }
+
+  function scheduleSyncPush() {
+    if (!syncApi() || !isAuthedLeader()) return;
+    clearTimeout(syncPushTimer);
+    syncPushTimer = setTimeout(syncPushNow, 1500); // 連続編集を1回の保存にまとめる
+  }
+
+  async function syncPushNow() {
+    clearTimeout(syncPushTimer);
+    syncPushTimer = null;
+    const api = syncApi();
+    if (!api || !isAuthedLeader()) return;
+    const data = {};
+    SYNC_FIELDS.forEach(k => { data[k] = state[k]; });
+    const now = new Date().toISOString();
+    try {
+      const res = await fetch(`${api.url}/rest/v1/shared_state?on_conflict=id`, {
+        method: "POST",
+        headers: Object.assign(syncHeaders(api.key), { Prefer: "resolution=merge-duplicates" }),
+        body: JSON.stringify([{ id: SYNC_ROW_ID, data, updated_at: now }])
+      });
+      if (res.ok) syncKnownRemoteAt = now;
+      else console.warn("共有データの保存に失敗:", res.status, await res.text());
+    } catch (e) {
+      console.warn("共有データの保存に失敗（オフライン？）:", e);
+    }
+  }
+
+  async function syncPull(initial) {
+    const api = syncApi();
+    if (!api || !currentAuth()) return;
+    // 編集中に画面が置き換わらないよう、ダイアログ表示中と送信待ちの変更があるときは見送る
+    if (document.querySelector("dialog[open]")) return;
+    if (isAuthedLeader() && syncPushTimer !== null) return;
+    try {
+      const res = await fetch(
+        `${api.url}/rest/v1/shared_state?id=eq.${SYNC_ROW_ID}&select=data,updated_at`,
+        { headers: syncHeaders(api.key) }
+      );
+      if (!res.ok) { console.warn("共有データの読み込みに失敗:", res.status); return; }
+      const rows = await res.json();
+      const row = Array.isArray(rows) ? rows[0] : null;
+      if (!row) {
+        // 共有データがまだ無い：リーダーなら手元のデータを初回アップロードする
+        if (initial && isAuthedLeader()) syncPushNow();
+        return;
+      }
+      if (row.updated_at === syncKnownRemoteAt) return;
+      syncKnownRemoteAt = row.updated_at;
+      const changed = SYNC_FIELDS.some(k => JSON.stringify(state[k]) !== JSON.stringify(row.data[k]));
+      if (!changed) return;
+      SYNC_FIELDS.forEach(k => { if (row.data[k] !== undefined) state[k] = row.data[k]; });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); // save() 経由だと再pushされるため直接保存
+      renderBoard();
+      renderContacts();
+      if (initial) toast("☁ 共有データを読み込みました");
+    } catch (e) {
+      if (initial) console.warn("共有データへ接続できません（オフライン？）:", e);
+    }
+  }
+
+  function startSync() {
+    if (!syncApi() || !currentAuth()) return;
+    syncPull(true);
+    if (!syncPolling) {
+      syncPolling = setInterval(() => syncPull(false), SYNC_PULL_MS);
+      window.addEventListener("focus", () => syncPull(false));
+    }
+  }
+
   function initAuth() {
     const overlay = document.getElementById("loginOverlay");
     const form = document.getElementById("loginForm");
@@ -6433,6 +6532,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
       applyAuthUi(auth);
       overlay.hidden = true;
       toast(`ようこそ、${auth.displayName || auth.username} さん`);
+      startSync();
     });
 
     document.getElementById("btnLogout").addEventListener("click", () => logout());
@@ -6441,6 +6541,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     const auth = currentAuth();
     if (auth && auth.role) {
       applyAuthUi(auth);
+      startSync();
     } else {
       overlay.hidden = false;
       setTimeout(() => inputUser.focus(), 0);
