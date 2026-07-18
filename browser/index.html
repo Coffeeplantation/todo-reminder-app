@@ -1538,6 +1538,7 @@
       <button type="button" id="btnOpenReminder" class="ghost" title="リマインダーチェックを開く">🔔 リマインダー</button>
       <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
       <button type="button" id="btnOpenAiSettings" class="ghost" title="AIプロバイダ・APIキーの設定">🤖 AI設定</button>
+      <button type="button" id="btnOpenLoginAdmin" class="ghost" title="ユーザーの追加・変更・削除とログイン履歴の確認">🔑 ログイン管理</button>
       <button type="button" id="btnOpenSettings" class="ghost" title="設定を開く">⚙ 設定</button>
       <button type="button" id="btnLogout" class="ghost" title="ログアウトしてログイン画面に戻る">🚪 ログアウト</button>
       <!-- 実行中のバージョン確認用（キャッシュで古い版が動いていないかを見分ける） -->
@@ -1679,6 +1680,54 @@
           <input type="text" id="cfgOllamaVisionModel" placeholder="minicpm-v" autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
           <small style="color:var(--muted); display:block; margin-top:2px;">画像（スクリーンショット/写真）から予定を読み取るときに使う、Ollamaの<b>ビジョン対応モデル</b>名。PC内で動くためオフラインでも画像を読めます。<br>初回のみオンライン時に「ollama pull minicpm-v」（日本語向け。または「ollama pull llava」等）でモデルを取得してください。</small>
         </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ログイン管理：リーダーがユーザーの追加・変更・削除とログイン履歴を確認する（☰メニューから） -->
+  <section class="panel modal-only" id="sectionLoginAdmin">
+    <h2>🔑 ログイン管理</h2>
+    <div class="panel-body">
+      <p id="loginAdminOffline" style="color:var(--muted); font-size:12.5px; margin:0 0 10px;" hidden>
+        Supabaseに接続できません（未設定またはオフライン）。ユーザー管理とログイン履歴にはSupabaseが必要です。⚙設定で「🔐 ログイン：Supabase URL / anonキー」を設定してください。
+      </p>
+      <div id="loginAdminContent">
+        <h3 style="font-size:14px; margin:0 0 8px;">👥 ユーザー一覧</h3>
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+          <thead>
+            <tr style="background:rgba(43,63,99,0.1); border-bottom:1px solid var(--border);">
+              <th style="text-align:left; padding:8px 10px; font-weight:600;">ユーザー名</th>
+              <th style="text-align:left; padding:8px 10px; font-weight:600;">表示名</th>
+              <th style="text-align:left; padding:8px 10px; font-weight:600;">役割</th>
+              <th style="text-align:left; padding:8px 10px; font-weight:600;">パスワード</th>
+              <th style="padding:8px 10px; width:130px;"></th>
+            </tr>
+          </thead>
+          <tbody id="loginUsersBody"></tbody>
+        </table>
+        <div style="margin:12px 0 20px; padding:10px 12px; border:1px dashed var(--border); border-radius:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <b style="font-size:12.5px;">➕ ユーザーを追加：</b>
+          <input type="text" id="newLoginUser" placeholder="ユーザー名（半角英数）" autocomplete="off" spellcheck="false" style="width:150px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
+          <input type="text" id="newLoginName" placeholder="表示名（例：田中）" autocomplete="off" style="width:130px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
+          <select id="newLoginRole" style="padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
+            <option value="member">メンバー</option>
+            <option value="leader">リーダー</option>
+          </select>
+          <input type="text" id="newLoginPass" placeholder="パスワード" autocomplete="off" spellcheck="false" style="width:120px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
+          <button type="button" id="btnAddLoginUser" class="secondary small">追加</button>
+        </div>
+        <h3 style="font-size:14px; margin:0 0 8px;">🕒 ログイン履歴（最新100件）</h3>
+        <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+          <thead>
+            <tr style="background:rgba(43,63,99,0.1); border-bottom:1px solid var(--border);">
+              <th style="text-align:left; padding:7px 10px; font-weight:600;">日時</th>
+              <th style="text-align:left; padding:7px 10px; font-weight:600;">ユーザー</th>
+              <th style="text-align:left; padding:7px 10px; font-weight:600;">役割</th>
+              <th style="text-align:left; padding:7px 10px; font-weight:600;">種別</th>
+            </tr>
+          </thead>
+          <tbody id="loginHistoryBody"></tbody>
+        </table>
       </div>
     </div>
   </section>
@@ -2578,7 +2627,8 @@
     taskParticipants: "sectionTaskParticipants",
     import: "sectionImport",
     archive: "sectionArchive",
-    currentSchedule: "sectionCurrentSchedule"
+    currentSchedule: "sectionCurrentSchedule",
+    loginAdmin: "sectionLoginAdmin"
   };
   const panelModal = document.getElementById("panelModal");
   const panelModalBody = document.getElementById("panelModalBody");
@@ -2587,7 +2637,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-18 (21) ログイン（リーダー／メンバー）";
+  const APP_VERSION = "2026-07-19 (22) ログイン管理・履歴";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -6304,6 +6354,10 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
   document.getElementById("btnBgChange").addEventListener("click", () => changeBackground(true));
   document.getElementById("btnOpenSettings").addEventListener("click", () => openPanelModal("settings"));
   document.getElementById("btnOpenAiSettings").addEventListener("click", () => openPanelModal("aiSettings"));
+  document.getElementById("btnOpenLoginAdmin").addEventListener("click", () => {
+    renderLoginAdmin();
+    openPanelModal("loginAdmin");
+  });
   document.getElementById("btnOpenReminder").addEventListener("click", () => openPanelModal("reminder"));
   document.getElementById("btnOpenContacts").addEventListener("click", () => {
     // ヘッダーからの名簿は常に総合名簿（全員）
@@ -6503,6 +6557,130 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     }
   }
 
+  // ---- ログイン管理（リーダー専用）：ユーザーの追加・変更・削除とログイン履歴 ----
+  // データはすべて Supabase（app_users / login_history 表）。オフライン・未設定時は案内のみ表示。
+  function recordLoginHistory(auth, kind) {
+    const api = syncApi();
+    if (!api) return;
+    fetch(`${api.url}/rest/v1/login_history`, {
+      method: "POST",
+      headers: syncHeaders(api.key),
+      body: JSON.stringify([{ username: auth.username, display_name: auth.displayName || auth.username, role: auth.role, kind }])
+    }).catch(() => {}); // 記録失敗でもアプリの利用は妨げない
+  }
+
+  async function renderLoginAdmin() {
+    const offline = document.getElementById("loginAdminOffline");
+    const content = document.getElementById("loginAdminContent");
+    const usersBody = document.getElementById("loginUsersBody");
+    const histBody = document.getElementById("loginHistoryBody");
+    const api = syncApi();
+    offline.hidden = !!api;
+    content.hidden = !api;
+    if (!api) return;
+    usersBody.innerHTML = `<tr><td colspan="5" style="padding:10px; color:var(--muted);">読み込み中…</td></tr>`;
+    histBody.innerHTML = `<tr><td colspan="4" style="padding:10px; color:var(--muted);">読み込み中…</td></tr>`;
+    try {
+      const [uRes, hRes] = await Promise.all([
+        fetch(`${api.url}/rest/v1/app_users?select=username,password,role,display_name&order=username.asc`, { headers: syncHeaders(api.key) }),
+        fetch(`${api.url}/rest/v1/login_history?select=username,display_name,role,kind,logged_in_at&order=logged_in_at.desc&limit=100`, { headers: syncHeaders(api.key) })
+      ]);
+      if (!uRes.ok || !hRes.ok) throw new Error(`HTTP ${uRes.status}/${hRes.status}`);
+      const users = await uRes.json();
+      const hist = await hRes.json();
+      const me = (currentAuth() || {}).username;
+      usersBody.innerHTML = users.map(u => `
+        <tr style="border-bottom:1px solid var(--border);" data-username="${escapeHtml(u.username)}">
+          <td style="padding:7px 10px; font-weight:600;">${escapeHtml(u.username)}${u.username === me ? ` <span style="color:var(--muted); font-weight:normal; font-size:11px;">（自分）</span>` : ""}</td>
+          <td style="padding:7px 10px;"><input type="text" class="ua-name" value="${escapeHtml(u.display_name || "")}" style="width:110px; padding:4px 6px; border:1px solid var(--border); border-radius:6px; font-size:12.5px;"></td>
+          <td style="padding:7px 10px;">
+            <select class="ua-role" style="padding:4px 6px; border:1px solid var(--border); border-radius:6px; font-size:12.5px;">
+              <option value="member"${u.role !== "leader" ? " selected" : ""}>メンバー</option>
+              <option value="leader"${u.role === "leader" ? " selected" : ""}>リーダー</option>
+            </select>
+          </td>
+          <td style="padding:7px 10px;"><input type="text" class="ua-pass" value="${escapeHtml(u.password || "")}" style="width:100px; padding:4px 6px; border:1px solid var(--border); border-radius:6px; font-size:12.5px;"></td>
+          <td style="padding:7px 10px; white-space:nowrap;">
+            <button type="button" class="secondary small ua-save">保存</button>
+            <button type="button" class="ghost small ua-del"${u.username === me ? " disabled title=\"自分自身は削除できません\"" : ""}>削除</button>
+          </td>
+        </tr>`).join("") || `<tr><td colspan="5" style="padding:10px; color:var(--muted);">ユーザーがいません</td></tr>`;
+      histBody.innerHTML = hist.map(h => {
+        const d = new Date(h.logged_in_at);
+        const when = `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+        const roleLabel = h.role === "leader" ? "リーダー" : "メンバー";
+        return `<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:6px 10px; white-space:nowrap;">${when}</td>
+          <td style="padding:6px 10px;">${escapeHtml(h.display_name || h.username)} <span style="color:var(--muted); font-size:11px;">(${escapeHtml(h.username)})</span></td>
+          <td style="padding:6px 10px;">${roleLabel}</td>
+          <td style="padding:6px 10px; color:var(--muted);">${escapeHtml(h.kind || "ログイン")}</td>
+        </tr>`;
+      }).join("") || `<tr><td colspan="4" style="padding:10px; color:var(--muted);">ログイン履歴はまだありません</td></tr>`;
+    } catch (e) {
+      offline.hidden = false;
+      content.hidden = true;
+      console.warn("ログイン管理の読み込みに失敗:", e);
+    }
+  }
+
+  // ユーザー一覧の「保存」「削除」（行ごと。イベント委任）
+  document.getElementById("loginUsersBody").addEventListener("click", async e => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    const tr = btn.closest("tr");
+    const username = tr.getAttribute("data-username");
+    const api = syncApi();
+    if (!api || !username) return;
+    if (btn.classList.contains("ua-save")) {
+      const body = {
+        display_name: tr.querySelector(".ua-name").value.trim() || username,
+        role: tr.querySelector(".ua-role").value,
+        password: tr.querySelector(".ua-pass").value
+      };
+      if (!body.password) { toast("パスワードは空にできません"); return; }
+      const me = (currentAuth() || {}).username;
+      if (username === me && body.role !== "leader" &&
+        !confirm("自分自身をメンバーに変更すると、次回ログインからヘッダー（管理機能）が使えなくなります。変更しますか？")) return;
+      const res = await fetch(`${api.url}/rest/v1/app_users?username=eq.${encodeURIComponent(username)}`, {
+        method: "PATCH", headers: syncHeaders(api.key), body: JSON.stringify(body)
+      }).catch(() => null);
+      if (res && res.ok) { toast(`「${username}」を更新しました`); renderLoginAdmin(); }
+      else toast("更新に失敗しました");
+    } else if (btn.classList.contains("ua-del")) {
+      if (!confirm(`ユーザー「${username}」を削除しますか？\n（この人はログインできなくなります。ログイン履歴は残ります）`)) return;
+      const res = await fetch(`${api.url}/rest/v1/app_users?username=eq.${encodeURIComponent(username)}`, {
+        method: "DELETE", headers: syncHeaders(api.key)
+      }).catch(() => null);
+      if (res && res.ok) { toast(`「${username}」を削除しました`); renderLoginAdmin(); }
+      else toast("削除に失敗しました");
+    }
+  });
+
+  document.getElementById("btnAddLoginUser").addEventListener("click", async () => {
+    const api = syncApi();
+    if (!api) return;
+    const username = document.getElementById("newLoginUser").value.trim();
+    const password = document.getElementById("newLoginPass").value;
+    const displayName = document.getElementById("newLoginName").value.trim() || username;
+    const role = document.getElementById("newLoginRole").value;
+    if (!username || !password) { toast("ユーザー名とパスワードを入力してください"); return; }
+    const res = await fetch(`${api.url}/rest/v1/app_users`, {
+      method: "POST", headers: syncHeaders(api.key),
+      body: JSON.stringify([{ username, password, role, display_name: displayName }])
+    }).catch(() => null);
+    if (res && res.ok) {
+      toast(`ユーザー「${displayName}」を追加しました`);
+      document.getElementById("newLoginUser").value = "";
+      document.getElementById("newLoginPass").value = "";
+      document.getElementById("newLoginName").value = "";
+      renderLoginAdmin();
+    } else if (res && res.status === 409) {
+      toast(`ユーザー名「${username}」は既に使われています`);
+    } else {
+      toast("追加に失敗しました");
+    }
+  });
+
   function initAuth() {
     const overlay = document.getElementById("loginOverlay");
     const form = document.getElementById("loginForm");
@@ -6532,6 +6710,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
       applyAuthUi(auth);
       overlay.hidden = true;
       toast(`ようこそ、${auth.displayName || auth.username} さん`);
+      recordLoginHistory(auth, "ログイン");
       startSync();
     });
 
@@ -6541,6 +6720,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     const auth = currentAuth();
     if (auth && auth.role) {
       applyAuthUi(auth);
+      recordLoginHistory(auth, "自動"); // 保存済みセッションでの起動も履歴に残す
       startSync();
     } else {
       overlay.hidden = false;

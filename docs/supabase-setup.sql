@@ -47,6 +47,40 @@ drop policy if exists "update shared_state" on shared_state;
 create policy "update shared_state" on shared_state
   for update using (true);
 
+-- 3) ユーザー管理（リーダーがアプリ内からユーザーを追加・変更・削除できるようにする）
+drop policy if exists "insert app_users" on app_users;
+create policy "insert app_users" on app_users
+  for insert with check (true);
+
+drop policy if exists "update app_users" on app_users;
+create policy "update app_users" on app_users
+  for update using (true);
+
+drop policy if exists "delete app_users" on app_users;
+create policy "delete app_users" on app_users
+  for delete using (true);
+
+-- 4) ログイン履歴（リーダーが「誰がいつログインしたか」を確認できる）
+create table if not exists login_history (
+  id           bigint generated always as identity primary key,
+  username     text not null,
+  display_name text,
+  role         text,
+  kind         text,                              -- 'ログイン'（手動） / '自動'（保存済みセッションでの起動）
+  logged_in_at timestamptz not null default now()
+);
+
+alter table login_history enable row level security;
+
+drop policy if exists "read login_history" on login_history;
+create policy "read login_history" on login_history
+  for select using (true);
+
+drop policy if exists "insert login_history" on login_history;
+create policy "insert login_history" on login_history
+  for insert with check (true);
+
 -- 注意: anonキーを持つ人（＝アプリ利用者全員）は技術的には書き込みも可能です。
--- 「メンバーは閲覧のみ」はアプリ側の制御です。簡易運用のための割り切りで、
--- 厳密な権限管理が必要になったら Supabase Auth ＋ RLS への移行を検討してください。
+-- 「メンバーは閲覧のみ」「ユーザー管理はリーダーのみ」はアプリ側の制御です。
+-- 簡易運用のための割り切りで、厳密な権限管理が必要になったら
+-- Supabase Auth ＋ RLS への移行を検討してください。
