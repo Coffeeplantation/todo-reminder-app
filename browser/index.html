@@ -1647,6 +1647,30 @@
           <small style="color:var(--muted); display:block; margin-top:2px;">下書きを作成したとき、その一覧を知らせるメール（これも下書き）をこの宛先向けに作成します。空欄なら通知メールは作りません。</small>
         </span>
 
+        <label for="cfgMailFrom">📧 差出人アドレス（From）</label>
+        <span>
+          <input type="email" id="cfgMailFrom" placeholder="my-address@example.com" autocomplete="off" spellcheck="false" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
+          <small style="color:var(--muted); display:block; margin-top:2px;">下書き（.eml）の差出人欄に設定するアドレス。Outlookに複数アカウントがある場合の差出人指定に使います。空欄ならOutlookの既定アカウントになります。</small>
+        </span>
+
+        <label for="cfgMailTo">📧 リマインダーの送信先アドレス</label>
+        <span>
+          <input type="text" id="cfgMailTo" placeholder="team@example.com, boss@example.com" autocomplete="off" spellcheck="false" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
+          <small style="color:var(--muted); display:block; margin-top:2px;"><b>空欄なら従来どおり</b>、タスクの担当者＋参加者（👥名簿のアドレス）宛になります。<br>アドレスを入力（カンマ区切りで複数可）すると<b>常にその宛先（To）</b>へ送り、担当者・参加者はCCに入ります。</small>
+        </span>
+
+        <label for="cfgMailSubject">📧 リマインダーの件名</label>
+        <span>
+          <input type="text" id="cfgMailSubject" placeholder="【リマインド】{タスク名}（期日：{期日}）" autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
+          <small style="color:var(--muted); display:block; margin-top:2px;">空欄なら既定の件名。<b>{タスク名} {期日} {残り日数} {担当者} {参加者} {宛先名} {署名}</b> が使えます。</small>
+        </span>
+
+        <label for="cfgMailBody">📧 リマインダーの本文</label>
+        <span>
+          <textarea id="cfgMailBody" rows="6" placeholder="{宛先名}&#10;&#10;「{タスク名}」の期日（{期日}）まで残り {残り日数} 日です。&#10;ご対応をお願いいたします。&#10;&#10;{署名}" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; resize:vertical;"></textarea>
+          <small style="color:var(--muted); display:block; margin-top:2px;">空欄なら既定の本文。上と同じ <b>{タスク名}</b> などの差し込みタグが使えます。手動の「✉ 下書き」と自動下書きの両方に反映されます。</small>
+        </span>
+
         <label for="cfgSupabaseUrl">🔐 ログイン：Supabase URL</label>
         <span>
           <input type="text" id="cfgSupabaseUrl" placeholder="https://xxxxx.supabase.co" autocomplete="off" spellcheck="false" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
@@ -2094,7 +2118,11 @@
       supabaseAnonKey: "", // 同 anon（public）キー
       autoDraftOn: false,  // 自動リマインダー下書き（Outlook用 .eml）を作成するか
       lastReminderDays: 1, // 「直前」リマインダーは期日の何日前か
-      leaderEmail: ""      // 下書き作成をリーダーへ知らせる通知メールの宛先
+      leaderEmail: "",     // 下書き作成をリーダーへ知らせる通知メールの宛先
+      mailFrom: "",        // 下書きの差出人（From）。空欄ならOutlookの既定アカウント
+      mailTo: "",          // 固定の送信先（カンマ区切り）。空欄なら担当者＋参加者（名簿）宛
+      mailSubject: "",     // 件名テンプレート（空欄なら既定。{タスク名}等の差し込みタグ対応）
+      mailBody: ""         // 本文テンプレート（同上）
     },
     tasks: [
       { id: 1, name: "プロジェクト報告書提出", assignee: "山田太郎", due: "2026-07-15", reminderDays: 3, status: "未完了", sentFlag: "", boards: ["b1"] },
@@ -2669,7 +2697,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-19 (24) 背景に風景写真を追加";
+  const APP_VERSION = "2026-07-19 (25) リマインダーメールの宛先・差出人・内容を設定可能に";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -2750,6 +2778,10 @@
   const cfgAutoDraftLabel = document.getElementById("cfgAutoDraftLabel");
   const cfgLastReminderDays = document.getElementById("cfgLastReminderDays");
   const cfgLeaderEmail = document.getElementById("cfgLeaderEmail");
+  const cfgMailFrom = document.getElementById("cfgMailFrom");
+  const cfgMailTo = document.getElementById("cfgMailTo");
+  const cfgMailSubject = document.getElementById("cfgMailSubject");
+  const cfgMailBody = document.getElementById("cfgMailBody");
 
   function renderSettings() {
     const localOnly = state.settings.localOnly !== false;
@@ -2780,6 +2812,10 @@
       : "OFF";
     cfgLastReminderDays.value = state.settings.lastReminderDays ?? 1;
     cfgLeaderEmail.value = state.settings.leaderEmail || "";
+    cfgMailFrom.value = state.settings.mailFrom || "";
+    cfgMailTo.value = state.settings.mailTo || "";
+    cfgMailSubject.value = state.settings.mailSubject || "";
+    cfgMailBody.value = state.settings.mailBody || "";
   }
   cfgLocalOnly.addEventListener("change", () => {
     state.settings.localOnly = cfgLocalOnly.checked;
@@ -2894,6 +2930,26 @@
     renderSettings();
     save();
   });
+  cfgMailFrom.addEventListener("change", () => {
+    state.settings.mailFrom = cfgMailFrom.value.trim();
+    renderSettings();
+    save();
+  });
+  cfgMailTo.addEventListener("change", () => {
+    state.settings.mailTo = cfgMailTo.value.trim();
+    renderSettings();
+    save();
+  });
+  cfgMailSubject.addEventListener("change", () => {
+    state.settings.mailSubject = cfgMailSubject.value;
+    renderSettings();
+    save();
+  });
+  cfgMailBody.addEventListener("change", () => {
+    state.settings.mailBody = cfgMailBody.value;
+    renderSettings();
+    save();
+  });
   // Ctrl+V が使えない環境向けのフォールバック：ボタン1つでクリップボードのキーを貼り付ける
   function wirePasteButton(btnId, apply) {
     document.getElementById(btnId).addEventListener("click", async () => {
@@ -2959,14 +3015,33 @@
     return [...new Set(names)].map(name => ({ name, email: getEmailByName(name) }));
   }
 
+  // 件名・本文テンプレートの差し込みタグを置換する（設定画面の説明と対応）
+  function applyMailTemplate(tpl, ctx) {
+    return tpl.replace(/\{(タスク名|期日|残り日数|担当者|参加者|宛先名|署名)\}/g, (_, k) => ctx[k] ?? "");
+  }
+
   function buildMailContent(task, due, daysLeft, recipients) {
-    const subject = `【リマインド】${task.name}（期日：${formatDate(due)}）`;
+    const names = recipients.length ? recipients.map(r => `${r.name} 様`).join("、") : "ご担当者 様";
+    const ctx = {
+      "タスク名": task.name,
+      "期日": formatDateJP(due),
+      "残り日数": String(daysLeft),
+      "担当者": task.assignee || "",
+      "参加者": (task.participants || []).join("、"),
+      "宛先名": names,
+      "署名": state.settings.signature
+    };
+    const subject = (state.settings.mailSubject || "").trim()
+      ? applyMailTemplate(state.settings.mailSubject, ctx)
+      : `【リマインド】${task.name}（期日：${formatDate(due)}）`;
+    if ((state.settings.mailBody || "").trim()) {
+      return { subject, body: applyMailTemplate(state.settings.mailBody, ctx) };
+    }
     const bodyIntro = daysLeft === 0
       ? "本日が期日のタスクがあります。ご確認をお願いいたします。"
       : daysLeft < 0
         ? `期日を ${-daysLeft} 日超過しています。至急ご対応をお願いいたします。`
         : `期日まで残り ${daysLeft} 日となりました。ご対応をお願いいたします。`;
-    const names = recipients.length ? recipients.map(r => `${r.name} 様`).join("、") : "ご担当者 様";
     const body = `${names}\n\n${bodyIntro}\n\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `  タスク名：${task.name}\n` +
@@ -2975,6 +3050,16 @@
       `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
       `このメールは${state.settings.signature}より自動送信されています。`;
     return { subject, body };
+  }
+
+  // リマインダーの宛先（To/Cc）を決める。
+  // 設定「送信先アドレス」があれば常にそれをToにし、担当者・参加者（名簿のアドレス）はCcへ。
+  // 未設定なら従来どおり担当者＋参加者のみ。どちらも無ければ null（作成スキップ）。
+  function reminderAddresses(recipients) {
+    const rec = recipients.filter(x => x.email).map(x => x.email);
+    const fixed = (state.settings.mailTo || "").split(/[,、;\s]+/).filter(Boolean);
+    if (fixed.length) return { to: fixed.join(", "), cc: rec.join(", ") };
+    return rec.length ? { to: rec[0], cc: rec.slice(1).join(", ") } : null;
   }
 
   // ---- 自動リマインダー下書き（Outlook連携） ----
@@ -2991,10 +3076,11 @@
     return btoa(bin);
   }
 
-  function makeEml({ to, cc, subject, body }) {
+  function makeEml({ from, to, cc, subject, body }) {
     const wrap76 = s => (s.match(/.{1,76}/g) || [""]).join("\r\n");
     const lines = [
       "X-Unsent: 1", // Outlookで「送信済み表示」ではなく編集可能な下書きとして開くためのヘッダ
+      ...(from ? [`From: ${from}`] : []),
       `To: ${to}`,
       ...(cc ? [`Cc: ${cc}`] : []),
       `Subject: =?UTF-8?B?${b64utf8(subject)}?=`,
@@ -3043,14 +3129,14 @@
       else if (daysBetween(firstDate, today) >= 0 && !task.autoMail.first) kind = "指定日";
       if (!kind) continue;
       const recipients = taskRecipients(task);
-      const emails = recipients.filter(x => x.email).map(x => x.email);
-      if (!emails.length) { noAddress.push(task.name); continue; }
+      const addr = reminderAddresses(recipients);
+      if (!addr) { noAddress.push(task.name); continue; }
       const daysLeft = daysBetween(today, due);
       const { subject, body } = buildMailContent(task, due, daysLeft, recipients);
       created.push({
         task, kind, recipients,
         filename: `リマインダー_${kind}_${sanitizeFilename(task.name)}.eml`,
-        eml: makeEml({ to: emails[0], cc: emails.slice(1).join(", "), subject, body })
+        eml: makeEml({ from: state.settings.mailFrom, to: addr.to, cc: addr.cc, subject, body })
       });
       if (kind === "直前") {
         task.autoMail.last = formatDate(today);
@@ -3073,7 +3159,7 @@
           `内容を確認のうえ、送信してください。\n\n${state.settings.signature}`;
         created.unshift({
           filename: "リマインダー通知_リーダー宛.eml",
-          eml: makeEml({ to: state.settings.leaderEmail, cc: "", subject: `【Todoリマインダー】下書きを${created.length}件作成しました`, body })
+          eml: makeEml({ from: state.settings.mailFrom, to: state.settings.leaderEmail, cc: "", subject: `【Todoリマインダー】下書きを${created.length}件作成しました`, body })
         });
       }
       // ブラウザの連続ダウンロード制限を避けるため少しずつ間隔を空けて保存
@@ -3215,9 +3301,9 @@
         // 行の特定はタスクid（一意）で行う。表示後にリストが再構築されてもズレない
         const r = mailListRows.find(x => x.task.id === Number(btn.dataset.mailto));
         if (!r) return;
-        const emails = r.recipients.filter(x => x.email).map(x => x.email);
-        if (!emails.length) { alert("宛先のメールアドレスが名簿にありません。👥名簿でメールアドレスを登録してください。"); return; }
-        location.href = `mailto:${emails[0]}?cc=${encodeURIComponent(emails.slice(1).join(","))}` +
+        const addr = reminderAddresses(r.recipients);
+        if (!addr) { alert("宛先のメールアドレスがありません。👥名簿への登録、または⚙設定の「📧 リマインダーの送信先アドレス」を設定してください。"); return; }
+        location.href = `mailto:${addr.to}?cc=${encodeURIComponent(addr.cc)}` +
           `&subject=${encodeURIComponent(r.subject)}&body=${encodeURIComponent(r.body)}`;
       });
     });
