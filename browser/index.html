@@ -1417,6 +1417,69 @@
     justify-content: flex-end;
   }
 
+  /* ---- ログイン画面 ---- */
+  /* 背景は不透明にして、ログイン前に後ろのボード内容が見えないようにする */
+  #loginOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(160deg, #1e293b, #33455e 55%, #1e3a5f);
+  }
+  #loginOverlay[hidden] { display: none; }
+  .login-card {
+    background: rgba(255, 255, 255, 0.96);
+    border-radius: 16px;
+    padding: 30px 34px 24px;
+    width: 360px;
+    max-width: 90vw;
+    box-shadow: var(--shadow-md);
+    box-sizing: border-box;
+  }
+  .login-card h1 { margin: 0 0 4px; font-size: 21px; }
+  .login-sub { margin: 0 0 18px; font-size: 12.5px; color: var(--muted); }
+  .login-card label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+  .login-card label input {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    padding: 9px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    box-sizing: border-box;
+  }
+  .login-err { color: #c22; font-size: 12.5px; min-height: 1.2em; margin: 0 0 8px; }
+  .login-card button[type="submit"] { width: 100%; padding: 10px; font-size: 15px; font-weight: 700; }
+  .login-hint { margin: 14px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.6; }
+  .login-hint code { background: rgba(43,63,99,0.08); padding: 1px 5px; border-radius: 5px; }
+
+  /* メンバーはタスクボードのみ表示（ヘッダー＝アプリバーを隠す） */
+  body.role-member .appbar { display: none; }
+
+  /* ログイン中ユーザー表示＋ログアウト（メンバー用。リーダーは☰メニューからログアウト） */
+  #userChip {
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    z-index: 95;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 4px 6px 4px 14px;
+    background: rgba(255, 255, 255, 0.88);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 12.5px;
+    box-shadow: var(--shadow-sm);
+  }
+  #userChip[hidden] { display: none; }
+
 </style>
 </head>
 <body>
@@ -1425,6 +1488,32 @@
 <div class="bg-layer" id="bgA"></div>
 <div class="bg-layer" id="bgB"></div>
 <div id="bgScrim"></div>
+
+<!-- ログイン画面：リーダーは全機能（ヘッダーあり）、メンバーはタスクボードのみ表示 -->
+<div id="loginOverlay" hidden>
+  <form class="login-card" id="loginForm">
+    <h1>📋 Todoリマインダー</h1>
+    <p class="login-sub">ユーザー名とパスワードを入力してください</p>
+    <label>ユーザー名
+      <input type="text" id="loginUser" autocomplete="username" autocapitalize="off" spellcheck="false">
+    </label>
+    <label>パスワード
+      <input type="password" id="loginPass" autocomplete="current-password">
+    </label>
+    <p class="login-err" id="loginErr"></p>
+    <button type="submit" id="btnLogin">ログイン</button>
+    <p class="login-hint">
+      初期アカウント：リーダー <code>leader / 1234</code> ・ メンバー <code>member / 1234</code><br>
+      （設定でSupabaseを登録すると app_users 表のアカウントで認証します。オフライン時は初期アカウントに切り替わります）
+    </p>
+  </form>
+</div>
+
+<!-- ログイン中ユーザーの表示＋ログアウト（メンバー用。リーダーは☰メニュー内の🚪ログアウトを使う） -->
+<div id="userChip" hidden>
+  <span id="userChipName"></span>
+  <button type="button" id="btnChipLogout" class="ghost small" title="ログアウトしてログイン画面に戻る">🚪 ログアウト</button>
+</div>
 
 <!-- アプリバー：主要操作へ常時1クリックでアクセス -->
 <header class="appbar">
@@ -1450,6 +1539,7 @@
       <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
       <button type="button" id="btnOpenAiSettings" class="ghost" title="AIプロバイダ・APIキーの設定">🤖 AI設定</button>
       <button type="button" id="btnOpenSettings" class="ghost" title="設定を開く">⚙ 設定</button>
+      <button type="button" id="btnLogout" class="ghost" title="ログアウトしてログイン画面に戻る">🚪 ログアウト</button>
       <!-- 実行中のバージョン確認用（キャッシュで古い版が動いていないかを見分ける） -->
       <div id="appVersion" style="padding:4px 10px; font-size:10.5px; color:var(--muted); text-align:right;"></div>
     </div>
@@ -1537,6 +1627,18 @@
 
         <label for="cfgBgInterval">背景の自動切替間隔（分）</label>
         <input type="number" id="cfgBgInterval" min="1" value="10">
+
+        <label for="cfgSupabaseUrl">🔐 ログイン：Supabase URL</label>
+        <span>
+          <input type="text" id="cfgSupabaseUrl" placeholder="https://xxxxx.supabase.co" autocomplete="off" spellcheck="false" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
+          <small style="color:var(--muted); display:block; margin-top:2px;">ログインアカウントをSupabaseの <b>app_users</b> 表で管理します（作成手順は docs/login-supabase.md）。<br>未設定・オフライン時は内蔵アカウント（leader / 1234・member / 1234）でログインできます。</small>
+        </span>
+
+        <label for="cfgSupabaseAnonKey">🔐 ログイン：Supabase anonキー</label>
+        <span>
+          <input type="password" id="cfgSupabaseAnonKey" placeholder="eyJhbGc..." autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
+          <small style="color:var(--muted); display:block; margin-top:2px;">Supabaseの「Project Settings → API」にある anon（public）キー。このブラウザの localStorage にのみ保存されます。</small>
+        </span>
       </div>
     </div>
   </section>
@@ -1910,7 +2012,9 @@
       geminiApiKey: "",
       ollamaModel: "qwen2.5:3b",
       ollamaVisionModel: "minicpm-v", // 画像から予定を読み取るときに使う Ollama のビジョン対応モデル（日本語向け）
-      localOnly: true // 完全ローカル：読み込んだ内容・タスク情報を外部（クラウドAI/画像/プロキシ）へ送らない
+      localOnly: true, // 完全ローカル：読み込んだ内容・タスク情報を外部（クラウドAI/画像/プロキシ）へ送らない
+      supabaseUrl: "",    // ログイン認証用 Supabase プロジェクトURL（未設定なら内蔵アカウントで認証）
+      supabaseAnonKey: "" // 同 anon（public）キー
     },
     tasks: [
       { id: 1, name: "プロジェクト報告書提出", assignee: "山田太郎", due: "2026-07-15", reminderDays: 3, status: "未完了", sentFlag: "", boards: ["b1"] },
@@ -1942,6 +2046,14 @@
     }
     if (window.LOCAL_CONFIG.anthropicApiKey && !state.settings.anthropicApiKey) {
       state.settings.anthropicApiKey = window.LOCAL_CONFIG.anthropicApiKey;
+      lcChanged = true;
+    }
+    if (window.LOCAL_CONFIG.supabaseUrl && !state.settings.supabaseUrl) {
+      state.settings.supabaseUrl = window.LOCAL_CONFIG.supabaseUrl;
+      lcChanged = true;
+    }
+    if (window.LOCAL_CONFIG.supabaseAnonKey && !state.settings.supabaseAnonKey) {
+      state.settings.supabaseAnonKey = window.LOCAL_CONFIG.supabaseAnonKey;
       lcChanged = true;
     }
     if (lcChanged) save();
@@ -2473,7 +2585,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-16 (20) 予定表とボード連携";
+  const APP_VERSION = "2026-07-18 (21) ログイン（リーダー／メンバー）";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -2548,6 +2660,8 @@
   const cfgOllamaVisionModel = document.getElementById("cfgOllamaVisionModel");
   const cfgLocalOnly = document.getElementById("cfgLocalOnly");
   const cfgLocalOnlyLabel = document.getElementById("cfgLocalOnlyLabel");
+  const cfgSupabaseUrl = document.getElementById("cfgSupabaseUrl");
+  const cfgSupabaseAnonKey = document.getElementById("cfgSupabaseAnonKey");
 
   function renderSettings() {
     const localOnly = state.settings.localOnly !== false;
@@ -2570,6 +2684,8 @@
     cfgGeminiKey.value = state.settings.geminiApiKey || "";
     cfgOllamaModel.value = state.settings.ollamaModel || "qwen2.5:3b";
     cfgOllamaVisionModel.value = state.settings.ollamaVisionModel || "minicpm-v";
+    cfgSupabaseUrl.value = state.settings.supabaseUrl || "";
+    cfgSupabaseAnonKey.value = state.settings.supabaseAnonKey || "";
   }
   cfgLocalOnly.addEventListener("change", () => {
     state.settings.localOnly = cfgLocalOnly.checked;
@@ -2653,6 +2769,16 @@
   });
   cfgOllamaVisionModel.addEventListener("change", () => {
     state.settings.ollamaVisionModel = cfgOllamaVisionModel.value.trim() || "minicpm-v";
+    renderSettings();
+    save();
+  });
+  cfgSupabaseUrl.addEventListener("change", () => {
+    state.settings.supabaseUrl = cfgSupabaseUrl.value.trim().replace(/\/+$/, "");
+    renderSettings();
+    save();
+  });
+  cfgSupabaseAnonKey.addEventListener("change", () => {
+    state.settings.supabaseAnonKey = cfgSupabaseAnonKey.value.trim();
     renderSettings();
     save();
   });
@@ -6188,6 +6314,8 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
 
   // N: タスク追加 / B: 背景変更 / "/": 検索へフォーカス / Esc: 検索クリア・選択解除・メニューを閉じる
   document.addEventListener("keydown", e => {
+    // 未ログイン中はショートカット無効（ダイアログはログイン画面より前面に出てしまうため）
+    if (!document.getElementById("loginOverlay").hidden) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const anyDialogOpen = !!document.querySelector("dialog[open]");
     if (e.key === "Escape" && !anyDialogOpen) {
@@ -6220,6 +6348,105 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     }
   });
 
+  // ---- ログイン（リーダー／メンバー） ----
+  // リーダー：ヘッダー（アプリバー）を含む全機能。メンバー：タスクボードのみ（ヘッダー非表示）。
+  // 認証は Supabase の app_users 表（REST API 直接参照。ライブラリ不要）。
+  // Supabase 未設定・接続不可（オフライン）のときは内蔵アカウントにフォールバックし、オフラインでも壊れない。
+  const AUTH_KEY = "todoReminder.auth.v1";
+  const FALLBACK_USERS = [
+    { username: "leader", password: "1234", role: "leader", displayName: "リーダー" },
+    { username: "member", password: "1234", role: "member", displayName: "メンバー" }
+  ];
+
+  function currentAuth() {
+    try { return JSON.parse(localStorage.getItem(AUTH_KEY)); } catch (e) { return null; }
+  }
+
+  function applyAuthUi(auth) {
+    const isLeader = auth.role === "leader";
+    document.body.classList.toggle("role-member", !isLeader);
+    document.body.classList.toggle("role-leader", isLeader);
+    // メンバーにはヘッダーが無いので、右下チップで名前表示とログアウトを提供する
+    const chip = document.getElementById("userChip");
+    chip.hidden = isLeader;
+    document.getElementById("userChipName").textContent = `👤 ${auth.displayName || auth.username}`;
+  }
+
+  async function authenticate(username, password) {
+    const url = (state.settings.supabaseUrl || "").trim().replace(/\/+$/, "");
+    const key = (state.settings.supabaseAnonKey || "").trim();
+    if (url && key) {
+      try {
+        const res = await fetch(
+          `${url}/rest/v1/app_users?username=eq.${encodeURIComponent(username)}&select=username,password,role,display_name`,
+          { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+        );
+        if (res.ok) {
+          // Supabase から応答が得られたときは、その結果を正とする（内蔵アカウントへは落ちない）
+          const rows = await res.json();
+          const u = Array.isArray(rows) ? rows[0] : null;
+          if (u && String(u.password) === password) {
+            return { username: u.username, role: u.role === "leader" ? "leader" : "member", displayName: u.display_name || u.username };
+          }
+          return null;
+        }
+        console.warn("Supabase 認証の応答エラー:", res.status, "内蔵アカウントで照合します");
+      } catch (e) {
+        console.warn("Supabase へ接続できません（オフライン？）。内蔵アカウントで照合します", e);
+      }
+    }
+    const f = FALLBACK_USERS.find(u => u.username === username && u.password === password);
+    return f ? { username: f.username, role: f.role, displayName: f.displayName } : null;
+  }
+
+  function logout() {
+    localStorage.removeItem(AUTH_KEY);
+    location.reload();
+  }
+
+  function initAuth() {
+    const overlay = document.getElementById("loginOverlay");
+    const form = document.getElementById("loginForm");
+    const inputUser = document.getElementById("loginUser");
+    const inputPass = document.getElementById("loginPass");
+    const errEl = document.getElementById("loginErr");
+    const btn = document.getElementById("btnLogin");
+
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      const username = inputUser.value.trim();
+      const password = inputPass.value;
+      if (!username || !password) { errEl.textContent = "ユーザー名とパスワードを入力してください"; return; }
+      btn.disabled = true;
+      btn.textContent = "確認中…";
+      errEl.textContent = "";
+      const auth = await authenticate(username, password);
+      btn.disabled = false;
+      btn.textContent = "ログイン";
+      if (!auth) {
+        errEl.textContent = "ユーザー名またはパスワードが違います";
+        inputPass.value = "";
+        inputPass.focus();
+        return;
+      }
+      localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+      applyAuthUi(auth);
+      overlay.hidden = true;
+      toast(`ようこそ、${auth.displayName || auth.username} さん`);
+    });
+
+    document.getElementById("btnLogout").addEventListener("click", () => logout());
+    document.getElementById("btnChipLogout").addEventListener("click", () => logout());
+
+    const auth = currentAuth();
+    if (auth && auth.role) {
+      applyAuthUi(auth);
+    } else {
+      overlay.hidden = false;
+      setTimeout(() => inputUser.focus(), 0);
+    }
+  }
+
   function renderAll() {
     initBackground();
     restartBgTimer();
@@ -6229,6 +6456,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     renderBoard();
   }
 
+  initAuth();
   renderAll();
 })();
 </script>
