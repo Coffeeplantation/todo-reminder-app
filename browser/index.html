@@ -1613,7 +1613,7 @@
         <label for="cfgBgSource">背景の種類</label>
         <span>
           <select id="cfgBgSource" style="padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; max-width:240px;">
-            <option value="online">ネットからランダム取得</option>
+            <option value="online">ネットからランダム取得（写真＋風景）</option>
             <option value="local">フォルダの写真</option>
             <option value="gradient">グラデーション</option>
           </select>
@@ -2669,7 +2669,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-19 (23) 自動リマインダー下書き（Outlook）";
+  const APP_VERSION = "2026-07-19 (24) 背景に風景写真を追加";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -6426,13 +6426,29 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
       return true;
     } catch (_) { return false; }
   }
+  // 風景写真のカテゴリ（loremflickr のタグ）。ネット背景はランダム写真と風景写真を半々で混ぜる
+  const BG_SCENERY_TAGS = ["landscape", "nature", "mountain", "sea", "forest", "sunset", "lake", "sky"];
+  function randomOnlineBgUrl() {
+    if (Math.random() < 0.5) {
+      // picsum.photos: APIキー不要のランダム写真。seed固定で同じ画像を再現できる（📌固定の復元に利用）
+      const seed = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+      return `https://picsum.photos/seed/${seed}/1920/1080`;
+    }
+    // loremflickr: タグ指定で風景系の写真を取得。lock固定で同じ画像を再現できる（📌固定の復元に利用）
+    const tag = BG_SCENERY_TAGS[Math.floor(Math.random() * BG_SCENERY_TAGS.length)];
+    return `https://loremflickr.com/1920/1080/${tag}?lock=${Math.floor(Math.random() * 1e9)}`;
+  }
   function showOnlinePhoto(fixedUrl, notify) {
-    // picsum.photos: APIキー不要のランダム写真。seed固定で同じ画像を再現できる（📌固定の復元に利用）
-    const seed = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
-    const url = fixedUrl || `https://picsum.photos/seed/${seed}/1920/1080`;
+    const url = fixedUrl || randomOnlineBgUrl();
     const img = new Image();
     img.onload = () => setBackground(`url("${url}")`, { kind: "url", url }, notify);
     img.onerror = () => {
+      // 風景写真側の取得失敗時は、もう一方のランダム写真（picsum）で1回だけ再試行してからグラデーションへ
+      if (!fixedUrl && url.includes("loremflickr.com")) {
+        const seed = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+        showOnlinePhoto(`https://picsum.photos/seed/${seed}/1920/1080`, notify);
+        return;
+      }
       showGradientBackground(false);
       if (notify) toast("画像を取得できないため、グラデーション背景を使用します");
     };
