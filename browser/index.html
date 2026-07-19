@@ -2697,7 +2697,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-19 (25) リマインダーメールの宛先・差出人・内容を設定可能に";
+  const APP_VERSION = "2026-07-19 (26) 狭いボードでタスク数バッジが名前と重なる問題を修正";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -5622,6 +5622,31 @@
     }
     if (needsSave) save();
     resizeBoardCanvas();
+    hideOverlappingCountBadges();
+  }
+
+  // 狭いボードでは中央の「現在のタスク数」バッジがボード名や右側の％・＋・☰と重なるため、
+  // レイアウト確定後に実測して重なる場合だけ隠す（ボードを広げて再描画されれば再び表示される）。
+  // ラベルは flex:1 で余白全体に広がる要素なので、文字そのものの右端を Range で測る。
+  function hideOverlappingCountBadges() {
+    requestAnimationFrame(() => {
+      document.querySelectorAll(".kb-col-hdr").forEach(hdr => {
+        const badge = hdr.querySelector(".kb-col-count-center");
+        if (!badge) return;
+        badge.style.visibility = "";
+        const b = badge.getBoundingClientRect();
+        let labelRight = -Infinity;
+        const label = hdr.querySelector(".kb-col-hdr-label");
+        if (label && label.firstChild) {
+          const range = document.createRange();
+          range.selectNodeContents(label);
+          labelRight = range.getBoundingClientRect().right;
+        }
+        const actions = hdr.querySelector(".kb-col-hdr-actions");
+        const actionsLeft = actions ? actions.getBoundingClientRect().left : Infinity;
+        if (labelRight + 4 > b.left || actionsLeft - 4 < b.right) badge.style.visibility = "hidden";
+      });
+    });
   }
 
   // タスクを別ボードへ移す：移動元ボード（結合中なら全メンバー）の所属を外し、移動先の先頭ボードへ加える。
