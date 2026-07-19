@@ -1456,9 +1456,12 @@
   </span>
 </header>
 
-<!-- タスク参加者の名簿リスト（カードの👥ボタンから開く別表） -->
+<!-- タスク参加者の名簿リスト（カードの👥ボタンや現行予定表から開く別表） -->
 <section id="sectionTaskParticipants" class="panel modal-only">
-  <h2 id="taskParticipantsTitle">👥 参加者</h2>
+  <h2 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+    <span id="taskParticipantsTitle">👥 参加者</span>
+    <button type="button" id="btnTaskParticipantsBack" class="secondary small" style="font-weight:600;" title="前の画面に戻ります">← 戻る</button>
+  </h2>
   <div class="panel-body">
     <table style="width:100%; border-collapse:collapse; font-size:13px;">
       <thead>
@@ -1475,7 +1478,10 @@
 
 <!-- 現行予定表：取り込んだ予定をリスト表示 -->
 <section id="sectionCurrentSchedule" class="panel modal-only">
-  <h2>📅 現行予定表</h2>
+  <h2 style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+    <span>📅 現行予定表</span>
+    <button type="button" id="btnScheduleBack" class="secondary small" style="font-weight:600;" title="現行予定表を閉じてタスクボードに戻ります">← 戻る</button>
+  </h2>
   <div class="panel-body">
     <table id="currentScheduleTable" style="width:100%; border-collapse:collapse; font-size:13px;">
       <thead>
@@ -2554,7 +2560,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-19 (28) 常駐エージェント連携（メール・リンク自動収集→ボード自動追加・出典表示・リマインダー自動送信/下書き）";
+  const APP_VERSION = "2026-07-20 (29) 現行予定表の各ページ（一覧・詳細・参加者リスト）に「← 戻る」ボタンを追加";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -3766,13 +3772,14 @@
       if (input) input.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); apply(); } });
     });
 
+    // 参加者数クリック → 参加者リスト（戻るボタンで現行予定表へ帰ってこられるようにする）
     tbody.querySelectorAll(".participants-btn").forEach(btn => {
       btn.addEventListener("click", (e) => {
         e.preventDefault();
         const uid = btn.dataset.uid;
         const c = allTasks.find(x => (x.id || x.uid) === uid);
         if (!c || !c.participants.length) return;
-        showParticipantsList(c.name, c.participants);
+        showParticipantsList(c.name, c.participants, null, "currentSchedule");
       });
     });
 
@@ -3862,7 +3869,11 @@
       </tr>`;
   }
 
-  function showParticipantsList(taskName, participants, returnMenuKey = null) {
+  // 参加者リストの「← 戻る」の戻り先（"currentSchedule"＝現行予定表へ戻る / null＝モーダルを閉じてボードへ）
+  let participantsReturnPanel = null;
+
+  function showParticipantsList(taskName, participants, returnMenuKey = null, returnPanel = null) {
+    participantsReturnPanel = returnPanel;
     // 参加者を名簿（state.contacts）と突き合わせ、別表モーダルで表示する
     const list = (participants || []).map(p => (p || "").trim()).filter(Boolean);
     document.getElementById("taskParticipantsTitle").textContent = `👥 参加者リスト — ${taskName}`;
@@ -6332,6 +6343,21 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
   document.getElementById("btnOpenCurrentSchedule").addEventListener("click", () => {
     renderCurrentSchedule();
     openPanelModal("currentSchedule");
+  });
+
+  // 現行予定表の「← 戻る」：一覧を閉じてタスクボードへ戻る
+  document.getElementById("btnScheduleBack").addEventListener("click", () => panelModal.close());
+
+  // 参加者リストの「← 戻る」：現行予定表から開いた場合は現行予定表へ戻り、
+  // それ以外（カードの👥ボタン等）から開いた場合はモーダルを閉じてボードへ戻る
+  document.getElementById("btnTaskParticipantsBack").addEventListener("click", () => {
+    if (participantsReturnPanel === "currentSchedule") {
+      participantsReturnPanel = null;
+      renderCurrentSchedule();
+      openPanelModal("currentSchedule");
+    } else {
+      panelModal.close();
+    }
   });
 
   // N: タスク追加 / B: 背景変更 / "/": 検索へフォーカス / Esc: 検索クリア・選択解除・メニューを閉じる
