@@ -1417,69 +1417,6 @@
     justify-content: flex-end;
   }
 
-  /* ---- ログイン画面 ---- */
-  /* 背景は不透明にして、ログイン前に後ろのボード内容が見えないようにする */
-  #loginOverlay {
-    position: fixed;
-    inset: 0;
-    z-index: 10000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(160deg, #1e293b, #33455e 55%, #1e3a5f);
-  }
-  #loginOverlay[hidden] { display: none; }
-  .login-card {
-    background: rgba(255, 255, 255, 0.96);
-    border-radius: 16px;
-    padding: 30px 34px 24px;
-    width: 360px;
-    max-width: 90vw;
-    box-shadow: var(--shadow-md);
-    box-sizing: border-box;
-  }
-  .login-card h1 { margin: 0 0 4px; font-size: 21px; }
-  .login-sub { margin: 0 0 18px; font-size: 12.5px; color: var(--muted); }
-  .login-card label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
-  .login-card label input {
-    display: block;
-    width: 100%;
-    margin-top: 4px;
-    padding: 9px 12px;
-    border: 1.5px solid var(--border);
-    border-radius: 10px;
-    font-size: 14px;
-    font-family: inherit;
-    box-sizing: border-box;
-  }
-  .login-err { color: #c22; font-size: 12.5px; min-height: 1.2em; margin: 0 0 8px; }
-  .login-card button[type="submit"] { width: 100%; padding: 10px; font-size: 15px; font-weight: 700; }
-  .login-hint { margin: 14px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.6; }
-  .login-hint code { background: rgba(43,63,99,0.08); padding: 1px 5px; border-radius: 5px; }
-
-  /* メンバーはタスクボードのみ表示（ヘッダー＝アプリバーを隠す） */
-  body.role-member .appbar { display: none; }
-
-  /* ログイン中ユーザー表示＋ログアウト（メンバー用。リーダーは☰メニューからログアウト） */
-  #userChip {
-    position: fixed;
-    right: 12px;
-    bottom: 12px;
-    z-index: 95;
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    padding: 4px 6px 4px 14px;
-    background: rgba(255, 255, 255, 0.88);
-    -webkit-backdrop-filter: var(--glass-blur);
-    backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    font-size: 12.5px;
-    box-shadow: var(--shadow-sm);
-  }
-  #userChip[hidden] { display: none; }
-
 </style>
 </head>
 <body>
@@ -1488,32 +1425,6 @@
 <div class="bg-layer" id="bgA"></div>
 <div class="bg-layer" id="bgB"></div>
 <div id="bgScrim"></div>
-
-<!-- ログイン画面：リーダーは全機能（ヘッダーあり）、メンバーはタスクボードのみ表示 -->
-<div id="loginOverlay" hidden>
-  <form class="login-card" id="loginForm">
-    <h1>📋 Todoリマインダー</h1>
-    <p class="login-sub">ユーザー名とパスワードを入力してください</p>
-    <label>ユーザー名
-      <input type="text" id="loginUser" autocomplete="username" autocapitalize="off" spellcheck="false">
-    </label>
-    <label>パスワード
-      <input type="password" id="loginPass" autocomplete="current-password">
-    </label>
-    <p class="login-err" id="loginErr"></p>
-    <button type="submit" id="btnLogin">ログイン</button>
-    <p class="login-hint">
-      初期アカウント：リーダー <code>leader / 1234</code> ・ メンバー <code>member / 1234</code><br>
-      （設定でSupabaseを登録すると app_users 表のアカウントで認証します。オフライン時は初期アカウントに切り替わります）
-    </p>
-  </form>
-</div>
-
-<!-- ログイン中ユーザーの表示＋ログアウト（メンバー用。リーダーは☰メニュー内の🚪ログアウトを使う） -->
-<div id="userChip" hidden>
-  <span id="userChipName"></span>
-  <button type="button" id="btnChipLogout" class="ghost small" title="ログアウトしてログイン画面に戻る">🚪 ログアウト</button>
-</div>
 
 <!-- アプリバー：主要操作へ常時1クリックでアクセス -->
 <header class="appbar">
@@ -1537,10 +1448,8 @@
       <button type="button" id="btnOpenArchive" class="ghost" title="終了したボードの確認・復元（ゴミ箱）">🗑 終了ボード</button>
       <button type="button" id="btnOpenReminder" class="ghost" title="リマインダーチェックを開く">🔔 リマインダー</button>
       <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
-      <button type="button" id="btnOpenAiSettings" class="ghost" title="AIプロバイダ・APIキーの設定">🤖 AI設定</button>
-      <button type="button" id="btnOpenLoginAdmin" class="ghost" title="ユーザーの追加・変更・削除とログイン履歴の確認">🔑 ログイン管理</button>
+      <button type="button" id="btnOpenAiSettings" class="ghost" title="ローカルAI（Ollama）のモデル設定">🤖 AI設定</button>
       <button type="button" id="btnOpenSettings" class="ghost" title="設定を開く">⚙ 設定</button>
-      <button type="button" id="btnLogout" class="ghost" title="ログアウトしてログイン画面に戻る">🚪 ログアウト</button>
       <!-- 実行中のバージョン確認用（キャッシュで古い版が動いていないかを見分ける） -->
       <div id="appVersion" style="padding:4px 10px; font-size:10.5px; color:var(--muted); text-align:right;"></div>
     </div>
@@ -1589,13 +1498,10 @@
     <h2>設定</h2>
     <div class="panel-body" id="settingsPanelBody">
       <div class="settings-grid">
-        <label for="cfgLocalOnly">🔒 完全ローカル（外部送信しない）</label>
+        <label>🔒 完全ローカル動作</label>
         <span>
-          <span class="toggle">
-            <input type="checkbox" id="cfgLocalOnly" checked>
-            <span id="cfgLocalOnlyLabel">ON（読み込んだファイル・タスク情報を外部へ送りません）</span>
-          </span>
-          <small style="color:var(--muted); display:block; margin-top:2px;">ONの間は、ファイル/フォルダ/テキストの予定抽出は<b>ローカルAI（Ollama）のみ</b>を使い、Claude/Gemini等のクラウドAIへは一切送信しません。背景の「ネット写真」も取得しません（グラデーションになります）。参照リンクは入力したURLへ直接のみアクセスします（第三者プロキシは使いません）。</small>
+          <b style="font-size:13px;">常時ON（設定変更不可）</b>
+          <small style="color:var(--muted); display:block; margin-top:2px;">このアプリはデータを一切クラウドへ送信しません。AIはPC内のローカルAI（Ollama）のみ、背景はグラデーションかPC内の写真のみを使います。ネットワークアクセスは「🔗 参照リンク」で入力したURLへの直接取得（読み込みのみ）だけです（第三者プロキシは使いません）。</small>
         </span>
 
         <label for="cfgReminderDays">既定のリマインド日数前</label>
@@ -1613,9 +1519,8 @@
         <label for="cfgBgSource">背景の種類</label>
         <span>
           <select id="cfgBgSource" style="padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; max-width:240px;">
-            <option value="online">ネットからランダム取得（写真＋風景）</option>
-            <option value="local">フォルダの写真</option>
             <option value="gradient">グラデーション</option>
+            <option value="local">フォルダの写真</option>
           </select>
           <span id="cfgBgLocalRow" style="display:none; gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap;">
             <button type="button" id="btnBgFolder" class="secondary small">📂 写真フォルダを選択</button>
@@ -1635,7 +1540,7 @@
             <input type="checkbox" id="cfgAutoDraft">
             <span id="cfgAutoDraftLabel">OFF</span>
           </span>
-          <small style="color:var(--muted); display:block; margin-top:2px;">ONにすると、リーダーのログイン中に30分ごと＋起動時にタスクをチェックし、<b>指定日（期日−リマインド日数前）</b>と<b>直前</b>にリマインダーメールの下書き（.emlファイル）を自動作成します。<br>ダウンロードされた .eml をダブルクリックするとOutlookで編集可能な下書きとして開くので、確認して送信してください。初回はブラウザの「複数ファイルのダウンロード」を許可してください。</small>
+          <small style="color:var(--muted); display:block; margin-top:2px;">ONにすると、アプリの起動中に30分ごと＋起動時にタスクをチェックし、<b>指定日（期日−リマインド日数前）</b>と<b>直前</b>にリマインダーメールの下書き（.emlファイル）を自動作成します。<br>ダウンロードされた .eml をダブルクリックするとOutlookで編集可能な下書きとして開くので、確認して送信してください。初回はブラウザの「複数ファイルのダウンロード」を許可してください。</small>
         </span>
 
         <label for="cfgLastReminderDays">📧 直前リマインダー（期日の何日前）</label>
@@ -1671,44 +1576,19 @@
           <small style="color:var(--muted); display:block; margin-top:2px;">空欄なら既定の本文。上と同じ <b>{タスク名}</b> などの差し込みタグが使えます。手動の「✉ 下書き」と自動下書きの両方に反映されます。</small>
         </span>
 
-        <label for="cfgSupabaseUrl">🔐 ログイン：Supabase URL</label>
-        <span>
-          <input type="text" id="cfgSupabaseUrl" placeholder="https://xxxxx.supabase.co" autocomplete="off" spellcheck="false" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
-          <small style="color:var(--muted); display:block; margin-top:2px;">ログインアカウントをSupabaseの <b>app_users</b> 表で管理します（作成手順は docs/login-supabase.md）。<br>未設定・オフライン時は内蔵アカウント（leader / 1234・member / 1234）でログインできます。</small>
-        </span>
-
-        <label for="cfgSupabaseAnonKey">🔐 ログイン：Supabase anonキー</label>
-        <span>
-          <input type="password" id="cfgSupabaseAnonKey" placeholder="eyJhbGc..." autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
-          <small style="color:var(--muted); display:block; margin-top:2px;">Supabaseの「Project Settings → API」にある anon（public）キー。このブラウザの localStorage にのみ保存されます。</small>
-        </span>
       </div>
     </div>
   </section>
 
-  <!-- AI設定：ヘッダーメニューから開く。プロバイダ・各APIキー・ローカルモデル名をまとめる -->
+  <!-- AI設定：ヘッダーメニューから開く。AIはPC内のローカルAI（Ollama）専用（クラウドAIは使わない） -->
   <section class="panel modal-only" id="sectionAiSettings">
-    <h2>🤖 AI設定</h2>
+    <h2>🤖 AI設定（ローカルAI専用）</h2>
     <div class="panel-body">
       <div class="settings-grid">
-        <label for="cfgAiProvider">AI：プロバイダ</label>
-        <select id="cfgAiProvider" style="padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; max-width:240px;">
-          <option value="anthropic">Claude（Anthropic）</option>
-          <option value="gemini">Gemini（Google）</option>
-          <option value="ollama">ローカルAI（Ollama・オフライン）</option>
-        </select>
-
-        <label for="cfgApiKey">AI：Anthropic APIキー</label>
+        <label>AI：プロバイダ</label>
         <span>
-          <input type="password" id="cfgApiKey" placeholder="sk-ant-..." autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
-          <button type="button" id="btnPasteApiKey" class="ghost small" style="margin-top:4px;">📋 コピーしたキーを貼り付け</button>
-        </span>
-
-        <label for="cfgGeminiKey">AI：Gemini APIキー</label>
-        <span>
-          <input type="password" id="cfgGeminiKey" placeholder="AIza..." autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
-          <button type="button" id="btnPasteGeminiKey" class="ghost small" style="margin-top:4px;">📋 コピーしたキーを貼り付け</button>
-          <small style="color:var(--muted); display:block; margin-top:2px;">キーは https://aistudio.google.com/apikey で無料発行できます。入力すると自動でGeminiに切り替わります。<br>キーはこのブラウザの localStorage にのみ保存されます（外部送信は選択したAIのAPIのみ）</small>
+          <b style="font-size:13px;">ローカルAI（Ollama）のみ</b>
+          <small style="color:var(--muted); display:block; margin-top:2px;">AI処理はすべてPC内のOllamaで実行します。タスク・予定・メールの内容がクラウドへ送信されることはありません。</small>
         </span>
 
         <label for="cfgOllamaModel">AI：ローカルモデル名</label>
@@ -1722,54 +1602,6 @@
           <input type="text" id="cfgOllamaVisionModel" placeholder="minicpm-v" autocomplete="off" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
           <small style="color:var(--muted); display:block; margin-top:2px;">画像（スクリーンショット/写真）から予定を読み取るときに使う、Ollamaの<b>ビジョン対応モデル</b>名。PC内で動くためオフラインでも画像を読めます。<br>初回のみオンライン時に「ollama pull minicpm-v」（日本語向け。または「ollama pull llava」等）でモデルを取得してください。</small>
         </span>
-      </div>
-    </div>
-  </section>
-
-  <!-- ログイン管理：リーダーがユーザーの追加・変更・削除とログイン履歴を確認する（☰メニューから） -->
-  <section class="panel modal-only" id="sectionLoginAdmin">
-    <h2>🔑 ログイン管理</h2>
-    <div class="panel-body">
-      <p id="loginAdminOffline" style="color:var(--muted); font-size:12.5px; margin:0 0 10px;" hidden>
-        Supabaseに接続できません（未設定またはオフライン）。ユーザー管理とログイン履歴にはSupabaseが必要です。⚙設定で「🔐 ログイン：Supabase URL / anonキー」を設定してください。
-      </p>
-      <div id="loginAdminContent">
-        <h3 style="font-size:14px; margin:0 0 8px;">👥 ユーザー一覧</h3>
-        <table style="width:100%; border-collapse:collapse; font-size:13px;">
-          <thead>
-            <tr style="background:rgba(43,63,99,0.1); border-bottom:1px solid var(--border);">
-              <th style="text-align:left; padding:8px 10px; font-weight:600;">ユーザー名</th>
-              <th style="text-align:left; padding:8px 10px; font-weight:600;">表示名</th>
-              <th style="text-align:left; padding:8px 10px; font-weight:600;">役割</th>
-              <th style="text-align:left; padding:8px 10px; font-weight:600;">パスワード</th>
-              <th style="padding:8px 10px; width:130px;"></th>
-            </tr>
-          </thead>
-          <tbody id="loginUsersBody"></tbody>
-        </table>
-        <div style="margin:12px 0 20px; padding:10px 12px; border:1px dashed var(--border); border-radius:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-          <b style="font-size:12.5px;">➕ ユーザーを追加：</b>
-          <input type="text" id="newLoginUser" placeholder="ユーザー名（半角英数）" autocomplete="off" spellcheck="false" style="width:150px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
-          <input type="text" id="newLoginName" placeholder="表示名（例：田中）" autocomplete="off" style="width:130px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
-          <select id="newLoginRole" style="padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
-            <option value="member">メンバー</option>
-            <option value="leader">リーダー</option>
-          </select>
-          <input type="text" id="newLoginPass" placeholder="パスワード" autocomplete="off" spellcheck="false" style="width:120px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-size:13px;">
-          <button type="button" id="btnAddLoginUser" class="secondary small">追加</button>
-        </div>
-        <h3 style="font-size:14px; margin:0 0 8px;">🕒 ログイン履歴（最新100件）</h3>
-        <table style="width:100%; border-collapse:collapse; font-size:12.5px;">
-          <thead>
-            <tr style="background:rgba(43,63,99,0.1); border-bottom:1px solid var(--border);">
-              <th style="text-align:left; padding:7px 10px; font-weight:600;">日時</th>
-              <th style="text-align:left; padding:7px 10px; font-weight:600;">ユーザー</th>
-              <th style="text-align:left; padding:7px 10px; font-weight:600;">役割</th>
-              <th style="text-align:left; padding:7px 10px; font-weight:600;">種別</th>
-            </tr>
-          </thead>
-          <tbody id="loginHistoryBody"></tbody>
-        </table>
       </div>
     </div>
   </section>
@@ -1870,8 +1702,8 @@
     <h2>📥 自動タスク作成（予定表をAIに取り込む）</h2>
     <div class="panel-body" id="importPanelBody">
       <p style="font-size:12.5px; color:var(--muted); margin:0 0 10px;">
-        参照リンク（URL）や、フォルダ内のファイル（Excel / CSV / カレンダー(.ics) / テキスト）から予定を読み取り、タスクボードへ自動登録します。<br>
-        表形式のファイルはそのまま解析し、自由な文章は選択中のAI（オフライン時はローカルAI）が予定を抽出します。<br>
+        参照リンク（URL）、フォルダ内のファイル（Excel / CSV / カレンダー(.ics) / テキスト）、メールボックスの書き出しから予定を読み取り、タスクボード（現行予定表）へ自動登録します。<br>
+        表形式のファイルはそのまま解析し、自由な文章はローカルAI（Ollama）が予定を抽出します。読み込んだ内容が外部へ送信されることはありません。<br>
         更新版の予定表を読み込むと、既存の予定と<b>同じ名前で期日などが異なるもの</b>は「変更」として検出します。反映時に変更点の確認チェックが出るので、内容を確かめてからスケジュールを更新できます。
       </p>
 
@@ -1887,6 +1719,17 @@
           既存のタスクに予定を追加する：
           <select id="impTargetTask" disabled style="flex:1; min-width:180px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;"></select>
         </label>
+      </div>
+
+      <div class="imp-src">
+        <span class="f-label" style="font-weight:600;">📧 メールボックスから読み込む</span>
+        <span style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <label for="impMailInput" class="imp-pick" style="flex:none;">📧 書き出しファイルを選択</label>
+          <input type="file" id="impMailInput" class="imp-input-hidden">
+          <small style="color:var(--muted); font-size:11.5px; flex:1; min-width:220px;">
+            アプリのフォルダにある「<b>メールボックス読み取り.vbs</b>」をダブルクリックすると、指定したOutlookフォルダのメールがデスクトップに「メールボックス書き出し.txt」として保存されます。そのファイルをここで選択（またはドラッグ＆ドロップ）すると、ローカルAIがメールごとに予定を読み取ります。
+          </small>
+        </span>
       </div>
 
       <div class="imp-src">
@@ -2087,8 +1930,6 @@
   });
 })();
 </script>
-<!-- ローカル設定（git管理外の browser/config.local.js。無ければ404で単に無視される） -->
-<script src="config.local.js"></script>
 <!-- Excel読み取り用 SheetJS（オフラインでも動くようローカル同梱。無ければ .xlsx 取り込みだけ使えなくなる） -->
 <script src="vendor/xlsx.full.min.js"></script>
 <script>
@@ -2103,19 +1944,12 @@
       reminderDays: 3,
       signature: "Todoリマインダーシステム",
       autoMailOn: false,
-      bgOnline: true, // 旧設定（後方互換のため残置。実際は bgSource を使う）
-      bgSource: "",   // "online" | "local" | "gradient"。空なら bgOnline から導出
+      bgSource: "",   // "local" | "gradient"。空・旧値(online)はグラデーション扱い
       bgFixed: false, // 背景の固定（自動切替停止＋次回起動時も同じ背景）
       bgCurrent: null, // 最後に表示した背景（固定時の復元用）
       bgIntervalMin: 10,
-      aiProvider: "anthropic",
-      anthropicApiKey: "",
-      geminiApiKey: "",
       ollamaModel: "qwen2.5:3b",
       ollamaVisionModel: "minicpm-v", // 画像から予定を読み取るときに使う Ollama のビジョン対応モデル（日本語向け）
-      localOnly: true, // 完全ローカル：読み込んだ内容・タスク情報を外部（クラウドAI/画像/プロキシ）へ送らない
-      supabaseUrl: "",    // ログイン認証用 Supabase プロジェクトURL（未設定なら内蔵アカウントで認証）
-      supabaseAnonKey: "", // 同 anon（public）キー
       autoDraftOn: false,  // 自動リマインダー下書き（Outlook用 .eml）を作成するか
       lastReminderDays: 1, // 「直前」リマインダーは期日の何日前か
       leaderEmail: "",     // 下書き作成をリーダーへ知らせる通知メールの宛先
@@ -2144,28 +1978,15 @@
 
   let state = load();
 
-  // ローカル設定ファイル（config.local.js、git管理外）からAPIキーの初期値を取り込む。
-  // 設定画面でキーが未入力のときだけ適用するので、手入力したキーが上書きされることはない。
-  if (window.LOCAL_CONFIG) {
-    let lcChanged = false;
-    if (window.LOCAL_CONFIG.geminiApiKey && !state.settings.geminiApiKey) {
-      state.settings.geminiApiKey = window.LOCAL_CONFIG.geminiApiKey;
-      state.settings.aiProvider = "gemini";
-      lcChanged = true;
+  // クラウド連携（Supabase・クラウドAI）は廃止。過去に保存されたキー・接続情報が
+  // localStorage に残っていれば起動時に確実に消去する（情報漏洩対策）。
+  {
+    const legacyKeys = ["aiProvider", "anthropicApiKey", "geminiApiKey", "supabaseUrl", "supabaseAnonKey", "localOnly", "bgOnline"];
+    if (legacyKeys.some(k => state.settings[k] !== undefined)) {
+      legacyKeys.forEach(k => { delete state.settings[k]; });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
-    if (window.LOCAL_CONFIG.anthropicApiKey && !state.settings.anthropicApiKey) {
-      state.settings.anthropicApiKey = window.LOCAL_CONFIG.anthropicApiKey;
-      lcChanged = true;
-    }
-    if (window.LOCAL_CONFIG.supabaseUrl && !state.settings.supabaseUrl) {
-      state.settings.supabaseUrl = window.LOCAL_CONFIG.supabaseUrl;
-      lcChanged = true;
-    }
-    if (window.LOCAL_CONFIG.supabaseAnonKey && !state.settings.supabaseAnonKey) {
-      state.settings.supabaseAnonKey = window.LOCAL_CONFIG.supabaseAnonKey;
-      lcChanged = true;
-    }
-    if (lcChanged) save();
+    localStorage.removeItem("todoReminder.auth.v1"); // 旧ログインセッションも消去
   }
 
   function load() {
@@ -2184,8 +2005,6 @@
 
   function save() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    // リーダーの変更は Supabase の共有データへも保存する（未設定・メンバー時は何もしない）
-    scheduleSyncPush();
   }
 
   // 旧形式（1〜12月の固定月ボード＋期日から所属を導出）からの移行。
@@ -2687,8 +2506,7 @@
     taskParticipants: "sectionTaskParticipants",
     import: "sectionImport",
     archive: "sectionArchive",
-    currentSchedule: "sectionCurrentSchedule",
-    loginAdmin: "sectionLoginAdmin"
+    currentSchedule: "sectionCurrentSchedule"
   };
   const panelModal = document.getElementById("panelModal");
   const panelModalBody = document.getElementById("panelModalBody");
@@ -2697,7 +2515,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-19 (26) 狭いボードでタスク数バッジが名前と重なる問題を修正";
+  const APP_VERSION = "2026-07-19 (27) 完全ローカル化（ログイン・クラウド連携を削除）＋メールボックス読み込み";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -2765,15 +2583,8 @@
   const cfgBgLocalRow = document.getElementById("cfgBgLocalRow");
   const bgPhotoCount = document.getElementById("bgPhotoCount");
   const cfgBgInterval = document.getElementById("cfgBgInterval");
-  const cfgApiKey = document.getElementById("cfgApiKey");
-  const cfgAiProvider = document.getElementById("cfgAiProvider");
-  const cfgGeminiKey = document.getElementById("cfgGeminiKey");
   const cfgOllamaModel = document.getElementById("cfgOllamaModel");
   const cfgOllamaVisionModel = document.getElementById("cfgOllamaVisionModel");
-  const cfgLocalOnly = document.getElementById("cfgLocalOnly");
-  const cfgLocalOnlyLabel = document.getElementById("cfgLocalOnlyLabel");
-  const cfgSupabaseUrl = document.getElementById("cfgSupabaseUrl");
-  const cfgSupabaseAnonKey = document.getElementById("cfgSupabaseAnonKey");
   const cfgAutoDraft = document.getElementById("cfgAutoDraft");
   const cfgAutoDraftLabel = document.getElementById("cfgAutoDraftLabel");
   const cfgLastReminderDays = document.getElementById("cfgLastReminderDays");
@@ -2784,11 +2595,6 @@
   const cfgMailBody = document.getElementById("cfgMailBody");
 
   function renderSettings() {
-    const localOnly = state.settings.localOnly !== false;
-    cfgLocalOnly.checked = localOnly;
-    cfgLocalOnlyLabel.textContent = localOnly
-      ? "ON（読み込んだファイル・タスク情報を外部へ送りません）"
-      : "OFF（クラウドAI・ネット写真など外部送信を許可）";
     cfgReminderDays.value = state.settings.reminderDays;
     cfgSignature.value = state.settings.signature;
     cfgAutoMail.checked = state.settings.autoMailOn;
@@ -2799,16 +2605,11 @@
     cfgBgLocalRow.style.display = bgSourceSetting() === "local" ? "flex" : "none";
     renderBgPhotoCount();
     cfgBgInterval.value = state.settings.bgIntervalMin;
-    cfgApiKey.value = state.settings.anthropicApiKey || "";
-    cfgAiProvider.value = state.settings.aiProvider || "anthropic";
-    cfgGeminiKey.value = state.settings.geminiApiKey || "";
     cfgOllamaModel.value = state.settings.ollamaModel || "qwen2.5:3b";
     cfgOllamaVisionModel.value = state.settings.ollamaVisionModel || "minicpm-v";
-    cfgSupabaseUrl.value = state.settings.supabaseUrl || "";
-    cfgSupabaseAnonKey.value = state.settings.supabaseAnonKey || "";
     cfgAutoDraft.checked = !!state.settings.autoDraftOn;
     cfgAutoDraftLabel.textContent = state.settings.autoDraftOn
-      ? "ON（リーダーのログイン中、対象タスクの下書きを自動作成）"
+      ? "ON（アプリの起動中、対象タスクの下書きを自動作成）"
       : "OFF";
     cfgLastReminderDays.value = state.settings.lastReminderDays ?? 1;
     cfgLeaderEmail.value = state.settings.leaderEmail || "";
@@ -2817,12 +2618,6 @@
     cfgMailSubject.value = state.settings.mailSubject || "";
     cfgMailBody.value = state.settings.mailBody || "";
   }
-  cfgLocalOnly.addEventListener("change", () => {
-    state.settings.localOnly = cfgLocalOnly.checked;
-    renderSettings();
-    changeBackground(false); // 背景をローカル方針に合わせて即時反映（online→グラデーション等）
-    save();
-  });
   cfgReminderDays.addEventListener("change", () => {
     state.settings.reminderDays = Math.max(0, parseInt(cfgReminderDays.value, 10) || 0);
     save();
@@ -2875,23 +2670,6 @@
     save();
     restartBgTimer();
   });
-  cfgApiKey.addEventListener("change", () => {
-    state.settings.anthropicApiKey = cfgApiKey.value.trim();
-    // キーを入力したらそのプロバイダに自動で切り替える（手順を減らす）
-    if (state.settings.anthropicApiKey) state.settings.aiProvider = "anthropic";
-    renderSettings();
-    save();
-  });
-  cfgAiProvider.addEventListener("change", () => {
-    state.settings.aiProvider = cfgAiProvider.value;
-    save();
-  });
-  cfgGeminiKey.addEventListener("change", () => {
-    state.settings.geminiApiKey = cfgGeminiKey.value.trim();
-    if (state.settings.geminiApiKey) state.settings.aiProvider = "gemini";
-    renderSettings();
-    save();
-  });
   cfgOllamaModel.addEventListener("change", () => {
     state.settings.ollamaModel = cfgOllamaModel.value.trim() || "qwen2.5:3b";
     renderSettings();
@@ -2901,18 +2679,6 @@
     state.settings.ollamaVisionModel = cfgOllamaVisionModel.value.trim() || "minicpm-v";
     renderSettings();
     save();
-  });
-  cfgSupabaseUrl.addEventListener("change", () => {
-    state.settings.supabaseUrl = cfgSupabaseUrl.value.trim().replace(/\/+$/, "");
-    renderSettings();
-    save();
-    startSync(); // URL・キーが揃ったら再起動なしで同期を開始
-  });
-  cfgSupabaseAnonKey.addEventListener("change", () => {
-    state.settings.supabaseAnonKey = cfgSupabaseAnonKey.value.trim();
-    renderSettings();
-    save();
-    startSync();
   });
   cfgAutoDraft.addEventListener("change", () => {
     state.settings.autoDraftOn = cfgAutoDraft.checked;
@@ -2950,30 +2716,6 @@
     renderSettings();
     save();
   });
-  // Ctrl+V が使えない環境向けのフォールバック：ボタン1つでクリップボードのキーを貼り付ける
-  function wirePasteButton(btnId, apply) {
-    document.getElementById(btnId).addEventListener("click", async () => {
-      try {
-        const text = (await navigator.clipboard.readText()).trim();
-        if (!text) { toast("クリップボードが空です。先にキーをコピーしてください"); return; }
-        apply(text);
-        save();
-        renderSettings();
-        toast("APIキーを貼り付けました");
-      } catch (e) {
-        alert("クリップボードを読み取れませんでした。\nブラウザの許可ダイアログで「許可」を選ぶか、入力欄をクリックして Ctrl+V（右クリック→貼り付け）を試してください。");
-      }
-    });
-  }
-  wirePasteButton("btnPasteApiKey", v => {
-    state.settings.anthropicApiKey = v;
-    state.settings.aiProvider = "anthropic";
-  });
-  wirePasteButton("btnPasteGeminiKey", v => {
-    state.settings.geminiApiKey = v;
-    state.settings.aiProvider = "gemini";
-  });
-
   // ---------------------------------------------------------------
   // リマインダーチェック（ドライラン。spec.md 4章のロジックを踏襲）
   // ---------------------------------------------------------------
@@ -3066,7 +2808,7 @@
   // タスク作成 → 指定日（期日−リマインド日数前）に1回目 → 直前（既定：期日前日）に2回目の
   // リマインダーメール下書きを自動作成する。ブラウザから直接は送信できないため、
   // X-Unsent ヘッダ付き .eml ファイルとして保存し、ダブルクリックでOutlookの「編集可能な下書き」として開く方式。
-  // 併せてリーダー宛の「作成しました」通知メール（これも下書き）を作る。リーダーのログイン中のみ動作。
+  // 併せてリーダー宛の「作成しました」通知メール（これも下書き）を作る。
   function b64utf8(str) {
     const bytes = new TextEncoder().encode(str);
     let bin = "";
@@ -3110,7 +2852,6 @@
   let autoDraftTimer = null;
 
   function runAutoDrafts(manual = false) {
-    if (!isAuthedLeader()) { if (manual) toast("自動下書きはリーダーでログイン中のみ実行できます"); return; }
     if (!state.settings.autoDraftOn && !manual) return;
     const today = todayDate();
     const created = [];
@@ -3199,7 +2940,7 @@
   }
 
   function startAutoDrafts() {
-    if (!isAuthedLeader() || autoDraftTimer) return;
+    if (autoDraftTimer) return;
     setTimeout(() => runAutoDrafts(), 3000); // 起動直後に一度チェック
     autoDraftTimer = setInterval(() => runAutoDrafts(), 30 * 60 * 1000);
   }
@@ -3389,7 +3130,7 @@
 
   // ---------------------------------------------------------------
   // 予定の取り込み（参照リンク・フォルダ内ファイル・貼り付けテキスト → タスク自動作成）
-  // 表形式（CSV / Excel / .ics カレンダー）は決定的にパースし、自由文は選択中のAIが抽出する。
+  // 表形式（CSV / Excel / .ics カレンダー）は決定的にパースし、自由文はローカルAI（Ollama）が抽出する。
   // AIはローカルAI（Ollama）でも動くため、オフライン環境でも取り込みできる。
   // ---------------------------------------------------------------
   const impStatus = document.getElementById("impStatus");
@@ -3603,7 +3344,7 @@
     return null;
   }
 
-  // 自由文からのAI抽出：選択中プロバイダ（Claude / Gemini / ローカルAI）でJSONを返させる
+  // 自由文からのAI抽出：ローカルAI（Ollama）でJSONを返させる（クラウドAIは使わない）
   function impExtractionPrompt() {
     const today = formatDate(todayDate()).replace(/\//g, "-");
     return `あなたは予定抽出アシスタントです。与えられたテキストから予定・タスク・締め切りをすべて抽出し、次の形式のJSONだけを返してください（説明文は書かない）:
@@ -3620,74 +3361,95 @@
 
   // text だけでなく、image（{ base64, mediaType }。base64は data: 接頭辞なし）からも予定を抽出できる。
   // 画像を渡した場合は、各プロバイダのビジョン（画像入力）機能を使う。
-  async function aiExtractTasks(text, image) {
-    // 完全ローカルモード（既定ON）では、読み込んだ内容を外部に送らないため
-    // 抽出は必ずローカルAI（Ollama）だけを使う。クラウドAI（Claude/Gemini）へは一切送信しない。
-    const localOnly = state.settings.localOnly !== false;
-    const provider = localOnly ? "ollama" : (state.settings.aiProvider || "anthropic");
-    const sys = impExtractionPrompt();
+  async function aiExtractTasks(text, image, sysPrompt) {
+    // 抽出は必ずPC内のローカルAI（Ollama）だけを使う。読み込んだ内容を外部へは一切送信しない。
+    const sys = sysPrompt || impExtractionPrompt();
     // 画像のときは、文章が無くても画像から読み取るよう指示を添える
     const userText = image
       ? ((text || "").slice(0, 6000) + "\nこの画像は予定表です。画像から予定・タスク・締め切りをすべて読み取り、指定のJSON形式で返してください。").trim()
       : (text || "");
-    if (provider === "ollama") {
-      // 画像は Ollama のビジョン対応モデル（llava 等）で読む。文章のみのときは通常モデル。
-      const model = image
-        ? (state.settings.ollamaVisionModel || "minicpm-v").trim()
-        : (state.settings.ollamaModel || "qwen2.5:3b").trim();
-      const userMsg = { role: "user", content: userText.slice(0, 6000) };
-      if (image) userMsg.images = [image.base64]; // Ollama は base64（接頭辞なし）の配列を受け取る
-      let res;
+    // 画像は Ollama のビジョン対応モデル（llava 等）で読む。文章のみのときは通常モデル。
+    const model = image
+      ? (state.settings.ollamaVisionModel || "minicpm-v").trim()
+      : (state.settings.ollamaModel || "qwen2.5:3b").trim();
+    const userMsg = { role: "user", content: userText.slice(0, 6000) };
+    if (image) userMsg.images = [image.base64]; // Ollama は base64（接頭辞なし）の配列を受け取る
+    let res;
+    try {
+      res = await fetch(`${OLLAMA_URL}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model, stream: false, format: "json",
+          // temperature 0: 小型モデルの抽出結果のブレ（同じ入力で空になったり成功したり）を防ぐ
+          options: { num_ctx: 8192, temperature: 0 },
+          messages: [{ role: "system", content: sys }, userMsg]
+        })
+      });
+    } catch (_) {
+      throw new Error("ローカルAI（Ollama）に接続できません。Ollama を起動してから再試行してください。");
+    }
+    if (!res.ok) {
+      if (image && res.status === 404) throw new Error(`画像読み取りモデル「${model}」が見つかりません。オンライン時に「ollama pull ${model}」で取得するか、⚙設定の「AI：画像読み取りモデル名」を変更してください。`);
+      throw new Error(`ローカルAIエラー（${res.status}）`);
+    }
+    const data = await res.json();
+    return impParseJson((data.message && data.message.content) || "");
+  }
+
+  // メールボックス書き出しファイル（メールボックス読み取り.vbs の出力）の判定と解析。
+  // 「=== MAIL ===」区切りで1通ずつに分け、件名・差出人・受信日時・本文を取り出す。
+  // 該当形式でなければ null を返し、通常のテキストとして処理される。
+  function parseMailExport(text) {
+    if (!/^=== MAIL ===\s*$/m.test(text)) return null;
+    return String(text).split(/^=== MAIL ===\s*$/m)
+      .map(s => s.trim()).filter(Boolean)
+      .map(block => {
+        const pick = re => ((block.match(re) || [])[1] || "").trim();
+        return {
+          subject: pick(/^件名[:：][ \t]*(.*)$/m),
+          from: pick(/^差出人[:：][ \t]*(.*)$/m),
+          received: pick(/^受信日時[:：][ \t]*(.*)$/m),
+          body: (block.split(/^本文[:：][ \t]*$/m)[1] || "").trim()
+        };
+      });
+  }
+
+  // メール専用の抽出プロンプト：小型モデル（qwen2.5:3b等）でも安定して抽出できるよう
+  // few-shot の具体例を添える（例なしだとメール形式の入力で空の結果を返しやすい）
+  function impMailExtractionPrompt() {
+    const today = formatDate(todayDate()).replace(/\//g, "-");
+    const year = today.slice(0, 4);
+    return `あなたは受信メールから予定・タスク・締め切りを抽出するアシスタントです。次の形式のJSONだけを返してください（説明文は書かない）:
+{"tasks":[{"name":"タスク名","due":"yyyy-mm-dd","assignee":"担当者名（不明なら空文字）","participants":["参加者名"]}]}
+今日の日付は ${today} です。「来週金曜」などの相対表現は具体的な日付に変換してください。期日が読み取れない場合 due は空文字にしてください。
+
+例：
+入力メール「件名: 会議資料の件\n本文: 8月3日までに企画書を提出してください。担当は田中さんです。会議は8月5日14時からです。」
+出力:
+{"tasks":[{"name":"企画書の提出","due":"${year}-08-03","assignee":"田中","participants":[]},{"name":"会議","due":"${year}-08-05","assignee":"","participants":[]}]}
+
+「〜までに提出」「〜日開催」「期限」「締め切り」などはすべてタスクとして抽出してください。`;
+  }
+
+  // メールボックス書き出しの取り込み：1通ずつローカルAIで予定を抽出する。
+  // エラーは呼び出し元（impHandleFiles）の errors に集約して最終メッセージに表示する。
+  async function impHandleMailExport(mails, sourceName, errors) {
+    let total = 0;
+    for (let i = 0; i < mails.length; i++) {
+      const m = mails[i];
+      const label = `📧 ${m.subject || "（件名なし）"}`;
+      impSetStatus(`メールを読み取り中 (${i + 1}/${mails.length}): ${m.subject || "（件名なし）"}`);
       try {
-        res = await fetch(`${OLLAMA_URL}/api/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model, stream: false, format: "json",
-            options: { num_ctx: 8192 },
-            messages: [{ role: "system", content: sys }, userMsg]
-          })
-        });
-      } catch (_) {
-        throw new Error("ローカルAI（Ollama）に接続できません。Ollama を起動してから再試行してください。");
+        const text = `件名: ${m.subject}\n差出人: ${m.from}\n受信日時: ${m.received}\n本文:\n${m.body}`;
+        total += impAddCandidates(await aiExtractTasks(text, null, impMailExtractionPrompt()), label);
+      } catch (e) {
+        errors.push(`${label}: ${e.message}`);
+        // Ollama 未起動などで1通目から失敗した場合は以降も同じエラーになるため打ち切る
+        if (/Ollama/.test(e.message)) { errors.push(`（残り ${mails.length - 1 - i} 通は中断しました）`); break; }
       }
-      if (!res.ok) {
-        if (image && res.status === 404) throw new Error(`画像読み取りモデル「${model}」が見つかりません。オンライン時に「ollama pull ${model}」で取得するか、⚙設定の「AI：画像読み取りモデル名」を変更してください。`);
-        throw new Error(`ローカルAIエラー（${res.status}）`);
-      }
-      const data = await res.json();
-      return impParseJson((data.message && data.message.content) || "");
     }
-    if (provider === "gemini") {
-      const key = (state.settings.geminiApiKey || "").trim();
-      if (!key) throw new Error("Gemini APIキーが未設定です（⚙設定）。オフラインの場合はプロバイダを「ローカルAI」にしてください。");
-      const parts = [{ text: userText.slice(0, 20000) }];
-      if (image) parts.push({ inline_data: { mime_type: image.mediaType, data: image.base64 } });
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: sys }] },
-            contents: [{ role: "user", parts }],
-            generationConfig: { responseMimeType: "application/json" }
-          })
-        }
-      );
-      if (!res.ok) throw new Error(`Gemini APIエラー（${res.status}）`);
-      const data = await res.json();
-      const outParts = (((data.candidates || [])[0] || {}).content || {}).parts || [];
-      return impParseJson(outParts.map(p => p.text || "").join(""));
-    }
-    const client = await ensureAiClient();
-    const content = [{ type: "text", text: userText.slice(0, 20000) }];
-    if (image) content.unshift({ type: "image", source: { type: "base64", media_type: image.mediaType, data: image.base64 } });
-    const msg = await client.messages.create({
-      model: AI_MODEL, max_tokens: 8192, system: sys,
-      messages: [{ role: "user", content }]
-    });
-    return impParseJson(msg.content.filter(b => b.type === "text").map(b => b.text).join(""));
+    return total;
   }
 
   async function impHandleFiles(fileList) {
@@ -3717,7 +3479,9 @@
           total += got;
         } else {
           const text = decodeFileBuffer(await f.arrayBuffer());
-          if (ext === "ics") total += impAddCandidates(parseIcsText(text), f.name);
+          const mails = (ext === "txt" || ext === "md") ? parseMailExport(text) : null;
+          if (mails) total += await impHandleMailExport(mails, f.name, errors);
+          else if (ext === "ics") total += impAddCandidates(parseIcsText(text), f.name);
           else if (ext === "csv") {
             const list = extractFromTable(parseCsvText(text));
             if (list) total += impAddCandidates(list, f.name);
@@ -4237,7 +4001,7 @@
 
   // 「フォルダを選択」「ファイルを選択」は基本 label[for] でネイティブに開く（JS非依存で確実）。
   // 選択後の change を受け取ってファイルを取り込む。
-  for (const id of ["impFolderInput", "impFilesInput"]) {
+  for (const id of ["impFolderInput", "impFilesInput", "impMailInput"]) {
     document.getElementById(id).addEventListener("change", e => {
       impHandleFiles(e.target.files).catch(err => impSetStatus("エラー: " + err.message));
       e.target.value = "";
@@ -5882,23 +5646,16 @@
 
   // ---------------------------------------------------------------
   // AIアシスタント（ヘッダーの🤖AIボタン）
-  // プロバイダは3種：Claude（公式SDKをCDNから動的import）・Gemini（REST）・
-  // ローカルAI（PC内の Ollama サーバー。APIキー不要でオフラインでも動く）。
-  // APIキーは設定パネルで入力し localStorage に保存（dangerouslyAllowBrowser で明示的に許可）。
+  // ローカルAI（PC内の Ollama サーバー）専用。APIキー不要・オフラインで動き、
+  // 会話・タスク内容がクラウドへ送信されることはない。
   // タスクの追加・更新・削除はツール（tool use）としてAIに公開し、手動ループで実行する。
   // ---------------------------------------------------------------
-  const AI_MODEL = "claude-opus-4-8";
-  const GEMINI_MODEL = "gemini-2.5-flash";
   const aiPanel = document.getElementById("aiPanel");
   const aiMessages = document.getElementById("aiMessages");
   const aiForm = document.getElementById("aiForm");
   const aiInput = document.getElementById("aiInput");
   const aiSendBtn = document.getElementById("aiSendBtn");
-  let AnthropicSDK = null;
-  let aiClient = null;
-  let aiClientKey = null;
-  let aiHistory = [];   // 会話履歴（形式は選択中プロバイダのAPI形式。切り替えるとリセット）
-  let aiHistoryProvider = null;
+  let aiHistory = [];   // 会話履歴（Ollama /api/chat のメッセージ形式）
   let aiBusy = false;
 
   const AI_TOOLS = [
@@ -6020,20 +5777,6 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
 - 期日が近づくと担当者へリマインドメールを送る想定（このブラウザ版はドライラン）
 - タスクの追加・更新・削除はツールで実行できる。実行後は何をしたか短く報告する
 - 変更を伴わない質問（集計・期限チェック・提案など）はタスク一覧から直接答える`;
-  }
-
-  async function ensureAiClient() {
-    const key = (state.settings.anthropicApiKey || "").trim();
-    if (!key) throw Object.assign(new Error("APIキーが未設定です"), { code: "NO_KEY" });
-    if (!AnthropicSDK) {
-      const mod = await import("https://esm.run/@anthropic-ai/sdk");
-      AnthropicSDK = mod.default;
-    }
-    if (!aiClient || aiClientKey !== key) {
-      aiClient = new AnthropicSDK({ apiKey: key, dangerouslyAllowBrowser: true });
-      aiClientKey = key;
-    }
-    return aiClient;
   }
 
   function aiAddMsg(cls, text) {
@@ -6159,98 +5902,6 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     }
   }
 
-  // Claude でのターン処理：ストリーミング＋ツール実行の手動ループ
-  async function aiTurnClaude(text, waitEl) {
-    const client = await ensureAiClient();
-    aiHistory.push({ role: "user", content: text });
-    for (let iter = 0; iter < 8; iter++) {
-      const stream = client.messages.stream({
-        model: AI_MODEL,
-        max_tokens: 16000,
-        thinking: { type: "adaptive" },
-        system: buildAiSystemPrompt(),
-        tools: AI_TOOLS,
-        messages: aiHistory
-      });
-      let bubble = null;
-      stream.on("text", delta => {
-        if (!bubble) {
-          waitEl.remove();
-          bubble = aiAddMsg("assistant", "");
-        }
-        bubble.textContent += delta;
-        aiMessages.scrollTop = aiMessages.scrollHeight;
-      });
-      const msg = await stream.finalMessage();
-      aiHistory.push({ role: "assistant", content: msg.content });
-
-      if (msg.stop_reason !== "tool_use") break;
-      const results = [];
-      for (const block of msg.content) {
-        if (block.type !== "tool_use") continue;
-        aiAddMsg("info", `🔧 ${block.name} を実行`);
-        const { content, isError } = execAiTool(block.name, block.input);
-        const result = { type: "tool_result", tool_use_id: block.id, content };
-        if (isError) result.is_error = true;
-        results.push(result);
-      }
-      aiHistory.push({ role: "user", content: results });
-    }
-  }
-
-  // Gemini でのターン処理：generateContent（REST・非ストリーミング）＋ function calling の手動ループ
-  function geminiToolDecls() {
-    // Gemini のスキーマは JSON Schema のサブセット。未対応の minimum/maximum は落とす
-    return AI_TOOLS.map(t => ({
-      name: t.name,
-      description: t.description,
-      parameters: JSON.parse(JSON.stringify(t.input_schema, (k, v) =>
-        (k === "minimum" || k === "maximum") ? undefined : v))
-    }));
-  }
-  async function aiTurnGemini(text, waitEl) {
-    const key = (state.settings.geminiApiKey || "").trim();
-    if (!key) throw new Error("Gemini APIキーが未設定です。⚙設定の「AI：Gemini APIキー」に入力してください（https://aistudio.google.com/apikey で発行できます）。");
-    aiHistory.push({ role: "user", parts: [{ text }] });
-    for (let iter = 0; iter < 8; iter++) {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(key)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: buildAiSystemPrompt() }] },
-            contents: aiHistory,
-            tools: [{ functionDeclarations: geminiToolDecls() }]
-          })
-        }
-      );
-      if (!res.ok) {
-        let detail = "";
-        try { const err = await res.json(); detail = err.error && err.error.message ? ": " + err.error.message : ""; } catch (_) { /* JSONでない場合は無視 */ }
-        const hint = (res.status === 400 || res.status === 403) ? "\nAPIキーが正しいか確認してください。" : (res.status === 429 ? "\nレート制限です。少し待って再試行してください。" : "");
-        throw new Error(`Gemini APIエラー（${res.status}）${detail}${hint}`);
-      }
-      const data = await res.json();
-      const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
-      aiHistory.push({ role: "model", parts });
-
-      const textOut = parts.filter(p => p.text).map(p => p.text).join("");
-      if (textOut) {
-        waitEl.remove();
-        aiAddMsg("assistant", textOut);
-      }
-      const calls = parts.filter(p => p.functionCall);
-      if (calls.length === 0) break;
-      const resParts = calls.map(p => {
-        aiAddMsg("info", `🔧 ${p.functionCall.name} を実行`);
-        const { content, isError } = execAiTool(p.functionCall.name, p.functionCall.args || {});
-        return { functionResponse: { name: p.functionCall.name, response: { result: content, is_error: !!isError } } };
-      });
-      aiHistory.push({ role: "user", parts: resParts });
-    }
-  }
-
   // ローカルAI（Ollama）でのターン処理：/api/chat（非ストリーミング）＋ tool calling の手動ループ
   // PC内の Ollama サーバー（http://localhost:11434）と通信するため、ネット接続なしで動作する。
   const OLLAMA_URL = "http://localhost:11434";
@@ -6314,37 +5965,14 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     aiBusy = true;
     aiSendBtn.disabled = true;
     aiAddMsg("user", text);
-    // 完全ローカル（既定ON）ではチャットもローカルAI（Ollama）のみ。クラウドAIへは送らない。
-    const provider = state.settings.localOnly !== false ? "ollama" : (state.settings.aiProvider || "anthropic");
-    // プロバイダを切り替えたら履歴の形式が変わるためリセットする
-    if (aiHistoryProvider !== provider) {
-      aiHistory = [];
-      aiHistoryProvider = provider;
-    }
     const historyLenBefore = aiHistory.length;
     const waitEl = aiAddMsg("info thinking-dots", "考え中");
     try {
-      if (provider === "gemini") {
-        await aiTurnGemini(text, waitEl);
-      } else if (provider === "ollama") {
-        await aiTurnOllama(text, waitEl);
-      } else {
-        await aiTurnClaude(text, waitEl);
-      }
+      await aiTurnOllama(text, waitEl);
       waitEl.remove();
     } catch (e) {
       waitEl.remove();
-      if (e.code === "NO_KEY") {
-        aiAddMsg("error", "Anthropic APIキーが未設定です。⚙設定の「AI：Anthropic APIキー」に入力してください。");
-      } else if (AnthropicSDK && e instanceof AnthropicSDK.AuthenticationError) {
-        aiAddMsg("error", "APIキーが無効です。設定で正しいキーを入力してください。");
-      } else if (AnthropicSDK && e instanceof AnthropicSDK.RateLimitError) {
-        aiAddMsg("error", "レート制限に達しました。しばらく待ってから再試行してください。");
-      } else if (AnthropicSDK && e instanceof AnthropicSDK.APIError) {
-        aiAddMsg("error", `APIエラー（${e.status}）: ${e.message}`);
-      } else {
-        aiAddMsg("error", "エラー: " + e.message);
-      }
+      aiAddMsg("error", "エラー: " + e.message);
       // 失敗したターンを丸ごと巻き戻す（tool_use と tool_result が対にならない不整合な履歴を残さない）
       aiHistory.length = historyLenBefore;
     } finally {
@@ -6399,18 +6027,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     if (!aiPanel.hidden) {
       applyAiPanelPos();
       if (aiMessages.children.length === 0) {
-        aiAddMsg("assistant", "こんにちは！タスクについて何でも聞いてください。\n例:「今週締め切りのタスクは？」「来週金曜までに資料作成のタスクを追加して」「7月と8月を結合して」");
-        const provider = state.settings.aiProvider || "anthropic";
-        const hasKey = provider === "ollama"
-          ? true // ローカルAIはAPIキー不要（接続エラーは送信時に案内する）
-          : provider === "gemini"
-            ? !!(state.settings.geminiApiKey || "").trim()
-            : !!(state.settings.anthropicApiKey || "").trim();
-        if (!hasKey) {
-          aiAddMsg("error", provider === "gemini"
-            ? "利用には Gemini APIキーが必要です。⚙設定の「AI：Gemini APIキー」に入力してください（https://aistudio.google.com/apikey で無料発行）。"
-            : "利用には Anthropic APIキーが必要です。⚙設定の「AI：Anthropic APIキー」に入力してください。（GeminiのAPIキーでも利用できます。設定でGeminiキーを入力すると自動で切り替わります。オフライン環境では設定でプロバイダを「ローカルAI（Ollama）」にしてください）");
-        }
+        aiAddMsg("assistant", "こんにちは！タスクについて何でも聞いてください（PC内のローカルAIで動作します）。\n例:「今週締め切りのタスクは？」「来週金曜までに資料作成のタスクを追加して」「7月と8月を結合して」");
       }
       aiInput.focus();
     }
@@ -6430,8 +6047,9 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
   });
 
   // ---------------------------------------------------------------
-  // 背景：ネットからランダム画像を取得し、2枚のレイヤーでクロスフェード切替。
-  // 設定した間隔で自動ローテーションし、取得失敗・オフライン時はグラデーションにフォールバックする。
+  // 背景：グラデーションまたはPC内フォルダの写真（IndexedDB取り込み）を
+  // 2枚のレイヤーでクロスフェード切替。設定した間隔で自動ローテーションする。
+  // ネットからの画像取得は行わない（完全ローカル）。
   // ---------------------------------------------------------------
   const FALLBACK_GRADIENTS = [
     "linear-gradient(135deg, #f6d365, #fda085)",
@@ -6494,15 +6112,10 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     } catch (_) { bgPhotoCount.textContent = ""; }
   }
 
-  // ---- 背景の表示（種類: online=ネット写真 / local=フォルダの写真 / gradient） ----
+  // ---- 背景の表示（種類: local=フォルダの写真 / gradient） ----
   function bgSourceSetting() {
-    // 既定は画像背景（ネット写真）。旧トグル「背景：ネット画像を使う=OFF」は引き継がない
-    // （グラデーション＝単色に見えるため。グラデーションにしたい場合は設定で明示的に選ぶ）
-    const src = state.settings.bgSource || "online";
-    // 完全ローカル（既定ON）では、ネット写真(online)を取得しない＝外部へリクエストしないためグラデーションにする。
-    // フォルダの写真(local)は端末内なのでそのまま使える。
-    if (state.settings.localOnly !== false && src === "online") return "gradient";
-    return src;
+    // フォルダの写真(local)は端末内なのでそのまま使える。旧値「online」（ネット写真）は廃止し、グラデーション扱い。
+    return state.settings.bgSource === "local" ? "local" : "gradient";
   }
   // 表示した背景は常に bgCurrent へ記録しておき、📌固定中は次回起動時に同じ背景を復元する
   function setBackground(css, current, notify, msg) {
@@ -6537,55 +6150,24 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
       return true;
     } catch (_) { return false; }
   }
-  // 風景写真のカテゴリ（loremflickr のタグ）。ネット背景はランダム写真と風景写真を半々で混ぜる
-  const BG_SCENERY_TAGS = ["landscape", "nature", "mountain", "sea", "forest", "sunset", "lake", "sky"];
-  function randomOnlineBgUrl() {
-    if (Math.random() < 0.5) {
-      // picsum.photos: APIキー不要のランダム写真。seed固定で同じ画像を再現できる（📌固定の復元に利用）
-      const seed = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
-      return `https://picsum.photos/seed/${seed}/1920/1080`;
-    }
-    // loremflickr: タグ指定で風景系の写真を取得。lock固定で同じ画像を再現できる（📌固定の復元に利用）
-    const tag = BG_SCENERY_TAGS[Math.floor(Math.random() * BG_SCENERY_TAGS.length)];
-    return `https://loremflickr.com/1920/1080/${tag}?lock=${Math.floor(Math.random() * 1e9)}`;
-  }
-  function showOnlinePhoto(fixedUrl, notify) {
-    const url = fixedUrl || randomOnlineBgUrl();
-    const img = new Image();
-    img.onload = () => setBackground(`url("${url}")`, { kind: "url", url }, notify);
-    img.onerror = () => {
-      // 風景写真側の取得失敗時は、もう一方のランダム写真（picsum）で1回だけ再試行してからグラデーションへ
-      if (!fixedUrl && url.includes("loremflickr.com")) {
-        const seed = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
-        showOnlinePhoto(`https://picsum.photos/seed/${seed}/1920/1080`, notify);
-        return;
-      }
-      showGradientBackground(false);
-      if (notify) toast("画像を取得できないため、グラデーション背景を使用します");
-    };
-    img.src = url;
-  }
   async function changeBackground(notify) {
     const src = bgSourceSetting();
-    if (src === "gradient") { showGradientBackground(notify); return; }
     if (src === "local") {
       const ok = await showLocalPhoto(null, notify);
-      if (!ok) {
-        showGradientBackground(false);
-        if (notify) toast("背景写真が未登録です。⚙設定の「📂 写真フォルダを選択」で取り込んでください");
-      }
+      if (ok) return;
+      showGradientBackground(false);
+      if (notify) toast("背景写真が未登録です。⚙設定の「📂 写真フォルダを選択」で取り込んでください");
       return;
     }
-    showOnlinePhoto(null, notify);
+    showGradientBackground(notify);
   }
   // 起動時: 📌固定中なら前回の背景をそのまま復元、そうでなければランダム表示
+  // （旧「ネット写真」の保存URL（kind:"url"）は再取得しない＝外部リクエストしない）
   async function initBackground() {
     const cur = state.settings.bgFixed ? state.settings.bgCurrent : null;
     if (cur) {
       if (cur.kind === "gradient" && cur.css) { swapBgLayers(cur.css); return; }
       if (cur.kind === "local" && await showLocalPhoto(cur.key, false)) return;
-      // 完全ローカルでは、保存済みのネット写真URLを再取得しない（外部リクエストを避ける）
-      if (cur.kind === "url" && cur.url && state.settings.localOnly === false) { showOnlinePhoto(cur.url, false); return; }
     }
     changeBackground(false);
   }
@@ -6681,10 +6263,6 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
   document.getElementById("btnBgChange").addEventListener("click", () => changeBackground(true));
   document.getElementById("btnOpenSettings").addEventListener("click", () => openPanelModal("settings"));
   document.getElementById("btnOpenAiSettings").addEventListener("click", () => openPanelModal("aiSettings"));
-  document.getElementById("btnOpenLoginAdmin").addEventListener("click", () => {
-    renderLoginAdmin();
-    openPanelModal("loginAdmin");
-  });
   document.getElementById("btnOpenReminder").addEventListener("click", () => openPanelModal("reminder"));
   document.getElementById("btnRunAutoDrafts").addEventListener("click", () => runAutoDrafts(true));
   document.getElementById("btnOpenContacts").addEventListener("click", () => {
@@ -6700,8 +6278,6 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
 
   // N: タスク追加 / B: 背景変更 / "/": 検索へフォーカス / Esc: 検索クリア・選択解除・メニューを閉じる
   document.addEventListener("keydown", e => {
-    // 未ログイン中はショートカット無効（ダイアログはログイン画面より前面に出てしまうため）
-    if (!document.getElementById("loginOverlay").hidden) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const anyDialogOpen = !!document.querySelector("dialog[open]");
     if (e.key === "Escape" && !anyDialogOpen) {
@@ -6734,330 +6310,6 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     }
   });
 
-  // ---- ログイン（リーダー／メンバー） ----
-  // リーダー：ヘッダー（アプリバー）を含む全機能。メンバー：タスクボードのみ（ヘッダー非表示）。
-  // 認証は Supabase の app_users 表（REST API 直接参照。ライブラリ不要）。
-  // Supabase 未設定・接続不可（オフライン）のときは内蔵アカウントにフォールバックし、オフラインでも壊れない。
-  const AUTH_KEY = "todoReminder.auth.v1";
-  const FALLBACK_USERS = [
-    { username: "leader", password: "1234", role: "leader", displayName: "リーダー" },
-    { username: "member", password: "1234", role: "member", displayName: "メンバー" }
-  ];
-
-  function currentAuth() {
-    try { return JSON.parse(localStorage.getItem(AUTH_KEY)); } catch (e) { return null; }
-  }
-
-  function applyAuthUi(auth) {
-    const isLeader = auth.role === "leader";
-    document.body.classList.toggle("role-member", !isLeader);
-    document.body.classList.toggle("role-leader", isLeader);
-    // メンバーにはヘッダーが無いので、右下チップで名前表示とログアウトを提供する
-    const chip = document.getElementById("userChip");
-    chip.hidden = isLeader;
-    document.getElementById("userChipName").textContent = `👤 ${auth.displayName || auth.username}`;
-  }
-
-  async function authenticate(username, password) {
-    const url = (state.settings.supabaseUrl || "").trim().replace(/\/+$/, "");
-    const key = (state.settings.supabaseAnonKey || "").trim();
-    if (url && key) {
-      try {
-        const res = await fetch(
-          `${url}/rest/v1/app_users?username=eq.${encodeURIComponent(username)}&select=username,password,role,display_name`,
-          { headers: { apikey: key, Authorization: `Bearer ${key}` } }
-        );
-        if (res.ok) {
-          // Supabase から応答が得られたときは、その結果を正とする（内蔵アカウントへは落ちない）
-          const rows = await res.json();
-          const u = Array.isArray(rows) ? rows[0] : null;
-          if (u && String(u.password) === password) {
-            return { username: u.username, role: u.role === "leader" ? "leader" : "member", displayName: u.display_name || u.username };
-          }
-          return null;
-        }
-        console.warn("Supabase 認証の応答エラー:", res.status, "内蔵アカウントで照合します");
-      } catch (e) {
-        console.warn("Supabase へ接続できません（オフライン？）。内蔵アカウントで照合します", e);
-      }
-    }
-    const f = FALLBACK_USERS.find(u => u.username === username && u.password === password);
-    return f ? { username: f.username, role: f.role, displayName: f.displayName } : null;
-  }
-
-  function logout() {
-    localStorage.removeItem(AUTH_KEY);
-    location.reload();
-  }
-
-  // ---- Supabase 同期（タスクボードの共有） ----
-  // リーダーの変更を shared_state 表（1行のJSON）へ保存し、全員が定期的に読み込んで表示を合わせる。
-  // Supabase 未設定・オフライン時は何もせず、従来どおり localStorage のみで動く。
-  // 設定（APIキー等）は共有せず、各自のブラウザに残す。
-  const SYNC_FIELDS = ["tasks", "contacts", "boards", "nextTaskId", "nextBoardId", "boardPos", "boardGroups", "lockedGroups"];
-  const SYNC_ROW_ID = "main";
-  const SYNC_PULL_MS = 10000; // メンバーが最新を取り込む間隔
-  let syncPushTimer = null;
-  let syncKnownRemoteAt = null; // 取り込み済み／書き込み済みの updated_at（自分の書いたデータを再取り込みしない）
-  let syncPolling = null;
-
-  function syncApi() {
-    const url = (state.settings.supabaseUrl || "").trim().replace(/\/+$/, "");
-    const key = (state.settings.supabaseAnonKey || "").trim();
-    return url && key ? { url, key } : null;
-  }
-
-  function syncHeaders(key) {
-    return { apikey: key, Authorization: "Bearer " + key, "Content-Type": "application/json" };
-  }
-
-  function isAuthedLeader() {
-    const a = currentAuth();
-    return !!(a && a.role === "leader");
-  }
-
-  function scheduleSyncPush() {
-    if (!syncApi() || !isAuthedLeader()) return;
-    clearTimeout(syncPushTimer);
-    syncPushTimer = setTimeout(syncPushNow, 1500); // 連続編集を1回の保存にまとめる
-  }
-
-  async function syncPushNow() {
-    clearTimeout(syncPushTimer);
-    syncPushTimer = null;
-    const api = syncApi();
-    if (!api || !isAuthedLeader()) return;
-    const data = {};
-    SYNC_FIELDS.forEach(k => { data[k] = state[k]; });
-    const now = new Date().toISOString();
-    try {
-      const res = await fetch(`${api.url}/rest/v1/shared_state?on_conflict=id`, {
-        method: "POST",
-        headers: Object.assign(syncHeaders(api.key), { Prefer: "resolution=merge-duplicates" }),
-        body: JSON.stringify([{ id: SYNC_ROW_ID, data, updated_at: now }])
-      });
-      if (res.ok) syncKnownRemoteAt = now;
-      else console.warn("共有データの保存に失敗:", res.status, await res.text());
-    } catch (e) {
-      console.warn("共有データの保存に失敗（オフライン？）:", e);
-    }
-  }
-
-  async function syncPull(initial) {
-    const api = syncApi();
-    if (!api || !currentAuth()) return;
-    // 編集中に画面が置き換わらないよう、ダイアログ表示中と送信待ちの変更があるときは見送る
-    if (document.querySelector("dialog[open]")) return;
-    if (isAuthedLeader() && syncPushTimer !== null) return;
-    try {
-      const res = await fetch(
-        `${api.url}/rest/v1/shared_state?id=eq.${SYNC_ROW_ID}&select=data,updated_at`,
-        { headers: syncHeaders(api.key) }
-      );
-      if (!res.ok) { console.warn("共有データの読み込みに失敗:", res.status); return; }
-      const rows = await res.json();
-      const row = Array.isArray(rows) ? rows[0] : null;
-      if (!row) {
-        // 共有データがまだ無い：リーダーなら手元のデータを初回アップロードする
-        if (initial && isAuthedLeader()) syncPushNow();
-        return;
-      }
-      if (row.updated_at === syncKnownRemoteAt) return;
-      syncKnownRemoteAt = row.updated_at;
-      const changed = SYNC_FIELDS.some(k => JSON.stringify(state[k]) !== JSON.stringify(row.data[k]));
-      if (!changed) return;
-      SYNC_FIELDS.forEach(k => { if (row.data[k] !== undefined) state[k] = row.data[k]; });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); // save() 経由だと再pushされるため直接保存
-      renderBoard();
-      renderContacts();
-      if (initial) toast("☁ 共有データを読み込みました");
-    } catch (e) {
-      if (initial) console.warn("共有データへ接続できません（オフライン？）:", e);
-    }
-  }
-
-  function startSync() {
-    if (!syncApi() || !currentAuth()) return;
-    syncPull(true);
-    if (!syncPolling) {
-      syncPolling = setInterval(() => syncPull(false), SYNC_PULL_MS);
-      window.addEventListener("focus", () => syncPull(false));
-    }
-  }
-
-  // ---- ログイン管理（リーダー専用）：ユーザーの追加・変更・削除とログイン履歴 ----
-  // データはすべて Supabase（app_users / login_history 表）。オフライン・未設定時は案内のみ表示。
-  function recordLoginHistory(auth, kind) {
-    const api = syncApi();
-    if (!api) return;
-    fetch(`${api.url}/rest/v1/login_history`, {
-      method: "POST",
-      headers: syncHeaders(api.key),
-      body: JSON.stringify([{ username: auth.username, display_name: auth.displayName || auth.username, role: auth.role, kind }])
-    }).catch(() => {}); // 記録失敗でもアプリの利用は妨げない
-  }
-
-  async function renderLoginAdmin() {
-    const offline = document.getElementById("loginAdminOffline");
-    const content = document.getElementById("loginAdminContent");
-    const usersBody = document.getElementById("loginUsersBody");
-    const histBody = document.getElementById("loginHistoryBody");
-    const api = syncApi();
-    offline.hidden = !!api;
-    content.hidden = !api;
-    if (!api) return;
-    usersBody.innerHTML = `<tr><td colspan="5" style="padding:10px; color:var(--muted);">読み込み中…</td></tr>`;
-    histBody.innerHTML = `<tr><td colspan="4" style="padding:10px; color:var(--muted);">読み込み中…</td></tr>`;
-    try {
-      const [uRes, hRes] = await Promise.all([
-        fetch(`${api.url}/rest/v1/app_users?select=username,password,role,display_name&order=username.asc`, { headers: syncHeaders(api.key) }),
-        fetch(`${api.url}/rest/v1/login_history?select=username,display_name,role,kind,logged_in_at&order=logged_in_at.desc&limit=100`, { headers: syncHeaders(api.key) })
-      ]);
-      if (!uRes.ok || !hRes.ok) throw new Error(`HTTP ${uRes.status}/${hRes.status}`);
-      const users = await uRes.json();
-      const hist = await hRes.json();
-      const me = (currentAuth() || {}).username;
-      usersBody.innerHTML = users.map(u => `
-        <tr style="border-bottom:1px solid var(--border);" data-username="${escapeHtml(u.username)}">
-          <td style="padding:7px 10px; font-weight:600;">${escapeHtml(u.username)}${u.username === me ? ` <span style="color:var(--muted); font-weight:normal; font-size:11px;">（自分）</span>` : ""}</td>
-          <td style="padding:7px 10px;"><input type="text" class="ua-name" value="${escapeHtml(u.display_name || "")}" style="width:110px; padding:4px 6px; border:1px solid var(--border); border-radius:6px; font-size:12.5px;"></td>
-          <td style="padding:7px 10px;">
-            <select class="ua-role" style="padding:4px 6px; border:1px solid var(--border); border-radius:6px; font-size:12.5px;">
-              <option value="member"${u.role !== "leader" ? " selected" : ""}>メンバー</option>
-              <option value="leader"${u.role === "leader" ? " selected" : ""}>リーダー</option>
-            </select>
-          </td>
-          <td style="padding:7px 10px;"><input type="text" class="ua-pass" value="${escapeHtml(u.password || "")}" style="width:100px; padding:4px 6px; border:1px solid var(--border); border-radius:6px; font-size:12.5px;"></td>
-          <td style="padding:7px 10px; white-space:nowrap;">
-            <button type="button" class="secondary small ua-save">保存</button>
-            <button type="button" class="ghost small ua-del"${u.username === me ? " disabled title=\"自分自身は削除できません\"" : ""}>削除</button>
-          </td>
-        </tr>`).join("") || `<tr><td colspan="5" style="padding:10px; color:var(--muted);">ユーザーがいません</td></tr>`;
-      histBody.innerHTML = hist.map(h => {
-        const d = new Date(h.logged_in_at);
-        const when = `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-        const roleLabel = h.role === "leader" ? "リーダー" : "メンバー";
-        return `<tr style="border-bottom:1px solid var(--border);">
-          <td style="padding:6px 10px; white-space:nowrap;">${when}</td>
-          <td style="padding:6px 10px;">${escapeHtml(h.display_name || h.username)} <span style="color:var(--muted); font-size:11px;">(${escapeHtml(h.username)})</span></td>
-          <td style="padding:6px 10px;">${roleLabel}</td>
-          <td style="padding:6px 10px; color:var(--muted);">${escapeHtml(h.kind || "ログイン")}</td>
-        </tr>`;
-      }).join("") || `<tr><td colspan="4" style="padding:10px; color:var(--muted);">ログイン履歴はまだありません</td></tr>`;
-    } catch (e) {
-      offline.hidden = false;
-      content.hidden = true;
-      console.warn("ログイン管理の読み込みに失敗:", e);
-    }
-  }
-
-  // ユーザー一覧の「保存」「削除」（行ごと。イベント委任）
-  document.getElementById("loginUsersBody").addEventListener("click", async e => {
-    const btn = e.target.closest("button");
-    if (!btn) return;
-    const tr = btn.closest("tr");
-    const username = tr.getAttribute("data-username");
-    const api = syncApi();
-    if (!api || !username) return;
-    if (btn.classList.contains("ua-save")) {
-      const body = {
-        display_name: tr.querySelector(".ua-name").value.trim() || username,
-        role: tr.querySelector(".ua-role").value,
-        password: tr.querySelector(".ua-pass").value
-      };
-      if (!body.password) { toast("パスワードは空にできません"); return; }
-      const me = (currentAuth() || {}).username;
-      if (username === me && body.role !== "leader" &&
-        !confirm("自分自身をメンバーに変更すると、次回ログインからヘッダー（管理機能）が使えなくなります。変更しますか？")) return;
-      const res = await fetch(`${api.url}/rest/v1/app_users?username=eq.${encodeURIComponent(username)}`, {
-        method: "PATCH", headers: syncHeaders(api.key), body: JSON.stringify(body)
-      }).catch(() => null);
-      if (res && res.ok) { toast(`「${username}」を更新しました`); renderLoginAdmin(); }
-      else toast("更新に失敗しました");
-    } else if (btn.classList.contains("ua-del")) {
-      if (!confirm(`ユーザー「${username}」を削除しますか？\n（この人はログインできなくなります。ログイン履歴は残ります）`)) return;
-      const res = await fetch(`${api.url}/rest/v1/app_users?username=eq.${encodeURIComponent(username)}`, {
-        method: "DELETE", headers: syncHeaders(api.key)
-      }).catch(() => null);
-      if (res && res.ok) { toast(`「${username}」を削除しました`); renderLoginAdmin(); }
-      else toast("削除に失敗しました");
-    }
-  });
-
-  document.getElementById("btnAddLoginUser").addEventListener("click", async () => {
-    const api = syncApi();
-    if (!api) return;
-    const username = document.getElementById("newLoginUser").value.trim();
-    const password = document.getElementById("newLoginPass").value;
-    const displayName = document.getElementById("newLoginName").value.trim() || username;
-    const role = document.getElementById("newLoginRole").value;
-    if (!username || !password) { toast("ユーザー名とパスワードを入力してください"); return; }
-    const res = await fetch(`${api.url}/rest/v1/app_users`, {
-      method: "POST", headers: syncHeaders(api.key),
-      body: JSON.stringify([{ username, password, role, display_name: displayName }])
-    }).catch(() => null);
-    if (res && res.ok) {
-      toast(`ユーザー「${displayName}」を追加しました`);
-      document.getElementById("newLoginUser").value = "";
-      document.getElementById("newLoginPass").value = "";
-      document.getElementById("newLoginName").value = "";
-      renderLoginAdmin();
-    } else if (res && res.status === 409) {
-      toast(`ユーザー名「${username}」は既に使われています`);
-    } else {
-      toast("追加に失敗しました");
-    }
-  });
-
-  function initAuth() {
-    const overlay = document.getElementById("loginOverlay");
-    const form = document.getElementById("loginForm");
-    const inputUser = document.getElementById("loginUser");
-    const inputPass = document.getElementById("loginPass");
-    const errEl = document.getElementById("loginErr");
-    const btn = document.getElementById("btnLogin");
-
-    form.addEventListener("submit", async e => {
-      e.preventDefault();
-      const username = inputUser.value.trim();
-      const password = inputPass.value;
-      if (!username || !password) { errEl.textContent = "ユーザー名とパスワードを入力してください"; return; }
-      btn.disabled = true;
-      btn.textContent = "確認中…";
-      errEl.textContent = "";
-      const auth = await authenticate(username, password);
-      btn.disabled = false;
-      btn.textContent = "ログイン";
-      if (!auth) {
-        errEl.textContent = "ユーザー名またはパスワードが違います";
-        inputPass.value = "";
-        inputPass.focus();
-        return;
-      }
-      localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
-      applyAuthUi(auth);
-      overlay.hidden = true;
-      toast(`ようこそ、${auth.displayName || auth.username} さん`);
-      recordLoginHistory(auth, "ログイン");
-      startSync();
-      startAutoDrafts();
-    });
-
-    document.getElementById("btnLogout").addEventListener("click", () => logout());
-    document.getElementById("btnChipLogout").addEventListener("click", () => logout());
-
-    const auth = currentAuth();
-    if (auth && auth.role) {
-      applyAuthUi(auth);
-      recordLoginHistory(auth, "自動"); // 保存済みセッションでの起動も履歴に残す
-      startSync();
-      startAutoDrafts();
-    } else {
-      overlay.hidden = false;
-      setTimeout(() => inputUser.focus(), 0);
-    }
-  }
-
   function renderAll() {
     initBackground();
     restartBgTimer();
@@ -7067,7 +6319,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     renderBoard();
   }
 
-  initAuth();
+  startAutoDrafts();
   renderAll();
 })();
 </script>
