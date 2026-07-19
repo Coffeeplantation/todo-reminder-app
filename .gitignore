@@ -19,3 +19,6 @@ desktop.ini
 
 # APIキー等のローカル設定（コミット禁止）
 browser/config.local.js
+
+# 常駐エージェントのローカルデータ（メール由来の内容を含むためコミット禁止）
+agent/data/

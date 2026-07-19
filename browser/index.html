@@ -1576,6 +1576,43 @@
           <small style="color:var(--muted); display:block; margin-top:2px;">空欄なら既定の本文。上と同じ <b>{タスク名}</b> などの差し込みタグが使えます。手動の「✉ 下書き」と自動下書きの両方に反映されます。</small>
         </span>
 
+        <label>🕐 自動収集エージェント</label>
+        <span id="agentSettingsArea">
+          <div id="agentStatusText" style="font-size:12.5px; font-weight:600; margin-bottom:6px;">確認中…</div>
+          <div id="agentSettingsFields" hidden style="display:flex; flex-direction:column; gap:8px;">
+            <small style="color:var(--muted);">PC内で常駐し、メールボックス・予定表リンクを定期的に読んで予定をタスクボードへ自動追加します（データはPCの外へ出ません）。</small>
+            <label style="font-size:12.5px; display:flex; align-items:center; gap:6px;">
+              <input type="checkbox" id="agentMailEnabled"> 📧 メールボックスを読み取る（Outlook必須。未設定PCではOFF）
+            </label>
+            <label style="font-size:12.5px;">📧 読み取るメールフォルダ
+              <input type="text" id="agentMailFolder" placeholder="受信トレイ" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-size:13px; margin-top:2px;">
+            </label>
+            <label style="font-size:12.5px;">📆 対象期間（何日前までのメール）
+              <input type="number" id="agentMailDays" min="1" style="width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-size:13px; margin-left:6px;">
+            </label>
+            <label style="font-size:12.5px;">🔗 予定表リンク（1行に1つのURL。定期的に読み取ります）
+              <textarea id="agentLinks" rows="3" placeholder="https://example.com/schedule" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; resize:vertical; margin-top:2px;"></textarea>
+            </label>
+            <label style="font-size:12.5px; display:flex; align-items:center; gap:6px;">
+              <input type="checkbox" id="agentFollowLinks"> メール本文に書かれたリンク先も読み取る
+            </label>
+            <label style="font-size:12.5px;">⏱ 収集間隔（分）
+              <input type="number" id="agentInterval" min="5" style="width:90px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-size:13px; margin-left:6px;">
+            </label>
+            <label style="font-size:12.5px; display:flex; align-items:center; gap:6px;">
+              <input type="checkbox" id="agentAutoSend"> リマインダーメールを<b>自動送信</b>する（OFF＝Outlookの下書きに作成）
+            </label>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button type="button" id="btnAgentRun" class="secondary small">▶ 今すぐ収集</button>
+              <small style="color:var(--muted);">設定した間隔＋起動時にも自動実行されます</small>
+            </div>
+            <div id="agentLog" style="font-size:11.5px; max-height:150px; overflow-y:auto; border:1px dashed var(--border); border-radius:8px; padding:6px 8px; color:var(--muted);"></div>
+          </div>
+          <small id="agentOfflineHint" hidden style="color:var(--muted); display:block;">
+            エージェントが起動していません。アプリのフォルダで「<b>エージェントを開始.vbs</b>」をダブルクリックするか、「エージェント常駐登録.ps1」で常駐化してください（起動後は http://127.0.0.1:8787/ でアプリを開くと連携されます）。
+          </small>
+        </span>
+
       </div>
     </div>
   </section>
@@ -2005,6 +2042,8 @@
 
   function save() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    // 常駐エージェントが起動していれば最新状態を渡す（リマインダー送信の材料になる）
+    agentPushStateSoon();
   }
 
   // 旧形式（1〜12月の固定月ボード＋期日から所属を導出）からの移行。
@@ -2515,7 +2554,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-19 (27) 完全ローカル化（ログイン・クラウド連携を削除）＋メールボックス読み込み";
+  const APP_VERSION = "2026-07-19 (28) 常駐エージェント連携（メール・リンク自動収集→ボード自動追加・出典表示・リマインダー自動送信/下書き）";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -3806,6 +3845,17 @@
               </span>
             </div>
             ${info}
+            ${(() => {
+              // 出典（この予定をどのメール/リンク/ファイルから読み取ったか）を確認できるようにする
+              const src = c.originalTask ? c.originalTask.source : (c.source ? { label: c.source } : null);
+              if (!src || !src.label) return "";
+              return `<div style="font-size:11.5px; color:var(--muted); line-height:1.6; padding:6px 10px; margin-bottom:10px; background:rgba(43,63,99,0.05); border-radius:8px;">
+                📎 出典: ${escapeHtml(src.label)}
+                ${src.detail ? `<br>${escapeHtml(src.detail)}` : ""}
+                ${src.url ? `<br><a href="${escapeHtml(src.url)}" target="_blank" rel="noopener" style="word-break:break-all;">${escapeHtml(src.url)}</a>` : ""}
+                ${src.at ? `<br>取得: ${new Date(src.at).toLocaleString("ja-JP")}` : ""}
+              </div>`;
+            })()}
             ${boardArea}
           </div>
         </td>
@@ -4288,7 +4338,7 @@
 
       let added = 0, changed = 0;
 
-      // 新規予定 → 新しいタスクとして追加
+      // 新規予定 → 新しいタスクとして追加（出典＝どのメール/リンク/ファイルから読み取ったかを記録）
       for (const c of news) {
         const due = c.due ? (normalizeDueInput(c.due.replace(/-/g, "/")) || "") : "";
         state.tasks.push({
@@ -4300,7 +4350,8 @@
           reminderDays: Math.max(0, state.settings.reminderDays || 3),
           status: "未完了",
           sentFlag: "",
-          boards: [impBoardIdFor(due)]
+          boards: [impBoardIdFor(due)],
+          source: c.source ? { label: c.source, at: Date.now() } : undefined
         });
         added++;
       }
@@ -4856,6 +4907,13 @@
           <span class="t-chip">🔔 ${task.reminderDays}日前に通知</span>
           <span class="t-chip">✉ ${task.sentFlag ? escapeHtml(task.sentFlag) : "未判定"}</span>
         </div>
+        ${task.source ? `
+        <div class="t-source" style="font-size:11.5px; color:var(--muted); line-height:1.5; padding:6px 8px; background:rgba(43,63,99,0.05); border-radius:8px;" title="この予定の取り込み元（出典）">
+          📎 出典: ${escapeHtml(task.source.label || "")}
+          ${task.source.detail ? `<br><span style="font-size:11px;">${escapeHtml(task.source.detail)}</span>` : ""}
+          ${task.source.url ? `<br><a href="${escapeHtml(task.source.url)}" target="_blank" rel="noopener" style="font-size:11px; word-break:break-all;">${escapeHtml(task.source.url)}</a>` : ""}
+          ${task.source.at ? `<br><span style="font-size:10.5px;">取得: ${new Date(task.source.at).toLocaleString("ja-JP")}</span>` : ""}
+        </div>` : ""}
         <button type="button" class="small edit-delete">🗑 タスクを削除</button>
       </div>` : ""}
     `;
@@ -6261,7 +6319,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     if (e.key === "Enter") document.getElementById("btnBoardDialogCreate").click();
   });
   document.getElementById("btnBgChange").addEventListener("click", () => changeBackground(true));
-  document.getElementById("btnOpenSettings").addEventListener("click", () => openPanelModal("settings"));
+  document.getElementById("btnOpenSettings").addEventListener("click", () => { openPanelModal("settings"); agentRefreshStatus(); });
   document.getElementById("btnOpenAiSettings").addEventListener("click", () => openPanelModal("aiSettings"));
   document.getElementById("btnOpenReminder").addEventListener("click", () => openPanelModal("reminder"));
   document.getElementById("btnRunAutoDrafts").addEventListener("click", () => runAutoDrafts(true));
@@ -6310,6 +6368,169 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     }
   });
 
+  // ---------------------------------------------------------------
+  // 常駐エージェント連携（完全ローカル：127.0.0.1:8787 のみ）
+  // エージェント（agent/agent.js）がメール・予定表リンクから抽出した予定を受信箱
+  // （/api/agent/inbox）から取り込み、出典付きでタスクボードへ自動追加する。
+  // また save() のたびに最新状態を渡し、エージェント側のリマインダー送信に使ってもらう。
+  // エージェント未起動でもアプリ単体で従来どおり動く（起動時に1回だけ疎通確認）。
+  // ---------------------------------------------------------------
+  const AGENT_URL = location.port === "8787" ? "" : "http://127.0.0.1:8787";
+  let agentOnline = false;
+  let agentConfig = null;
+  let agentPushTimer = null;
+
+  async function agentApi(pathname, body) {
+    const res = await fetch(AGENT_URL + pathname, body === undefined
+      ? undefined
+      : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res.json();
+  }
+
+  // アプリの最新状態をエージェントへ渡す（連続保存は1回にまとめる）
+  function agentPushStateSoon() {
+    if (!agentOnline) return;
+    clearTimeout(agentPushTimer);
+    agentPushTimer = setTimeout(() => {
+      agentApi("/api/agent/state", {
+        tasks: state.tasks.map(t => Object.assign({}, t, { archived: taskIsArchived(t) })),
+        contacts: state.contacts,
+        settings: {
+          reminderDays: state.settings.reminderDays,
+          lastReminderDays: state.settings.lastReminderDays,
+          signature: state.settings.signature,
+          mailFrom: state.settings.mailFrom,
+          mailTo: state.settings.mailTo,
+          mailSubject: state.settings.mailSubject,
+          mailBody: state.settings.mailBody,
+          ollamaModel: state.settings.ollamaModel
+        }
+      }).catch(() => {});
+    }, 1500);
+  }
+
+  // 受信箱の予定をタスクボードへ自動追加（出典付き）。同名同期日は重複扱いで消費のみ、
+  // 同名で期日違いは「予定の更新」として既存タスクの期日を書き換える。
+  async function agentPullInbox() {
+    if (!agentOnline) return;
+    let data;
+    try { data = await agentApi("/api/agent/inbox"); } catch (_) { return; }
+    const items = data.items || [];
+    if (!items.length) return;
+    let added = 0, updated = 0;
+    const consumed = [];
+    for (const it of items) {
+      const name = (it.name || "").trim();
+      if (!name) { consumed.push(it.uid); continue; }
+      const due = it.due || "";
+      const same = state.tasks.filter(t => t.name === name && !taskIsArchived(t));
+      if (same.some(t => (t.due || "") === due)) { consumed.push(it.uid); continue; } // 既に同じ予定がある
+      const target = same[0];
+      if (target && due) {
+        // 予定表の更新とみなし期日を差し替え（月が変われば該当ボードへ移動）
+        const oldMonth = (target.due || "").slice(0, 7);
+        target.due = due;
+        if (oldMonth !== due.slice(0, 7)) target.boards = [impBoardIdFor(due)];
+        target.source = it.source;
+        updated++;
+      } else {
+        state.tasks.push({
+          id: state.nextTaskId++,
+          name,
+          assignee: it.assignee || "",
+          participants: (it.participants || []).slice(),
+          due,
+          reminderDays: Math.max(0, state.settings.reminderDays || 3),
+          status: "未完了",
+          sentFlag: "",
+          boards: [impBoardIdFor(due)],
+          source: it.source
+        });
+        added++;
+      }
+      consumed.push(it.uid);
+    }
+    if (added || updated) {
+      save();
+      renderBoard();
+      toast(`🕐 エージェントが予定を${[added ? `${added} 件追加` : "", updated ? `${updated} 件更新` : ""].filter(Boolean).join("・")}しました（出典はカード詳細で確認できます）`);
+    }
+    if (consumed.length) agentApi("/api/agent/consume", { uids: consumed }).catch(() => {});
+  }
+
+  // 設定パネルのエージェント欄を最新化
+  async function agentRefreshStatus() {
+    const statusEl = document.getElementById("agentStatusText");
+    const fields = document.getElementById("agentSettingsFields");
+    const hint = document.getElementById("agentOfflineHint");
+    if (!statusEl) return;
+    try {
+      const st = await agentApi("/api/agent/status");
+      agentOnline = true;
+      agentConfig = st.config;
+      const last = st.lastRun ? new Date(st.lastRun).toLocaleString("ja-JP") : "（未実行）";
+      statusEl.textContent = `🟢 稼働中（受信箱 ${st.inboxCount} 件・最終収集 ${last}${st.busy ? "・収集中…" : ""}）`;
+      fields.hidden = false;
+      hint.hidden = true;
+      // フォーカス中の入力は上書きしない（編集を邪魔しないため）
+      const setIf = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) { if (el.type === "checkbox") el.checked = !!v; else el.value = v; } };
+      setIf("agentMailEnabled", st.config.mailEnabled !== false);
+      setIf("agentMailFolder", st.config.mailFolder || "受信トレイ");
+      setIf("agentMailDays", st.config.mailDays || 7);
+      setIf("agentLinks", (st.config.links || []).join("\n"));
+      setIf("agentFollowLinks", st.config.followLinks);
+      setIf("agentInterval", st.config.intervalMin || 30);
+      setIf("agentAutoSend", st.config.autoSend);
+      try {
+        const lg = await agentApi("/api/agent/log");
+        document.getElementById("agentLog").innerHTML = (lg.log || []).map(e =>
+          `<div>${new Date(e.at).toLocaleTimeString("ja-JP")} [${escapeHtml(e.kind)}] ${escapeHtml(e.msg)}</div>`).join("") || "まだ活動記録はありません";
+      } catch (_) { /* ログ取得失敗は無視 */ }
+    } catch (_) {
+      agentOnline = false;
+      statusEl.textContent = "⚪ 未起動";
+      fields.hidden = true;
+      hint.hidden = false;
+    }
+  }
+
+  function agentSaveConfig() {
+    if (!agentOnline) return;
+    agentApi("/api/agent/config", {
+      mailEnabled: document.getElementById("agentMailEnabled").checked,
+      mailFolder: document.getElementById("agentMailFolder").value.trim() || "受信トレイ",
+      mailDays: parseInt(document.getElementById("agentMailDays").value, 10) || 7,
+      links: document.getElementById("agentLinks").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean),
+      followLinks: document.getElementById("agentFollowLinks").checked,
+      intervalMin: parseInt(document.getElementById("agentInterval").value, 10) || 30,
+      autoSend: document.getElementById("agentAutoSend").checked
+    }).then(() => toast("エージェント設定を保存しました")).catch(() => toast("エージェント設定の保存に失敗しました"));
+  }
+
+  for (const id of ["agentMailEnabled", "agentMailFolder", "agentMailDays", "agentLinks", "agentFollowLinks", "agentInterval", "agentAutoSend"]) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("change", agentSaveConfig);
+  }
+  const btnAgentRun = document.getElementById("btnAgentRun");
+  if (btnAgentRun) btnAgentRun.addEventListener("click", async () => {
+    try {
+      await agentApi("/api/agent/run", {});
+      toast("収集を開始しました（結果は活動ログに表示されます）");
+      setTimeout(agentRefreshStatus, 5000);
+      setTimeout(agentPullInbox, 20000);
+    } catch (_) { toast("エージェントに接続できません"); }
+  });
+
+  async function agentInit() {
+    await agentRefreshStatus();
+    if (agentOnline) {
+      agentPushStateSoon();
+      agentPullInbox();
+      setInterval(() => { agentPullInbox(); agentRefreshStatus(); }, 60000);
+    }
+  }
+
   function renderAll() {
     initBackground();
     restartBgTimer();
@@ -6321,6 +6542,7 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
 
   startAutoDrafts();
   renderAll();
+  agentInit();
 })();
 </script>
 </body>
