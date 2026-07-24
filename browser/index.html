@@ -652,6 +652,80 @@
     z-index: 4;
   }
   .kb-col-resize-e:hover, .kb-col-resize-s:hover { background: rgba(37, 99, 235, 0.20); border-radius: 4px; }
+
+  /* ---- 親タスクボード：単一ボードのタイル（クリックで一覧テーブルを開く） ---- */
+  .parent-board-tile {
+    position: absolute;
+    left: 24px;
+    top: 24px;
+    width: 380px;
+    background: var(--card-bg, #fff);
+    border-radius: 16px;
+    box-shadow: var(--shadow-md, 0 8px 24px rgba(0,0,0,.18));
+    overflow: hidden;
+    border: 1px solid var(--border, #e2e6ee);
+  }
+  .parent-board-tile .pbt-hdr {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 14px 16px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.20), rgba(255,255,255,0.02) 60%), #6d4cc4;
+    color: #fff;
+  }
+  .parent-board-tile .pbt-title { font-size: 17px; font-weight: 700; }
+  .parent-board-tile .pbt-add {
+    width: 30px; height: 30px; border-radius: 8px; border: none; cursor: pointer;
+    background: rgba(255,255,255,0.28); color: #fff; font-size: 18px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .parent-board-tile .pbt-add:hover { background: rgba(255,255,255,0.45); }
+  .parent-board-tile .pbt-count { padding: 14px 16px 4px; font-size: 14px; color: var(--muted, #667); }
+  .parent-board-tile .pbt-count b { font-size: 20px; color: var(--text, #223); }
+  .parent-board-tile .pbt-progress {
+    margin: 8px 16px 2px; height: 8px; border-radius: 999px; background: var(--border, #e2e6ee); overflow: hidden;
+  }
+  .parent-board-tile .pbt-progress i { display: block; height: 100%; background: var(--green, #2fae5a); border-radius: 999px; transition: width .3s; }
+  .parent-board-tile .pbt-pct { padding: 2px 16px 10px; font-size: 12px; color: var(--muted, #667); }
+  .parent-board-tile .pbt-open {
+    display: block; width: calc(100% - 32px); margin: 6px 16px 16px; padding: 12px;
+    border: none; border-radius: 10px; cursor: pointer;
+    background: #6d4cc4; color: #fff; font-size: 15px; font-weight: 600;
+  }
+  .parent-board-tile .pbt-open:hover { background: #5c3fb0; }
+
+  /* ---- タスク一覧テーブル（全画面） ---- */
+  #taskTableDialog {
+    width: min(1100px, 96vw); max-width: 96vw; height: 92vh; max-height: 92vh;
+    padding: 0; border: none; border-radius: 14px; overflow: hidden;
+  }
+  #taskTableDialog::backdrop { background: rgba(20,24,34,0.5); }
+  .tt-wrap { display: flex; flex-direction: column; height: 100%; }
+  .tt-hdr {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 20px; border-bottom: 1px solid var(--border, #e2e6ee);
+    background: var(--card-bg, #fff);
+  }
+  .tt-hdr h2 { margin: 0; font-size: 19px; }
+  .tt-hdr-actions { display: flex; gap: 10px; align-items: center; }
+  .tt-body { flex: 1; overflow: auto; padding: 0; background: var(--card-bg, #fff); }
+  #ttTable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  #ttTable thead th {
+    position: sticky; top: 0; z-index: 1;
+    background: #f4f6fb; text-align: left; padding: 11px 14px; font-weight: 700;
+    border-bottom: 2px solid var(--border, #e2e6ee); white-space: nowrap;
+  }
+  #ttTable tbody td { padding: 11px 14px; border-bottom: 1px solid var(--border, #eef1f6); vertical-align: top; }
+  #ttTable tbody tr { cursor: pointer; }
+  #ttTable tbody tr:hover td { background: #f7f9ff; }
+  #ttTable .tt-name { font-weight: 600; min-width: 150px; }
+  #ttTable .tt-content, #ttTable .tt-remarks { color: var(--muted, #556); white-space: pre-wrap; max-width: 320px; }
+  #ttTable .tt-due { white-space: nowrap; }
+  #ttTable .tt-due.overdue { color: #d33; font-weight: 700; }
+  #ttTable .tt-members { min-width: 130px; }
+  #ttTable tr.status-完了 .tt-name { text-decoration: line-through; color: var(--muted, #889); }
+  #ttTable .tt-status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  #ttTable .tt-empty td { text-align: center; color: var(--muted, #889); padding: 40px 14px; cursor: default; }
+  #ttTable .tt-empty:hover td { background: transparent; }
+
   .kb-card {
     position: absolute;
     width: 190px; /* 1.5倍サイズで見やすく（2026-07-14） */
@@ -1434,8 +1508,7 @@
   </span>
   <button type="button" id="btnOpenCurrentSchedule" class="ghost appbar-center-btn" title="現行予定表を開く">📅 現行予定表</button>
   <span class="appbar-actions">
-    <!-- よく使う操作（ボード作成・取り込み・AI）はヘッダー直置き。タスク追加は各ボードの「＋」から。残りは「☰ メニュー」に集約 -->
-    <button type="button" id="btnAddBoardTop" class="secondary" title="新しいタスクボードを作成">▦ 新しいボードを作成</button>
+    <!-- タスクは親タスクボードのみ。追加はボードタイルの「＋」から。残りは「☰ メニュー」に集約 -->
     <button type="button" id="btnOpenImport" class="ghost" title="自動タスク作成（予定表のリンク・ファイル・貼り付け文をAIに取り込んでタスクを自動作成）">📥 自動タスク作成</button>
     <button type="button" id="btnOpenAi" class="ghost" title="AIアシスタントに相談する（タスクの追加・整理・質問）">🤖 AIに相談</button>
     <button type="button" id="btnAppMenu" title="メニューを開く" aria-haspopup="true" aria-expanded="false">☰ メニュー</button>
@@ -1444,8 +1517,6 @@
         <button type="button" id="btnBgChange" class="ghost" title="背景をランダムに変更（B）">🖼 背景</button>
         <button type="button" id="btnBgPin" class="ghost" title="背景を固定（自動切替を停止し、次回起動時も同じ背景を表示）">📌 固定</button>
       </div>
-      <button type="button" id="btnArrangeBoards" class="ghost" title="すべてのボードを画面内に並べ直す（画面外に出て操作できないときに）">🧭 ボードを画面内に整列</button>
-      <button type="button" id="btnOpenArchive" class="ghost" title="終了したボードの確認・復元（ゴミ箱）">🗑 終了ボード</button>
       <button type="button" id="btnOpenReminder" class="ghost" title="リマインダーチェックを開く">🔔 リマインダー</button>
       <button type="button" id="btnOpenContacts" class="ghost" title="名簿を開く">👥 名簿</button>
       <button type="button" id="btnOpenAiSettings" class="ghost" title="ローカルAI（Ollama）のモデル設定">🤖 AI設定</button>
@@ -1891,20 +1962,57 @@
   </div>
 </dialog>
 
-<!-- タスク追加ダイアログ -->
+<!-- タスク追加・編集ダイアログ -->
 <dialog id="taskDialog">
   <form id="taskForm">
     <h3 id="taskDialogTitle">タスク追加</h3>
     <label>タスク名 <input type="text" id="taskName" required></label>
-    <label>担当者名（名簿と一致） <input type="text" id="taskAssignee" list="assigneeList"></label>
-    <datalist id="assigneeList"></datalist>
+    <label>内容 <textarea id="taskContent" rows="3" placeholder="タスクの内容・詳細"></textarea></label>
     <label>期日（yyyy/mm/dd） <input type="text" id="taskDue" required></label>
+    <label>参加メンバー（カンマ区切り・先頭が主担当） <input type="text" id="taskMembers" list="assigneeList" placeholder="山田太郎, 鈴木花子"></label>
+    <datalist id="assigneeList"></datalist>
+    <label>備考 <textarea id="taskRemarks" rows="2" placeholder="補足・メモ"></textarea></label>
     <label>リマインド日数前 <input type="number" id="taskReminderDays" min="0" value="3"></label>
+    <label id="taskStatusRow" hidden>ステータス
+      <select id="taskStatus">
+        <option value="未完了">未完了</option>
+        <option value="進行中">進行中</option>
+        <option value="完了">完了</option>
+      </select>
+    </label>
     <div class="dlg-actions">
+      <button type="button" class="plain" id="taskDelete" hidden style="margin-right:auto; color:#c22;">🗑 削除</button>
       <button type="button" class="plain" id="taskCancel">キャンセル</button>
       <button type="submit">保存</button>
     </div>
   </form>
+</dialog>
+
+<!-- タスク一覧テーブル（親タスクボードを開くと全画面表示） -->
+<dialog id="taskTableDialog">
+  <div class="tt-wrap">
+    <div class="tt-hdr">
+      <h2 id="ttTitle">📋 親タスクボード</h2>
+      <div class="tt-hdr-actions">
+        <button type="button" id="ttAddBtn" class="secondary">＋ タスク追加</button>
+        <button type="button" id="ttClose" class="plain">閉じる</button>
+      </div>
+    </div>
+    <div class="tt-body">
+      <table id="ttTable">
+        <thead>
+          <tr>
+            <th style="width:20%;">タスク名</th>
+            <th style="width:28%;">内容</th>
+            <th style="width:12%;">期日</th>
+            <th style="width:18%;">参加メンバー</th>
+            <th style="width:22%;">備考</th>
+          </tr>
+        </thead>
+        <tbody id="ttBody"></tbody>
+      </table>
+    </div>
+  </div>
 </dialog>
 
 <!-- 汎用確認ダイアログ（予定表の変更点チェックなどで OK/キャンセルを問う） -->
@@ -2002,15 +2110,15 @@
       mailBody: ""         // 本文テンプレート（同上）
     },
     tasks: [
-      { id: 1, name: "プロジェクト報告書提出", assignee: "山田太郎", due: "2026-07-15", reminderDays: 3, status: "未完了", sentFlag: "", boards: ["b1"] },
-      { id: 2, name: "請求書チェック", assignee: "鈴木花子", due: "2026-07-13", reminderDays: 1, status: "進行中", sentFlag: "", boards: ["b1"] }
+      { id: 1, name: "プロジェクト報告書提出", content: "四半期の進捗をまとめて提出する", assignee: "山田太郎", participants: [], due: "2026-07-15", remarks: "", reminderDays: 3, status: "未完了", sentFlag: "", boards: ["b1"] },
+      { id: 2, name: "請求書チェック", content: "先月分の請求書を確認・承認する", assignee: "鈴木花子", participants: [], due: "2026-07-13", remarks: "", reminderDays: 1, status: "進行中", sentFlag: "", boards: ["b1"] }
     ],
     contacts: [
       { name: "山田太郎", email: "yamada@example.com", dept: "営業部" },
       { name: "鈴木花子", email: "suzuki@example.com", dept: "経理部" }
     ],
     nextTaskId: 3,
-    boards: [{ id: "b1", name: "ボード1" }],
+    boards: [{ id: "b1", name: "親タスクボード" }],
     nextBoardId: 2,
     boardPos: {},
     boardGroups: [],
@@ -2039,7 +2147,7 @@
       const parsed = JSON.parse(raw);
       const merged = Object.assign(defaultState(), parsed);
       merged.settings = Object.assign(defaultState().settings, parsed.settings || {});
-      return migrateToFreeBoards(merged, parsed);
+      return consolidateToSingleBoard(migrateToFreeBoards(merged, parsed));
     } catch (e) {
       console.error("localStorage の読み込みに失敗しました。初期データを使用します。", e);
       return defaultState();
@@ -2115,6 +2223,51 @@
     delete s.monthPos;
     delete s.monthGroups;
     return s;
+  }
+
+  // 親ボード/子ボード（複数ボード・結合）を廃止し、ただ1つの「親タスクボード」へ集約する。
+  // すべてのタスクを主ボードへ寄せ、結合・位置・終了ボードの情報は破棄する。冪等（再実行しても安全）。
+  function consolidateToSingleBoard(s) {
+    if (!Array.isArray(s.boards)) s.boards = [];
+    if (!s.boards.length) {
+      s.boards = [{ id: "b1", name: "親タスクボード" }];
+      s.nextBoardId = 2;
+    }
+    const primary = s.boards.find(b => !b.archived) || s.boards[0];
+    // 複数ボードから集約する場合、または旧既定名のときは「親タスクボード」に正規化する
+    if (s.boards.length > 1 || primary.name === "ボード1" || !primary.name) primary.name = "親タスクボード";
+    delete primary.archived;
+    (s.tasks || []).forEach(t => {
+      t.boards = [primary.id];
+      if (t.content === undefined) t.content = "";
+      if (t.remarks === undefined) t.remarks = "";
+      if (!Array.isArray(t.participants)) t.participants = [];
+    });
+    s.boards = [primary];
+    s.boardGroups = [];
+    s.lockedGroups = [];
+    s.boardPos = {};
+    return s;
+  }
+
+  // 主（親）タスクボードを返す。存在しなければ生成する（描画は呼ばない）。
+  function primaryBoard() {
+    let b = state.boards.find(x => !x.archived) || state.boards[0];
+    if (!b) {
+      b = { id: "b" + (state.nextBoardId++ || 1), name: "親タスクボード" };
+      state.boards.push(b);
+    }
+    return b;
+  }
+
+  // タスクの参加メンバー一覧（主担当 + 参加者、重複除去）
+  function membersOf(task) {
+    return [...new Set([task.assignee, ...(task.participants || [])]
+      .map(s => (s || "").trim()).filter(Boolean))];
+  }
+  // 参加メンバー入力（カンマ・読点・改行区切り）を配列に変換
+  function parseMembers(text) {
+    return [...new Set((text || "").split(/[,、\n]+/).map(s => s.trim()).filter(Boolean))];
   }
 
   // ---------------------------------------------------------------
@@ -2323,24 +2476,13 @@
   }
 
   // ---- ボードの作成・名前変更・削除 ----
+  // 親タスクボードのみ運用のため、追加のボードは作らない。
+  // 既存の呼び出し（スケジュール／AI等）に対しては、常に唯一の親タスクボードのidを返す。
   function createBoard(name, pos, miniName) {
-    const id = "b" + state.nextBoardId++;
-    const boardIdx = state.boards.length;
-    const defaultName = `ボード${boardIdx + 1}`;
-    const defaultMiniName = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"][boardIdx] || `#${boardIdx + 1}`;
-    state.boards.push({
-      id,
-      name: (name || "").trim() || defaultName,
-      miniName: (miniName || "").trim() || defaultMiniName
-    });
-    const openCount = getBoardKeys().length;
-    state.boardPos[id] = Object.assign(
-      { x: 24 + (openCount % 6) * 40, y: 24 + (openCount % 6) * 32, z: ++colZCounter, collapsed: false },
-      pos || {});
-    save();
+    const b = primaryBoard();
+    if (!state.boards.length) { save(); }
     renderBoard();
-    popAnimate(kanbanColumns.querySelector(`.kb-col[data-board="${id}"]`));
-    return id;
+    return b.id;
   }
   function renameBoard(id) {
     const board = boardById(id);
@@ -2498,13 +2640,13 @@
     body.querySelectorAll("[data-purge]").forEach(btn =>
       btn.addEventListener("click", () => purgeBoard(btn.dataset.purge)));
   }
-  document.getElementById("btnOpenArchive").addEventListener("click", () => {
-    renderArchive();
-    openPanelModal("archive");
-  });
-
-  // 画面外に出て操作できなくなったボードを、まとめて画面内へ並べ直す
-  document.getElementById("btnArrangeBoards").addEventListener("click", () => arrangeBoardsIntoView());
+  // （終了ボード・ボード整列は単一の親タスクボード化に伴い廃止。ボタンが存在すれば従来動作を残す）
+  {
+    const archiveBtn = document.getElementById("btnOpenArchive");
+    if (archiveBtn) archiveBtn.addEventListener("click", () => { renderArchive(); openPanelModal("archive"); });
+    const arrangeBtn = document.getElementById("btnArrangeBoards");
+    if (arrangeBtn) arrangeBtn.addEventListener("click", () => arrangeBoardsIntoView());
+  }
 
   // その月のタスク達成率を10%刻み（10段階）に丸めて返す。タスクが無い月は null（達成率表示なし）。
   function monthCompletionStep(tasks) {
@@ -2560,7 +2702,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-20 (29) 現行予定表の各ページ（一覧・詳細・参加者リスト）に「← 戻る」ボタンを追加";
+  const APP_VERSION = "2026-07-24 (30) 親/子ボードを廃止し単一の「親タスクボード」に統一。開くとタスク名／内容／期日／参加メンバー／備考の一覧テーブルを全画面表示";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -5053,7 +5195,35 @@
     return card;
   }
 
+  // 親タスクボード：ホーム画面に単一のボードタイルを描画する。
+  // クリックで「タスク名／内容／期日／参加メンバー／備考」の一覧テーブル（全画面）を開く。
   function renderBoard() {
+    kanbanColumns.innerHTML = "";
+    const board = primaryBoard();
+    const tasks = state.tasks.filter(t => !taskIsArchived(t));
+    const pct = monthCompletionPercent(tasks);
+
+    const tile = document.createElement("div");
+    tile.className = "parent-board-tile";
+    tile.innerHTML = `
+      <div class="pbt-hdr">
+        <span class="pbt-title">📋 ${escapeHtml(board.name)}</span>
+        <button type="button" class="pbt-add" title="タスクを追加">＋</button>
+      </div>
+      <div class="pbt-count">現在のタスク数 <b>${tasks.length}</b></div>
+      ${pct !== null ? `<div class="pbt-progress"><i style="width:${pct}%"></i></div><div class="pbt-pct">${pct}% 完了</div>` : ""}
+      <button type="button" class="pbt-open">📂 開く（一覧を表示）</button>
+    `;
+    tile.querySelector(".pbt-add").addEventListener("click", e => { e.stopPropagation(); openTaskDialog(); });
+    tile.querySelector(".pbt-open").addEventListener("click", () => openTaskTable());
+    kanbanColumns.appendChild(tile);
+    // 一覧テーブルを開いている間は同時に更新する
+    const ttDlg = document.getElementById("taskTableDialog");
+    if (ttDlg && ttDlg.open) renderTaskTable();
+  }
+
+  // 旧・複数ボード（親/子・結合）描画。親タスクボード化により未使用（参照のため残置）。
+  function renderBoardLegacyUnused() {
     kanbanColumns.innerHTML = "";
     const boardKeys = getBoardKeys();
     let needsSave = ensureColPos(boardKeys);
@@ -5496,30 +5666,55 @@
     renderBoard();
   }
 
-  // ---- タスク追加ダイアログ ----
+  // ---- タスク追加・編集ダイアログ ----
   const taskDialog = document.getElementById("taskDialog");
   const taskForm = document.getElementById("taskForm");
   const taskName = document.getElementById("taskName");
-  const taskAssignee = document.getElementById("taskAssignee");
+  const taskContent = document.getElementById("taskContent");
   const taskDue = document.getElementById("taskDue");
+  const taskMembers = document.getElementById("taskMembers");
+  const taskRemarks = document.getElementById("taskRemarks");
   const taskReminderDays = document.getElementById("taskReminderDays");
+  const taskStatusRow = document.getElementById("taskStatusRow");
+  const taskStatus = document.getElementById("taskStatus");
+  const taskDelete = document.getElementById("taskDelete");
   const assigneeList = document.getElementById("assigneeList");
 
-  // 追加先ボード。指定がなければ先頭ボード（ボードが無ければ自動作成）に入る。
-  let dialogBoardId = null;
-  function openTaskDialog({ boardId } = {}) {
+  // 編集中タスクid（null＝新規追加）
+  let editingTaskId = null;
+  // 引数にタスクオブジェクト（.id を持つ）を渡すと編集モード。それ以外（未指定/{}）は新規追加。
+  function openTaskDialog(arg) {
+    const task = (arg && typeof arg === "object" && "id" in arg) ? arg : null;
+    editingTaskId = task ? task.id : null;
     taskForm.reset();
-    taskName.value = "";
-    taskAssignee.value = "";
-    if (!activeBoards().length) createBoard("ボード1");
-    dialogBoardId = (boardId && boardById(boardId) && !boardById(boardId).archived) ? boardId : activeBoards()[0].id;
-    const d = new Date();
-    d.setDate(d.getDate() + 7);
-    taskDue.value = formatDate(d);
-    taskReminderDays.value = 3;
     assigneeList.innerHTML = state.contacts.map(c => `<option value="${escapeHtml(c.name)}">`).join("");
-    document.getElementById("taskDialogTitle").textContent = `タスク追加（${boardById(dialogBoardId).name}）`;
+    if (task) {
+      document.getElementById("taskDialogTitle").textContent = "タスクを編集";
+      taskName.value = task.name || "";
+      taskContent.value = task.content || "";
+      const due = parseDue(task.due);
+      taskDue.value = due ? formatDate(due) : (task.due || "");
+      taskMembers.value = membersOf(task).join("、");
+      taskRemarks.value = task.remarks || "";
+      taskReminderDays.value = task.reminderDays ?? 3;
+      taskStatus.value = STATUSES.includes(task.status) ? task.status : "未完了";
+      taskStatusRow.hidden = false;
+      taskDelete.hidden = false;
+    } else {
+      document.getElementById("taskDialogTitle").textContent = "タスク追加";
+      taskName.value = "";
+      taskContent.value = "";
+      taskMembers.value = "";
+      taskRemarks.value = "";
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      taskDue.value = formatDate(d);
+      taskReminderDays.value = 3;
+      taskStatusRow.hidden = true;
+      taskDelete.hidden = true;
+    }
     taskDialog.showModal();
+    taskName.focus();
   }
 
   document.getElementById("taskCancel").addEventListener("click", () => taskDialog.close());
@@ -5530,22 +5725,121 @@
     if (!cleanName) { alert("タスク名を入力してください。"); taskName.focus(); return; }
     const due = normalizeDueInput(taskDue.value);
     if (!due) { alert("期日は yyyy/mm/dd 形式で入力してください。"); return; }
-    const newTask = {
-      id: state.nextTaskId++,
-      name: cleanName,
-      assignee: taskAssignee.value.trim(),
-      due,
-      reminderDays: Math.max(0, parseInt(taskReminderDays.value, 10) || 0),
-      status: "未完了",
-      sentFlag: "",
-      boards: [dialogBoardId && boardById(dialogBoardId) && !boardById(dialogBoardId).archived ? dialogBoardId : activeBoards()[0].id]
-    };
-    state.tasks.push(newTask);
+    const members = parseMembers(taskMembers.value);
+    const assignee = members[0] || "";        // 先頭を主担当（リマインダーの主宛先）
+    const participants = members.slice(1);      // 残りを参加者
+    const content = taskContent.value.trim();
+    const remarks = taskRemarks.value.trim();
+    const reminderDays = Math.max(0, parseInt(taskReminderDays.value, 10) || 0);
+
+    if (editingTaskId != null) {
+      const t = state.tasks.find(x => x.id === editingTaskId);
+      if (t) {
+        const dueChanged = t.due !== due;
+        t.name = cleanName;
+        t.content = content;
+        t.due = due;
+        t.assignee = assignee;
+        t.participants = participants;
+        t.remarks = remarks;
+        t.reminderDays = reminderDays;
+        t.status = taskStatus.value;
+        if (dueChanged) t.sentFlag = ""; // 期日が変われば送信判定はやり直す
+      }
+      save();
+      taskDialog.close();
+      renderBoard();
+      toast(`「${cleanName}」を更新しました`);
+    } else {
+      const newTask = {
+        id: state.nextTaskId++,
+        name: cleanName,
+        content,
+        assignee,
+        participants,
+        due,
+        remarks,
+        reminderDays,
+        status: "未完了",
+        sentFlag: "",
+        boards: [primaryBoard().id]
+      };
+      state.tasks.push(newTask);
+      save();
+      taskDialog.close();
+      renderBoard();
+      toast(`「${newTask.name}」を追加しました`);
+    }
+  });
+
+  // 編集ダイアログからの削除（トーストの「元に戻す」で復元可能）
+  taskDelete.addEventListener("click", () => {
+    if (editingTaskId == null) return;
+    const idx = state.tasks.findIndex(t => t.id === editingTaskId);
+    if (idx < 0) return;
+    const [removed] = state.tasks.splice(idx, 1);
     save();
     taskDialog.close();
     renderBoard();
-    toast(`「${newTask.name}」を追加しました`);
+    toast(`「${removed.name}」を削除しました`, {
+      actionLabel: "元に戻す",
+      onAction: () => {
+        state.tasks.splice(Math.min(idx, state.tasks.length), 0, removed);
+        save();
+        renderBoard();
+      }
+    });
   });
+
+  // ---- タスク一覧テーブル（親タスクボードを開くと全画面表示） ----
+  const taskTableDialog = document.getElementById("taskTableDialog");
+  const ttBody = document.getElementById("ttBody");
+  document.getElementById("ttClose").addEventListener("click", () => taskTableDialog.close());
+  document.getElementById("ttAddBtn").addEventListener("click", () => openTaskDialog());
+
+  function openTaskTable() {
+    document.getElementById("ttTitle").textContent = "📋 " + primaryBoard().name;
+    renderTaskTable();
+    if (!taskTableDialog.open) taskTableDialog.showModal();
+  }
+
+  function renderTaskTable() {
+    const today = todayDate();
+    const tasks = state.tasks.filter(t => !taskIsArchived(t));
+    // 期日の近い順（未設定は末尾）に並べる
+    tasks.sort((a, b) => {
+      const da = parseDue(a.due), db = parseDue(b.due);
+      if (!da && !db) return 0;
+      if (!da) return 1;
+      if (!db) return -1;
+      return da - db;
+    });
+    document.getElementById("ttTitle").textContent = "📋 " + primaryBoard().name;
+    if (!tasks.length) {
+      ttBody.innerHTML = `<tr class="tt-empty"><td colspan="5">タスクはまだありません。「＋ タスク追加」から登録してください。</td></tr>`;
+      return;
+    }
+    ttBody.innerHTML = tasks.map(t => {
+      const due = parseDue(t.due);
+      const overdue = due && t.status !== "完了" && daysBetween(today, due) < 0;
+      const dueText = due ? formatDate(due) : (escapeHtml(t.due || "—"));
+      const members = membersOf(t);
+      const statusDot = { "未完了": "#e0533d", "進行中": "#e6a400", "完了": "#2fae5a" }[t.status] || "#999";
+      return `<tr class="status-${t.status}" data-task-id="${t.id}">
+        <td class="tt-name"><span class="tt-status-dot" style="background:${statusDot}" title="${escapeHtml(t.status)}"></span>${escapeHtml(t.name)}</td>
+        <td class="tt-content">${t.content ? escapeHtml(t.content) : '<span style="color:#aab;">—</span>'}</td>
+        <td class="tt-due${overdue ? " overdue" : ""}">${dueText}${overdue ? " ⚠" : ""}</td>
+        <td class="tt-members">${members.length ? escapeHtml(members.join("、")) : '<span style="color:#aab;">—</span>'}</td>
+        <td class="tt-remarks">${t.remarks ? escapeHtml(t.remarks) : '<span style="color:#aab;">—</span>'}</td>
+      </tr>`;
+    }).join("");
+    ttBody.querySelectorAll("tr[data-task-id]").forEach(tr => {
+      tr.addEventListener("click", () => {
+        const task = state.tasks.find(x => x.id === Number(tr.dataset.taskId));
+        if (task) openTaskDialog(task);
+      });
+    });
+  }
 
   // ---------------------------------------------------------------
   // 名簿
@@ -5567,24 +5861,12 @@
       (!scopeIds || taskBoardIds(t).some(id => scopeIds.includes(id))));
   }
 
-  // 名簿から選んだタスクへジャンプ：該当ボードを展開・最前面にし、カードを選択状態にする
+  // 名簿から選んだタスクへジャンプ：親タスクボードの一覧テーブルを開き、その行の編集ダイアログを開く
   function jumpToTask(task) {
     panelModal.close();
-    selectedTaskId = task.id;
-    // 稼働中ボードを優先（先頭が終了ボードだと画面に出ず飛べないため）
-    const ids = taskBoardIds(task);
-    const first = ids.find(id => { const b = boardById(id); return b && !b.archived; }) || ids[0];
-    const g = findGroup(first);
-    const boardKey = g ? groupKeyOf(g) : first;
-    if (state.boardPos[boardKey]) {
-      state.boardPos[boardKey].collapsed = false;
-      state.boardPos[boardKey].z = ++colZCounter;
-    }
-    save();
-    renderBoard();
-    const col = kanbanColumns.querySelector(`.kb-col[data-board="${boardKey}"]`);
-    if (col) col.scrollIntoView({ block: "nearest", inline: "nearest" });
-    toast(`「${task.name}」を選択しました`);
+    openTaskTable();
+    openTaskDialog(task);
+    toast(`「${task.name}」を開きました`);
   }
 
   function renderContacts() {
@@ -6296,19 +6578,8 @@ ${state.boardGroups.length ? JSON.stringify(state.boardGroups.map(g => g.map(id 
     renderBoard();
   });
 
-  // タスク追加はヘッダーからは行わず、各ボードヘッダーの「＋」ボタン（renderBoard内）と
-  // 空きスペースのダブルクリック、キーボードの N から行う
-  document.getElementById("btnAddBoardTop").addEventListener("click", () => {
-    const dialog = document.getElementById("dialogCreateBoard");
-    const inputName = document.getElementById("inputBoardName");
-    const inputMiniName = document.getElementById("inputBoardMiniName");
-    const boardIdx = state.boards.length;
-    inputName.value = `ボード${boardIdx + 1}`;
-    inputMiniName.value = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"][boardIdx] || `#${boardIdx + 1}`;
-    inputName.focus();
-    dialog.showModal();
-  });
-
+  // タスク追加は親タスクボードのタイルの「＋」（renderBoard内）・一覧テーブルの「＋ タスク追加」・
+  // キーボードの N から行う。ボード作成ダイアログは親タスクボード化により未使用。
   document.getElementById("btnBoardDialogCancel").addEventListener("click", () => {
     document.getElementById("dialogCreateBoard").close();
   });
