@@ -654,11 +654,14 @@
   .kb-col-resize-e:hover, .kb-col-resize-s:hover { background: rgba(37, 99, 235, 0.20); border-radius: 4px; }
 
   /* ---- 親タスクボード：単一ボードのタイル（クリックで一覧テーブルを開く） ---- */
+  .parent-board-tile.dragging-col { will-change: left, top; box-shadow: 0 18px 40px rgba(0,0,0,.28); }
+  .parent-board-tile .pbt-hdr { touch-action: none; }
   .parent-board-tile {
     position: absolute;
     left: 24px;
     top: 24px;
     width: 380px;
+    transition: box-shadow .15s;
     background: var(--card-bg, #fff);
     border-radius: 16px;
     box-shadow: var(--shadow-md, 0 8px 24px rgba(0,0,0,.18));
@@ -2246,7 +2249,11 @@
     s.boards = [primary];
     s.boardGroups = [];
     s.lockedGroups = [];
+    // 親タスクボードの配置は記憶する（前と同じく画面中を移動でき、位置を保持する）。
+    // 旧・複数ボードの位置情報は破棄し、主ボードの位置だけ引き継ぐ。
+    const keepPos = (s.boardPos && s.boardPos[primary.id]) ? s.boardPos[primary.id] : null;
     s.boardPos = {};
+    if (keepPos) s.boardPos[primary.id] = { x: keepPos.x || 24, y: keepPos.y || 24, z: keepPos.z || 1 };
     return s;
   }
 
@@ -4642,7 +4649,7 @@
   // 月パネル同士が自由配置後にどこまで広がっても収まるよう、キャンバスのサイズを実測して合わせる
   function resizeBoardCanvas() {
     let maxRight = 0, maxBottom = 0;
-    kanbanColumns.querySelectorAll(".kb-col").forEach(col => {
+    kanbanColumns.querySelectorAll(".kb-col, .parent-board-tile").forEach(col => {
       maxRight = Math.max(maxRight, col.offsetLeft + col.offsetWidth);
       maxBottom = Math.max(maxBottom, col.offsetTop + col.offsetHeight);
     });
@@ -5203,8 +5210,17 @@
     const tasks = state.tasks.filter(t => !taskIsArchived(t));
     const pct = monthCompletionPercent(tasks);
 
+    // 配置（前と同じく画面中をドラッグで移動でき、位置を保持する）
+    let needsSave = false;
+    let pos = state.boardPos[board.id];
+    if (!pos) { pos = state.boardPos[board.id] = { x: 24, y: 24, z: ++colZCounter }; needsSave = true; }
+
     const tile = document.createElement("div");
     tile.className = "parent-board-tile";
+    tile.dataset.board = board.id;
+    tile.style.left = (pos.x || 0) + "px";
+    tile.style.top = (pos.y || 0) + "px";
+    tile.style.zIndex = pos.z || 1;
     tile.innerHTML = `
       <div class="pbt-hdr">
         <span class="pbt-title">📋 ${escapeHtml(board.name)}</span>
@@ -5216,10 +5232,62 @@
     `;
     tile.querySelector(".pbt-add").addEventListener("click", e => { e.stopPropagation(); openTaskDialog(); });
     tile.querySelector(".pbt-open").addEventListener("click", () => openTaskTable());
+    attachParentTileDrag(tile, board.id);
     kanbanColumns.appendChild(tile);
+    if (needsSave) save();
+    resizeBoardCanvas();
     // 一覧テーブルを開いている間は同時に更新する
     const ttDlg = document.getElementById("taskTableDialog");
     if (ttDlg && ttDlg.open) renderTaskTable();
+  }
+
+  // 親タスクボードのタイルを、ヘッダーをつかんで画面中の好きな位置へ移動する（位置は保持）。
+  // ＋ボタン等の上では移動しない。移動しなかった場合はクリックとして扱う。
+  function attachParentTileDrag(tile, boardId) {
+    const hdr = tile.querySelector(".pbt-hdr");
+    hdr.style.cursor = "grab";
+    hdr.addEventListener("pointerdown", e => {
+      if (e.button !== 0) return;
+      if (e.target.closest("button")) return; // ＋ボタン等はドラッグ対象にしない
+      e.preventDefault();
+      const pos = state.boardPos[boardId] || (state.boardPos[boardId] = { x: 24, y: 24, z: 1 });
+      pos.z = ++colZCounter;
+      tile.style.zIndex = pos.z;
+      const startX = e.clientX, startY = e.clientY;
+      const containerRect = kanbanColumns.getBoundingClientRect();
+      const rect = tile.getBoundingClientRect();
+      const offsetX = startX - rect.left;
+      const offsetY = startY - rect.top;
+      let moved = false;
+      function onMove(ev) {
+        if (!moved && (Math.abs(ev.clientX - startX) > 3 || Math.abs(ev.clientY - startY) > 3)) {
+          moved = true;
+          tile.classList.add("dragging-col");
+          document.body.style.cursor = "grabbing";
+        }
+        if (!moved) return;
+        const x = Math.max(0, ev.clientX - containerRect.left - offsetX);
+        const y = Math.max(0, ev.clientY - containerRect.top - offsetY);
+        tile.style.left = x + "px";
+        tile.style.top = y + "px";
+        resizeBoardCanvas();
+      }
+      function onUp() {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onUp);
+        document.body.style.cursor = "";
+        if (!moved) return;
+        tile.classList.remove("dragging-col");
+        pos.x = parseFloat(tile.style.left);
+        pos.y = parseFloat(tile.style.top);
+        save();
+        resizeBoardCanvas();
+      }
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onUp);
+    });
   }
 
   // 旧・複数ボード（親/子・結合）描画。親タスクボード化により未使用（参照のため残置）。
