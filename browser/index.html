@@ -916,7 +916,7 @@
     font-size: 1.05em;
   }
   .kb-card .t-detail label { display: flex; flex-direction: column; gap: 5px; }
-  .kb-card .t-detail input, .kb-card .t-detail select {
+  .kb-card .t-detail input, .kb-card .t-detail select, .kb-card .t-detail textarea {
     padding: 5px 7px;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -925,7 +925,8 @@
     color: var(--text);
     transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
   }
-  .kb-card .t-detail input:focus, .kb-card .t-detail select:focus {
+  .kb-card .t-detail textarea { resize: vertical; font-family: inherit; line-height: 1.5; min-height: 40px; }
+  .kb-card .t-detail input:focus, .kb-card .t-detail select:focus, .kb-card .t-detail textarea:focus {
     outline: none;
     border-color: var(--accent);
     background: #fff;
@@ -2249,11 +2250,11 @@
     s.boards = [primary];
     s.boardGroups = [];
     s.lockedGroups = [];
-    // 親タスクボードの配置は記憶する（前と同じく画面中を移動でき、位置を保持する）。
-    // 旧・複数ボードの位置情報は破棄し、主ボードの位置だけ引き継ぐ。
+    // 親タスクボードの配置・見た目（位置・サイズ・色/形・折りたたみ等）は記憶する。
+    // 旧・複数ボードの位置情報は破棄し、主ボードの設定だけそのまま引き継ぐ。
     const keepPos = (s.boardPos && s.boardPos[primary.id]) ? s.boardPos[primary.id] : null;
     s.boardPos = {};
-    if (keepPos) s.boardPos[primary.id] = { x: keepPos.x || 24, y: keepPos.y || 24, z: keepPos.z || 1 };
+    if (keepPos) s.boardPos[primary.id] = keepPos;
     return s;
   }
 
@@ -2709,7 +2710,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-24 (30) 親/子ボードを廃止し単一の「親タスクボード」に統一。開くとタスク名／内容／期日／参加メンバー／備考の一覧テーブルを全画面表示";
+  const APP_VERSION = "2026-07-24 (31) 親タスクボードを以前の子タスクボードと同じ仕様に（カードを直接表示・折りたたみ/リサイズ/色/☰メニュー）。カードに内容・備考の編集欄を追加。常に1枚（作成・結合なし）";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -5018,6 +5019,9 @@
       </div>
       ${expanded ? `
       <div class="t-detail" data-detail>
+        <label><span class="f-label">📝 内容</span>
+          <textarea class="edit-content" rows="3" placeholder="タスクの内容・詳細">${escapeHtml(task.content || "")}</textarea>
+        </label>
         <label><span class="f-label">👤 担当者</span>
           <input type="text" class="edit-assignee" value="${escapeHtml(task.assignee)}" list="assigneeList">
         </label>
@@ -5040,6 +5044,7 @@
         <label><span class="f-label">📅 期日 <span class="f-hint">yyyy/mm/dd</span></span>
           <input type="text" class="edit-due" value="${due ? formatDate(due) : escapeHtml(task.due || "")}">
         </label>
+        ${activeBoards().length > 1 ? `
         <label><span class="f-label">📌 所属ボード <span class="f-hint">複数選択可</span></span>
           <span class="edit-months">
             ${activeBoards().map(b => {
@@ -5048,7 +5053,7 @@
                 title="${on ? "クリックで所属から外す" : "クリックで所属に追加"}">${escapeHtml(b.name)}</button>`;
             }).join("")}
           </span>
-        </label>
+        </label>` : ""}
         <div class="kb-field">
           <span class="f-label">⚑ ステータス</span>
           <div class="kb-select" data-status-select>
@@ -5074,6 +5079,9 @@
           ${task.source.url ? `<br><a href="${escapeHtml(task.source.url)}" target="_blank" rel="noopener" style="font-size:11px; word-break:break-all;">${escapeHtml(task.source.url)}</a>` : ""}
           ${task.source.at ? `<br><span style="font-size:10.5px;">取得: ${new Date(task.source.at).toLocaleString("ja-JP")}</span>` : ""}
         </div>` : ""}
+        <label><span class="f-label">🗒 備考</span>
+          <textarea class="edit-remarks" rows="2" placeholder="補足・メモ">${escapeHtml(task.remarks || "")}</textarea>
+        </label>
         <button type="button" class="small edit-delete">🗑 タスクを削除</button>
       </div>` : ""}
     `;
@@ -5111,6 +5119,15 @@
         task.assignee = e.target.value.trim();
         save();
         renderBoard();
+      });
+      // 内容・備考：カードの見た目は変わらないので、保存のみ（再描画せず入力位置を保つ）
+      card.querySelector(".edit-content").addEventListener("change", e => {
+        task.content = e.target.value.trim();
+        save();
+      });
+      card.querySelector(".edit-remarks").addEventListener("change", e => {
+        task.remarks = e.target.value.trim();
+        save();
       });
       // 「📋 名簿を開く」：参加者を名簿リスト（別表）で表示する
       const rosterBtn = card.querySelector("[data-open-roster]");
@@ -5202,96 +5219,10 @@
     return card;
   }
 
-  // 親タスクボード：ホーム画面に単一のボードタイルを描画する。
-  // クリックで「タスク名／内容／期日／参加メンバー／備考」の一覧テーブル（全画面）を開く。
+  // 親タスクボード（唯一のタスクボード）。以前の子タスクボードと同じく、ボード内に
+  // タスクカードを直接表示し、折りたたみ・リサイズ・色/形・☰メニュー・ドラッグ移動に対応する。
+  // 子タスクボードは廃止したため、ボードの作成・結合は行わない（常に1枚）。
   function renderBoard() {
-    kanbanColumns.innerHTML = "";
-    const board = primaryBoard();
-    const tasks = state.tasks.filter(t => !taskIsArchived(t));
-    const pct = monthCompletionPercent(tasks);
-
-    // 配置（前と同じく画面中をドラッグで移動でき、位置を保持する）
-    let needsSave = false;
-    let pos = state.boardPos[board.id];
-    if (!pos) { pos = state.boardPos[board.id] = { x: 24, y: 24, z: ++colZCounter }; needsSave = true; }
-
-    const tile = document.createElement("div");
-    tile.className = "parent-board-tile";
-    tile.dataset.board = board.id;
-    tile.style.left = (pos.x || 0) + "px";
-    tile.style.top = (pos.y || 0) + "px";
-    tile.style.zIndex = pos.z || 1;
-    tile.innerHTML = `
-      <div class="pbt-hdr">
-        <span class="pbt-title">📋 ${escapeHtml(board.name)}</span>
-        <button type="button" class="pbt-add" title="タスクを追加">＋</button>
-      </div>
-      <div class="pbt-count">現在のタスク数 <b>${tasks.length}</b></div>
-      ${pct !== null ? `<div class="pbt-progress"><i style="width:${pct}%"></i></div><div class="pbt-pct">${pct}% 完了</div>` : ""}
-      <button type="button" class="pbt-open">📂 開く（一覧を表示）</button>
-    `;
-    tile.querySelector(".pbt-add").addEventListener("click", e => { e.stopPropagation(); openTaskDialog(); });
-    tile.querySelector(".pbt-open").addEventListener("click", () => openTaskTable());
-    attachParentTileDrag(tile, board.id);
-    kanbanColumns.appendChild(tile);
-    if (needsSave) save();
-    resizeBoardCanvas();
-    // 一覧テーブルを開いている間は同時に更新する
-    const ttDlg = document.getElementById("taskTableDialog");
-    if (ttDlg && ttDlg.open) renderTaskTable();
-  }
-
-  // 親タスクボードのタイルを、ヘッダーをつかんで画面中の好きな位置へ移動する（位置は保持）。
-  // ＋ボタン等の上では移動しない。移動しなかった場合はクリックとして扱う。
-  function attachParentTileDrag(tile, boardId) {
-    const hdr = tile.querySelector(".pbt-hdr");
-    hdr.style.cursor = "grab";
-    hdr.addEventListener("pointerdown", e => {
-      if (e.button !== 0) return;
-      if (e.target.closest("button")) return; // ＋ボタン等はドラッグ対象にしない
-      e.preventDefault();
-      const pos = state.boardPos[boardId] || (state.boardPos[boardId] = { x: 24, y: 24, z: 1 });
-      pos.z = ++colZCounter;
-      tile.style.zIndex = pos.z;
-      const startX = e.clientX, startY = e.clientY;
-      const containerRect = kanbanColumns.getBoundingClientRect();
-      const rect = tile.getBoundingClientRect();
-      const offsetX = startX - rect.left;
-      const offsetY = startY - rect.top;
-      let moved = false;
-      function onMove(ev) {
-        if (!moved && (Math.abs(ev.clientX - startX) > 3 || Math.abs(ev.clientY - startY) > 3)) {
-          moved = true;
-          tile.classList.add("dragging-col");
-          document.body.style.cursor = "grabbing";
-        }
-        if (!moved) return;
-        const x = Math.max(0, ev.clientX - containerRect.left - offsetX);
-        const y = Math.max(0, ev.clientY - containerRect.top - offsetY);
-        tile.style.left = x + "px";
-        tile.style.top = y + "px";
-        resizeBoardCanvas();
-      }
-      function onUp() {
-        document.removeEventListener("pointermove", onMove);
-        document.removeEventListener("pointerup", onUp);
-        document.removeEventListener("pointercancel", onUp);
-        document.body.style.cursor = "";
-        if (!moved) return;
-        tile.classList.remove("dragging-col");
-        pos.x = parseFloat(tile.style.left);
-        pos.y = parseFloat(tile.style.top);
-        save();
-        resizeBoardCanvas();
-      }
-      document.addEventListener("pointermove", onMove);
-      document.addEventListener("pointerup", onUp);
-      document.addEventListener("pointercancel", onUp);
-    });
-  }
-
-  // 旧・複数ボード（親/子・結合）描画。親タスクボード化により未使用（参照のため残置）。
-  function renderBoardLegacyUnused() {
     kanbanColumns.innerHTML = "";
     const boardKeys = getBoardKeys();
     let needsSave = ensureColPos(boardKeys);
@@ -5668,8 +5599,9 @@
 
           menu.appendChild(configSection);
 
-          // 「完了/終了」はメニュー最下部に配置。削除前に確認ダイアログを表示する
-          if (!isGroupKey(key)) {
+          // 「完了/終了」はメニュー最下部に配置。削除前に確認ダイアログを表示する。
+          // 親タスクボードのみ運用では最後の1枚は終了できないため、複数ボード時のみ表示する。
+          if (!isGroupKey(key) && activeBoards().length > 1) {
             const archiveBtn = document.createElement("button");
             archiveBtn.type = "button";
             archiveBtn.className = "kb-col-menu-item";
@@ -5929,12 +5861,23 @@
       (!scopeIds || taskBoardIds(t).some(id => scopeIds.includes(id))));
   }
 
-  // 名簿から選んだタスクへジャンプ：親タスクボードの一覧テーブルを開き、その行の編集ダイアログを開く
+  // 名簿から選んだタスクへジャンプ：親タスクボードを展開・最前面にし、カードを選択（展開）状態にする
   function jumpToTask(task) {
     panelModal.close();
-    openTaskTable();
-    openTaskDialog(task);
-    toast(`「${task.name}」を開きました`);
+    selectedTaskId = task.id;
+    const ids = taskBoardIds(task);
+    const first = ids.find(id => { const b = boardById(id); return b && !b.archived; }) || ids[0];
+    const g = findGroup(first);
+    const boardKey = g ? groupKeyOf(g) : first;
+    if (state.boardPos[boardKey]) {
+      state.boardPos[boardKey].collapsed = false;
+      state.boardPos[boardKey].z = ++colZCounter;
+    }
+    save();
+    renderBoard();
+    const col = kanbanColumns.querySelector(`.kb-col[data-board="${boardKey}"]`);
+    if (col) col.scrollIntoView({ block: "nearest", inline: "nearest" });
+    toast(`「${task.name}」を選択しました`);
   }
 
   function renderContacts() {
