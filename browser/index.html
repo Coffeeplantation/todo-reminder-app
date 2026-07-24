@@ -2426,7 +2426,7 @@
   }
   // 解除時は結合ボードの内容（色・形・サイズ等の見た目設定と折りたたみ状態）を各ボードへ引き継ぎ、
   // 結合ボードのあった位置から横に並べて配置する。タスクの所属（task.boards）は変わらない。
-  const INHERIT_POS_KEYS = ["color", "shape", "border", "fontSize", "shadow", "tileSize", "icon", "w", "h", "collapsed"];
+  const INHERIT_POS_KEYS = ["color", "shape", "border", "fontSize", "shadow", "tileSize", "icon", "w", "h", "collapsed", "scale"];
   function groupStepX(groupPos) {
     return groupPos.collapsed
       ? TILE_SIZE_PRESET[groupPos.tileSize || "normal"].tile + 24
@@ -2710,7 +2710,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-24 (31) 親タスクボードを以前の子タスクボードと同じ仕様に（カードを直接表示・折りたたみ/リサイズ/色/☰メニュー）。カードに内容・備考の編集欄を追加。常に1枚（作成・結合なし）";
+  const APP_VERSION = "2026-07-24 (32) 親タスクボードに「全体サイズ（小〜最大）」を追加し、ボードをカードごと拡大縮小可能に（ドラッグ/リサイズもスケール対応）。子タスクボードは廃止のまま";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -4651,8 +4651,10 @@
   function resizeBoardCanvas() {
     let maxRight = 0, maxBottom = 0;
     kanbanColumns.querySelectorAll(".kb-col, .parent-board-tile").forEach(col => {
-      maxRight = Math.max(maxRight, col.offsetLeft + col.offsetWidth);
-      maxBottom = Math.max(maxBottom, col.offsetTop + col.offsetHeight);
+      // 全体サイズで拡大したボードは左上基準で offsetWidth×倍率ぶん広がる
+      const sc = col.dataset.board ? boardScale(col.dataset.board) : 1;
+      maxRight = Math.max(maxRight, col.offsetLeft + col.offsetWidth * sc);
+      maxBottom = Math.max(maxBottom, col.offsetTop + col.offsetHeight * sc);
     });
     kanbanColumns.style.width = (maxRight + 20) + "px";
     kanbanColumns.style.height = (maxBottom + 20) + "px";
@@ -4749,6 +4751,15 @@
 
   const COL_MIN_W = 90, COL_HEADER_H = 44, COL_MIN_H = COL_HEADER_H; /* ヘッダー1.5倍化に合わせて高さ更新 */
 
+  // 全体サイズ（ボードをカードごと拡大縮小する倍率）。0.5〜2.0にクランプ。既定1.0。
+  const BOARD_SCALE_MIN = 0.5, BOARD_SCALE_MAX = 2.0;
+  function boardScale(key) {
+    const pos = state.boardPos[key];
+    const s = pos && Number(pos.scale);
+    if (!s || isNaN(s)) return 1;
+    return Math.min(BOARD_SCALE_MAX, Math.max(BOARD_SCALE_MIN, s));
+  }
+
   // 月パネル右下のハンドルをドラッグして大きさを自由に変更する。
   // 見出しの高さまで縮めると、折りたたみ状態（月名のみ表示）に切り替わる。
   // ボードの拡大縮小。右下コーナー（縦横）に加えて、右端（幅のみ）・下端（高さのみ）の
@@ -4761,11 +4772,12 @@
       e.stopPropagation();
       const startX = e.clientX, startY = e.clientY;
       const startW = col.offsetWidth, startH = col.offsetHeight;
+      const sc = boardScale(key); // 全体サイズ拡大時は、画面上の移動量を倍率で割ってレイアウト値に直す
       let requestedW = startW, requestedH = startH;
 
       function onMove(ev) {
-        if (mode !== "s") requestedW = Math.max(COL_MIN_W, startW + (ev.clientX - startX));
-        if (mode !== "e") requestedH = Math.max(COL_MIN_H, startH + (ev.clientY - startY));
+        if (mode !== "s") requestedW = Math.max(COL_MIN_W, startW + (ev.clientX - startX) / sc);
+        if (mode !== "e") requestedH = Math.max(COL_MIN_H, startH + (ev.clientY - startY) / sc);
         col.style.width = requestedW + "px";
         col.style.height = requestedH + "px";
         resizeBoardCanvas();
@@ -4894,7 +4906,10 @@
         // 折りたたみボードへのドロップ等、カード置き場が無い場合は元のボード内に戻す
         const targetWrap = (targetCol && targetCol.querySelector(".kb-cards")) || originWrap;
         const wrapRect = targetWrap.getBoundingClientRect();
-        task.pos = clampPos(targetWrap, ev.clientX - wrapRect.left - offsetX, ev.clientY - wrapRect.top - offsetY);
+        // 全体サイズ倍率を打ち消して、ボード内のレイアウト座標に直す
+        const dropCol = targetCol || originCol;
+        const sc = dropCol ? boardScale(dropCol.dataset.board) : 1;
+        task.pos = clampPos(targetWrap, (ev.clientX - wrapRect.left - offsetX) / sc, (ev.clientY - wrapRect.top - offsetY) / sc);
 
         // タスクの所属ボードのいずれかがドロップ先に含まれていれば移動不要（位置変更のみ）。
         // 含まれない場合は、元ボードの所属を外してドロップ先へ移す。
@@ -4927,12 +4942,14 @@
       e.stopPropagation();
       const startX = e.clientX, startY = e.clientY;
       const startW = card.offsetWidth, startH = card.offsetHeight;
+      const scCol = card.closest(".kb-col");
+      const sc = scCol ? boardScale(scCol.dataset.board) : 1; // 全体サイズ倍率を打ち消す
       let moved = false;
 
       function onMove(ev) {
         moved = true;
-        card.style.width = Math.max(90, startW + (ev.clientX - startX)) + "px";
-        card.style.height = Math.max(44, startH + (ev.clientY - startY)) + "px";
+        card.style.width = Math.max(90, startW + (ev.clientX - startX) / sc) + "px";
+        card.style.height = Math.max(44, startH + (ev.clientY - startY) / sc) + "px";
       }
       function onUp() {
         document.removeEventListener("pointermove", onMove);
@@ -5246,6 +5263,10 @@
       col.style.borderWidth = pos.border === "double" ? "4px" : "";
       col.style.setProperty("--kb-font-scale", FONT_SIZE_SCALE[pos.fontSize || "normal"]);
       col.style.boxShadow = SHADOW_PRESET[pos.shadow || "none"] || "";
+      // 全体サイズ（大小）：ボード全体をカードごと拡大縮小する。左上を基準に拡大する。
+      const boardScaleVal = boardScale(key);
+      col.style.transformOrigin = "top left";
+      col.style.transform = boardScaleVal === 1 ? "" : `scale(${boardScaleVal})`;
 
       // 所属ボードのいずれかがこのボードに含まれるタスクを表示する。
       // 結合ボードでは各ボードのタスクを足し合わせた一覧になり（同一タスクは1枚）、
@@ -5578,6 +5599,11 @@
           });
           colorRow.appendChild(colorInput);
           configSection.appendChild(colorRow);
+
+          // 全体サイズ（大小）：ボードをカードごと拡大縮小する
+          configSection.appendChild(buildSelectRow("🔍 全体サイズ",
+            [["0.7", "小"], ["0.85", "やや小"], ["1", "標準"], ["1.25", "大"], ["1.5", "特大"], ["2", "最大"]],
+            String(boardScale(key)), v => { state.boardPos[key].scale = parseFloat(v); }));
 
           configSection.appendChild(buildSelectRow("形（折りたたみ時）", [["square", "四角"], ["circle", "〇"]],
             pos.shape || "square", v => { state.boardPos[key].shape = v; }));
