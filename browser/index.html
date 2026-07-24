@@ -2731,7 +2731,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-24 (33) 親タスクボードの中身をリスト（表）表示化：タイトル／内容／期日／メンバー／備考。行クリックで編集。ボード枠・☰メニュー・全体サイズ・移動はそのまま。子タスクボード廃止";
+  const APP_VERSION = "2026-07-24 (34) ボード隅のドラッグを比例ズーム化：縮小拡大に合わせて文字・行なども比例して変わる。右端=幅/下端=高さは従来どおり。リスト表示・子タスクボード廃止は維持";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -4787,11 +4787,39 @@
   // グリップ帯からもドラッグできる。Pointer Events ベースでタッチ・ペンにも対応。
   // コーナーのダブルクリックで既定サイズ（幅340px・高さ自動）に戻せる。
   function attachColResize(col, key) {
-    function startResize(e, mode) { // mode: "se"=縦横 / "e"=幅のみ / "s"=高さのみ
+    function startResize(e, mode) { // mode: "se"=比例ズーム / "e"=幅のみ / "s"=高さのみ
       if (e.pointerType === "mouse" && e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       const startX = e.clientX, startY = e.clientY;
+
+      // 隅（se）＝全体を比例拡大縮小（ズーム）。文字・行の高さなども一緒に変わる。
+      if (mode === "se") {
+        const startScale = boardScale(key);
+        const baseW = col.offsetWidth || 400; // レイアウト幅（倍率を含まない）を基準に増減量を決める
+        let liveScale = startScale;
+        function onMoveScale(ev) {
+          liveScale = Math.min(BOARD_SCALE_MAX, Math.max(BOARD_SCALE_MIN,
+            startScale + (ev.clientX - startX) / baseW));
+          col.style.transformOrigin = "top left";
+          col.style.transform = liveScale === 1 ? "" : `scale(${liveScale})`;
+          resizeBoardCanvas();
+        }
+        function onUpScale() {
+          document.removeEventListener("pointermove", onMoveScale);
+          document.removeEventListener("pointerup", onUpScale);
+          document.removeEventListener("pointercancel", onUpScale);
+          state.boardPos[key].scale = liveScale;
+          save();
+          renderBoard();
+        }
+        document.addEventListener("pointermove", onMoveScale);
+        document.addEventListener("pointerup", onUpScale);
+        document.addEventListener("pointercancel", onUpScale);
+        return;
+      }
+
+      // 右端（e）＝幅のみ / 下端（s）＝高さのみ。倍率はそのままで箱の大きさだけ変える。
       const startW = col.offsetWidth, startH = col.offsetHeight;
       const sc = boardScale(key); // 全体サイズ拡大時は、画面上の移動量を倍率で割ってレイアウト値に直す
       let requestedW = startW, requestedH = startH;
@@ -4822,15 +4850,16 @@
 
     const corner = document.createElement("div");
     corner.className = "kb-col-resize";
-    corner.title = "ドラッグで拡大縮小 / ダブルクリックで既定サイズに戻す";
+    corner.title = "ドラッグで全体を拡大縮小（文字も比例して変わる）/ ダブルクリックで標準の大きさに戻す";
     corner.addEventListener("pointerdown", e => startResize(e, "se"));
     corner.addEventListener("dblclick", e => {
       e.stopPropagation();
-      state.boardPos[key].w = 620; /* リスト表示（5列）が収まる既定幅 */
+      state.boardPos[key].scale = 1;      // ズームを標準に
+      state.boardPos[key].w = 620;         // リスト表示（5列）が収まる既定幅
       delete state.boardPos[key].h;
       save();
       renderBoard();
-      toast("ボードを既定サイズに戻しました");
+      toast("標準の大きさに戻しました");
     });
     col.appendChild(corner);
 
