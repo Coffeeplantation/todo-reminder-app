@@ -516,6 +516,27 @@
   }
   /* カードを開いている（詳細展開中の）ボードだけ、枠外へのはみ出し表示を許可して見やすくする */
   .kb-col.has-open-card .kb-cards { overflow: visible; }
+
+  /* ---- 親タスクボードの中身：リスト（表）表示 ---- */
+  .kb-cards.kb-list-wrap { background-image: none; padding: 0; overflow: auto; }
+  .kb-list-table { width: 100%; border-collapse: collapse; font-size: inherit; }
+  .kb-list-table thead th {
+    position: sticky; top: 0; z-index: 1; background: #eef1f8;
+    text-align: left; padding: 7px 9px; font-weight: 700; font-size: 0.8em;
+    color: var(--muted); border-bottom: 2px solid var(--border); white-space: nowrap;
+  }
+  .kb-list-table tbody td { padding: 8px 9px; border-bottom: 1px solid var(--border); vertical-align: top; line-height: 1.45; }
+  .kb-list-table tbody tr { cursor: pointer; transition: background 0.12s; }
+  .kb-list-table tbody tr:hover td { background: rgba(37, 99, 235, 0.07); }
+  .kb-list-table tbody tr:last-child td { border-bottom: none; }
+  .kb-list-table tbody tr.status-完了 .kl-title { text-decoration: line-through; color: var(--muted); }
+  .kb-list-table .kl-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .kb-list-table .kl-title { font-weight: 600; min-width: 96px; }
+  .kb-list-table .kl-content, .kb-list-table .kl-remarks { color: var(--text); white-space: pre-wrap; word-break: break-word; min-width: 90px; }
+  .kb-list-table .kl-due { white-space: nowrap; }
+  .kb-list-table .kl-due.overdue { color: #d33; font-weight: 700; }
+  .kb-list-table .kl-members { min-width: 80px; }
+  .kb-list-table .kl-muted { color: #9aa3b2; }
   .kb-col-tile-icon {
     position: absolute;
     top: -6px;
@@ -2710,7 +2731,7 @@
   let modalReturnMenuKey = null;
 
   // 実行中バージョン（☰メニュー下部に表示）。キャッシュで古い版が動いていないかの確認用。更新時はここを上げる。
-  const APP_VERSION = "2026-07-24 (32) 親タスクボードに「全体サイズ（小〜最大）」を追加し、ボードをカードごと拡大縮小可能に（ドラッグ/リサイズもスケール対応）。子タスクボードは廃止のまま";
+  const APP_VERSION = "2026-07-24 (33) 親タスクボードの中身をリスト（表）表示化：タイトル／内容／期日／メンバー／備考。行クリックで編集。ボード枠・☰メニュー・全体サイズ・移動はそのまま。子タスクボード廃止";
   document.getElementById("appVersion").textContent = "バージョン: " + APP_VERSION;
   console.log("Todoリマインダー バージョン:", APP_VERSION);
   // 画面隅にも常時表示（メニューを開かずに、動いている版を確認できるように）
@@ -4805,7 +4826,7 @@
     corner.addEventListener("pointerdown", e => startResize(e, "se"));
     corner.addEventListener("dblclick", e => {
       e.stopPropagation();
-      state.boardPos[key].w = 340; /* 既定幅（1.5倍サイズ） */
+      state.boardPos[key].w = 620; /* リスト表示（5列）が収まる既定幅 */
       delete state.boardPos[key].h;
       save();
       renderBoard();
@@ -5257,7 +5278,7 @@
       // 結合ボードの折りたたみタイルは「7,8」のようにラベルが長くなるため幅を内容に合わせる
       col.style.width = collapsed
         ? (isGroupKey(key) ? "auto" : tileSize.tile + "px")
-        : (pos.w || 340) + "px"; /* 既定幅を1.5倍化に合わせて 240→340 */
+        : (pos.w || 620) + "px"; /* リスト表示（5列）が収まる既定幅 */
       if (!collapsed && pos.h) col.style.height = pos.h + "px";
       col.style.borderStyle = pos.border === "double" ? "double" : "";
       col.style.borderWidth = pos.border === "double" ? "4px" : "";
@@ -5403,30 +5424,51 @@
       attachColDrag(col, key);
 
       if (!collapsed) {
-        const cardsWrap = document.createElement("div");
-        cardsWrap.className = "kb-cards";
-        // 空きスペースをダブルクリックすると、このボードのタスク追加ダイアログを開く
-        cardsWrap.addEventListener("dblclick", e => {
-          if (e.target !== cardsWrap && !e.target.classList.contains("empty-msg")) return;
-          openTaskDialog({ boardId: memberIds[0] });
+        // 親タスクボードの中身は「タイトル／内容／期日／メンバー／備考」のリスト（表）表示。
+        // 行クリックで編集ダイアログ、空き部分のダブルクリックでタスク追加。
+        const listWrap = document.createElement("div");
+        listWrap.className = "kb-cards kb-list-wrap";
+        listWrap.addEventListener("dblclick", e => {
+          if (e.target.closest("tr[data-task-id]")) return;
+          openTaskDialog();
         });
         if (tasks.length === 0) {
-          cardsWrap.innerHTML = `<div class="empty-msg">タスクなし<br>ダブルクリックで追加</div>`;
+          listWrap.innerHTML = `<div class="empty-msg">タスクなし<br>「＋」またはダブルクリックで追加</div>`;
         } else {
-          if (ensureDefaultPos(tasks)) needsSave = true;
-          const maxRight = Math.max(...tasks.map(t => t.pos.x + ((t.size && t.size.w) || 190)));
-          const maxBottom = Math.max(...tasks.map(t => t.pos.y + ((t.size && t.size.h) || 110)));
-          // 高さが未指定のボードは、全カードが縦に収まるよう自動で背を伸ばす（従来動作）。
-          if (!pos.h) cardsWrap.style.minHeight = Math.max(220, maxBottom + 12) + "px";
-          // 枠外に置かれた／ボードを小さくして枠外になったカードにもスクロールで到達できるよう、
-          // スクロール領域を全カードを含む大きさに広げる「不可視スペーサー」を置く。
-          // （幅を widen するとボード枠からはみ出るので、スペーサーで overflow:auto のスクロール範囲だけを拡張する）
-          const spacer = document.createElement("div");
-          spacer.style.cssText = `position:absolute; left:0; top:0; width:${maxRight + 12}px; height:${maxBottom + 12}px; pointer-events:none; opacity:0;`;
-          cardsWrap.appendChild(spacer);
-          for (const task of tasks) cardsWrap.appendChild(buildCardEl(task, key));
+          const today = todayDate();
+          // 期日の近い順に並べる（未設定は末尾）
+          const sorted = tasks.slice().sort((a, b) => {
+            const da = parseDue(a.due), db = parseDue(b.due);
+            if (!da && !db) return 0;
+            if (!da) return 1;
+            if (!db) return -1;
+            return da - db;
+          });
+          const rows = sorted.map(t => {
+            const due = parseDue(t.due);
+            const overdue = due && t.status !== "完了" && daysBetween(today, due) < 0;
+            const dueText = due ? formatDate(due) : escapeHtml(t.due || "—");
+            const members = membersOf(t);
+            const dot = { "未完了": "#e0533d", "進行中": "#e6a400", "完了": "#2fae5a" }[t.status] || "#999";
+            return `<tr data-task-id="${t.id}" class="status-${t.status}">
+              <td class="kl-title"><span class="kl-dot" style="background:${dot}" title="${escapeHtml(t.status)}"></span>${escapeHtml(t.name)}</td>
+              <td class="kl-content">${t.content ? escapeHtml(t.content) : '<span class="kl-muted">—</span>'}</td>
+              <td class="kl-due${overdue ? " overdue" : ""}">${dueText}${overdue ? " ⚠" : ""}</td>
+              <td class="kl-members">${members.length ? escapeHtml(members.join("、")) : '<span class="kl-muted">—</span>'}</td>
+              <td class="kl-remarks">${t.remarks ? escapeHtml(t.remarks) : '<span class="kl-muted">—</span>'}</td>
+            </tr>`;
+          }).join("");
+          listWrap.innerHTML = `<table class="kb-list-table">
+            <thead><tr><th>タイトル</th><th>内容</th><th>期日</th><th>メンバー</th><th>備考</th></tr></thead>
+            <tbody>${rows}</tbody></table>`;
+          listWrap.querySelectorAll("tr[data-task-id]").forEach(tr => {
+            tr.addEventListener("click", () => {
+              const task = state.tasks.find(x => x.id === Number(tr.dataset.taskId));
+              if (task) openTaskDialog(task);
+            });
+          });
         }
-        col.appendChild(cardsWrap);
+        col.appendChild(listWrap);
 
         if (openMenuMonthKey === key) {
           const menu = document.createElement("div");
