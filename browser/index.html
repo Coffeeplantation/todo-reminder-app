@@ -2001,7 +2001,10 @@
       </div>
 
       <div class="imp-src">
-        <span class="f-label" style="font-weight:600;">📋 テキスト・画像の貼り付け</span>
+        <span style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span class="f-label" style="font-weight:600;">📋 テキスト・画像の貼り付け</span>
+          <button type="button" id="btnImpText" class="secondary small">🤖 実行</button>
+        </span>
         <textarea id="impText" rows="3" placeholder="メールや議事録などの文章を貼り付け、または予定表のスクリーンショット/写真をこの欄に貼り付け（Ctrl+V）ると、AIが自動で予定を読み取ります" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; resize:vertical;"></textarea>
         <!-- 画像の貼り付け/選択。accept=image/* で画像だけ選べるようにする -->
         <input type="file" id="impImageInput" accept="image/*" class="imp-input-hidden">
@@ -4481,6 +4484,17 @@
     } finally {
       impExtracting = false;
     }
+  }
+  // 「🤖 実行」ボタン：手入力した文章や、自動抽出の再実行に使う（貼り付け/画像選択時は自動でも走る）
+  const btnImpText = document.getElementById("btnImpText");
+  if (btnImpText) {
+    btnImpText.addEventListener("click", () => {
+      if (!(document.getElementById("impText").value || "").trim() && !impPastedImage) {
+        impSetStatus("テキストを入力／貼り付けるか、画像を貼り付け／選択してください");
+        return;
+      }
+      runImpExtract();
+    });
   }
 
   const impCheckAll = document.getElementById("impCheckAll");
