@@ -1344,6 +1344,18 @@
   /* 貼り付け画像のプレビュー：hidden 属性で確実に隠す（インライン display:flex で hidden が無効化されるのを防ぐ） */
   .imp-image-preview { margin-top: 6px; display: flex; align-items: flex-start; gap: 8px; }
   .imp-image-preview[hidden] { display: none; }
+  /* ファイル/フォルダ選択を1ボタンにまとめる：押すと選択肢が開く（2026-07-29） */
+  .imp-picker > summary { list-style: none; }
+  .imp-picker > summary::-webkit-details-marker { display: none; }
+  .imp-picker > summary::after {
+    content: "▾";
+    margin-left: 6px;
+    font-size: 11px;
+    transition: transform 0.15s ease;
+  }
+  .imp-picker[open] > summary::after { transform: rotate(180deg); }
+  .imp-picker-options { display: flex; gap: 8px; margin-top: 8px; }
+  .imp-picker-options .imp-pick { flex: 1; }
   /* フォルダ選択／ファイル選択は label[for] だが、ボタンと同じ緑スタイルで同幅・横並びに表示する（2026-07-14） */
   .imp-pick {
     flex: 1;
@@ -1594,6 +1606,10 @@
   dialog.panel-modal:has(#sectionTaskParticipants),
   dialog.panel-modal:has(#sectionReminder) {
     width: 940px;
+  }
+  /* 自動タスク作成は、既定の内容が一度に見渡せるよう画面いっぱいまで縦に使う（2026-07-29） */
+  dialog.panel-modal:has(#sectionImport) .panel-modal-body {
+    max-height: calc(100vh - 120px);
   }
   /* 表が狭い画面でも崩れないよう、必要なら横スクロールで逃がす */
   #impPreviewWrap, .panel-modal-body .panel-body { overflow-x: auto; }
@@ -1966,13 +1982,11 @@
         <span style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
           <button type="button" id="btnOpenGmail" class="secondary small">📬 Gmailを開く</button>
           <button type="button" id="btnOpenOutlook" class="secondary small">📮 Outlookを開く</button>
-          <label for="impMailInput" class="imp-pick" style="flex:none;">📧 書き出しファイルを選択</label>
-          <input type="file" id="impMailInput" class="imp-input-hidden">
           <details class="imp-hint">
             <summary>ℹ️ 使い方</summary>
             <div class="imp-hint-body">
               <b>Gmail / Outlook をブラウザで開く</b>：ボタンで受信箱を開き、読み込みたいメールの本文をコピー → 上の「📋 テキスト・画像の貼り付け」欄に貼り付けて「🤖 読込」を押すと、ローカルAIが予定を読み取ります。<br>
-              <b>Outlookをまとめて読み込む</b>：アプリのフォルダにある「<b>メールボックス読み取り.vbs</b>」をダブルクリックすると、指定したOutlookフォルダのメールがデスクトップに「メールボックス書き出し.txt」として保存されます。そのファイルをここで選択（またはドラッグ＆ドロップ）すると、メールごとに予定を読み取ります。<br>
+              <b>Outlookをまとめて読み込む</b>：アプリのフォルダにある「<b>メールボックス読み取り.vbs</b>」をダブルクリックすると、指定したOutlookフォルダのメールがデスクトップに「メールボックス書き出し.txt」として保存されます。そのファイルを下の「📂 ファイル / フォルダを選択」から選ぶ（またはドラッグ＆ドロップ）と、メールごとに予定を読み取ります。<br>
               ※ 開いた受信箱のメール内容がPCの外（第三者）へ送信されることはありません。読み取りはPC内のローカルAIだけで行います。
             </div>
           </details>
@@ -1989,19 +2003,27 @@
       </div>
 
       <div class="imp-src">
-        <span style="display:flex; gap:8px;">
-          <!-- ボタンではなく label[for] にすることで、JSに依存せずネイティブにファイル/フォルダ選択ダイアログを開く。2つを同じ幅で横並びにする。 -->
-          <label for="impFolderInput" class="imp-pick">📂 フォルダを選択</label>
-          <label for="impFilesInput" class="imp-pick">📄 ファイルを選択</label>
-          <!-- accept は付けない：付けると選択ダイアログで他のファイルがグレー表示になり「選べない」ように見えるため。
-               対応形式のチェックは取り込み時（impHandleFiles）に行い、対象外はメッセージで知らせる。
-               display:none（hidden属性）だと環境により label からダイアログが開かないことがあるため、
-               「見えないが存在する」visually-hidden 方式にする。 -->
-          <input type="file" id="impFolderInput" webkitdirectory multiple class="imp-input-hidden">
-          <input type="file" id="impFilesInput" multiple class="imp-input-hidden">
-        </span>
-        <label id="impDropZone" for="impFilesInput" style="display:block; margin-top:6px; padding:10px 12px; border:1.5px dashed var(--border); border-radius:8px; font-size:12px; color:var(--muted); text-align:center; cursor:pointer;">
-          デスクトップなどから、Excel / CSV / .ics / テキストの<b>ファイルやフォルダをドラッグ＆ドロップ</b>、またはクリックして選択
+        <!-- 1つのボタンにまとめる：押すと「ファイル」「フォルダ」の選択肢が開く。
+             ファイルとフォルダは別々の input（webkitdirectory 有無）が必要なため、1つのネイティブダイアログでは兼用できない。 -->
+        <details class="imp-picker">
+          <summary class="imp-pick">📂 ファイル / フォルダを選択</summary>
+          <div class="imp-picker-options">
+            <!-- ボタンではなく label[for] にすることで、JSに依存せずネイティブにファイル/フォルダ選択ダイアログを開く。 -->
+            <label for="impFilesInput" class="imp-pick">📄 ファイルを選択</label>
+            <label for="impFolderInput" class="imp-pick">📂 フォルダを選択</label>
+          </div>
+        </details>
+        <!-- accept は付けない：付けると選択ダイアログで他のファイルがグレー表示になり「選べない」ように見えるため。
+             対応形式のチェックは取り込み時（impHandleFiles）に行い、対象外はメッセージで知らせる。
+             display:none（hidden属性）だと環境により label からダイアログが開かないことがあるため、
+             「見えないが存在する」visually-hidden 方式にする。 -->
+        <input type="file" id="impFolderInput" webkitdirectory multiple class="imp-input-hidden">
+        <input type="file" id="impFilesInput" multiple class="imp-input-hidden">
+        <label id="impDropZone" for="impFilesInput" style="display:flex; flex-direction:column; align-items:center; gap:4px; margin-top:6px; padding:14px 12px; border:1.5px dashed var(--border); border-radius:8px; color:var(--muted); text-align:center; cursor:pointer; line-height:1.6;">
+          <span style="font-size:22px;">📥</span>
+          <span style="font-size:13.5px; font-weight:600; color:var(--text);">ファイル・フォルダをドラッグ＆ドロップ</span>
+          <span style="font-size:12px;">または クリックして選択</span>
+          <span style="font-size:11px;">対応形式：Excel / CSV / .ics / テキスト</span>
         </label>
       </div>
 
@@ -4347,7 +4369,7 @@
 
   // 「フォルダを選択」「ファイルを選択」は基本 label[for] でネイティブに開く（JS非依存で確実）。
   // 選択後の change を受け取ってファイルを取り込む。
-  for (const id of ["impFolderInput", "impFilesInput", "impMailInput"]) {
+  for (const id of ["impFolderInput", "impFilesInput"]) {
     document.getElementById(id).addEventListener("change", e => {
       impHandleFiles(e.target.files).catch(err => impSetStatus("エラー: " + err.message));
       e.target.value = "";
