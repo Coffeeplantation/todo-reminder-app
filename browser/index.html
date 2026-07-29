@@ -1341,6 +1341,9 @@
     line-height: 1.6;
     margin-top: 4px;
   }
+  /* 貼り付け画像のプレビュー：hidden 属性で確実に隠す（インライン display:flex で hidden が無効化されるのを防ぐ） */
+  .imp-image-preview { margin-top: 6px; display: flex; align-items: flex-start; gap: 8px; }
+  .imp-image-preview[hidden] { display: none; }
   /* フォルダ選択／ファイル選択は label[for] だが、ボタンと同じ緑スタイルで同幅・横並びに表示する（2026-07-14） */
   .imp-pick {
     flex: 1;
@@ -1999,15 +2002,14 @@
 
       <div class="imp-src">
         <span class="f-label" style="font-weight:600;">📋 テキスト・画像の貼り付け</span>
-        <textarea id="impText" rows="3" placeholder="メールや議事録などの文章を貼り付け、または予定表のスクリーンショット/写真をこの欄に貼り付け（Ctrl+V）て「抽出」を押すと、AIが予定を読み取ります" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; resize:vertical;"></textarea>
+        <textarea id="impText" rows="3" placeholder="メールや議事録などの文章を貼り付け、または予定表のスクリーンショット/写真をこの欄に貼り付け（Ctrl+V）ると、AIが自動で予定を読み取ります" style="width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; resize:vertical;"></textarea>
         <!-- 画像の貼り付け/選択。accept=image/* で画像だけ選べるようにする -->
         <input type="file" id="impImageInput" accept="image/*" class="imp-input-hidden">
-        <div id="impImagePreview" hidden style="margin-top:6px; display:flex; align-items:flex-start; gap:8px;">
+        <div id="impImagePreview" class="imp-image-preview" hidden>
           <img id="impImageThumb" alt="貼り付けた画像" style="max-width:180px; max-height:120px; border:1px solid var(--border); border-radius:8px; object-fit:contain; background:#fff;">
           <button type="button" id="btnImpImageClear" class="secondary small" title="画像を外す">✕ 画像を外す</button>
         </div>
         <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
-          <button type="button" id="btnImpText" class="secondary small">🤖 抽出</button>
           <label for="impImageInput" class="secondary small" style="cursor:pointer; display:inline-flex; align-items:center;">📷 画像を選択</label>
           <details class="imp-hint">
             <summary>ℹ️ 使い方</summary>
@@ -4422,7 +4424,8 @@
       impPastedImage = { base64, mediaType: file.type || "image/png", dataUrl };
       if (impImageThumb) impImageThumb.src = dataUrl;
       if (impImagePreview) impImagePreview.hidden = false;
-      impSetStatus("画像を読み込みました。「🤖 抽出」を押すと画像から予定を読み取ります。");
+      // 画像を読み込んだら自動で抽出を開始する（ボタン操作は不要）
+      runImpExtract();
     };
     reader.readAsDataURL(file);
   }
@@ -4450,28 +4453,34 @@
           if (f) { e.preventDefault(); impSetImageFromFile(f); return; }
         }
       }
+      // 画像でなくテキストの貼り付けなら、反映後に自動で抽出を開始する（ボタン操作は不要）
+      setTimeout(() => { if (impTextArea.value.trim()) runImpExtract(); }, 0);
     });
   }
 
-  const btnImpText = document.getElementById("btnImpText");
-  if (btnImpText) {
-    btnImpText.addEventListener("click", async () => {
-      const t = document.getElementById("impText").value.trim();
-      // 画像があれば画像から、無ければテキストから抽出する
-      if (!t && !impPastedImage) { impSetStatus("テキストを貼り付けるか、画像を貼り付け／選択してください"); return; }
-      const usingImage = !!impPastedImage;
-      impSetStatus(usingImage
-        ? "AIで画像から予定を抽出中…（ローカルAIは画像読み取りに数分かかることがあります）"
-        : "AIで予定を抽出中…（ローカルAIは1分ほどかかることがあります）");
-      try {
-        const tasks = await aiExtractTasks(t, impPastedImage || undefined);
-        const n = impAddCandidates(tasks, usingImage ? "貼り付け画像" : "貼り付けテキスト");
-        renderImpPreview();
-        impSetStatus(`${n} 件の新しい予定を読み取りました`);
-      } catch (e) {
-        impSetStatus("エラー: " + e.message);
-      }
-    });
+  // テキスト貼り付け／画像設定で自動的に呼ぶ抽出処理（以前の「🤖 抽出」ボタン相当）。
+  // 二重起動を防ぐため実行中フラグで排他する。
+  let impExtracting = false;
+  async function runImpExtract() {
+    if (impExtracting) return;
+    const t = (document.getElementById("impText").value || "").trim();
+    // 画像があれば画像から、無ければテキストから抽出する
+    if (!t && !impPastedImage) return;
+    const usingImage = !!impPastedImage;
+    impExtracting = true;
+    impSetStatus(usingImage
+      ? "AIで画像から予定を抽出中…（ローカルAIは画像読み取りに数分かかることがあります）"
+      : "AIで予定を抽出中…（ローカルAIは1分ほどかかることがあります）");
+    try {
+      const tasks = await aiExtractTasks(t, impPastedImage || undefined);
+      const n = impAddCandidates(tasks, usingImage ? "貼り付け画像" : "貼り付けテキスト");
+      renderImpPreview();
+      impSetStatus(`${n} 件の新しい予定を読み取りました`);
+    } catch (e) {
+      impSetStatus("エラー: " + e.message);
+    } finally {
+      impExtracting = false;
+    }
   }
 
   const impCheckAll = document.getElementById("impCheckAll");
