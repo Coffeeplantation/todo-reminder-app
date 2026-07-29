@@ -1344,6 +1344,54 @@
   /* 貼り付け画像のプレビュー：hidden 属性で確実に隠す（インライン display:flex で hidden が無効化されるのを防ぐ） */
   .imp-image-preview { margin-top: 6px; display: flex; align-items: flex-start; gap: 8px; }
   .imp-image-preview[hidden] { display: none; }
+  /* メモ：タスクボードのカードと同じ見た目の静的カード。クリックで本文を表示するだけ（2026-07-29） */
+  .memo-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  .memo-card {
+    position: relative;
+    width: 190px;
+    background: linear-gradient(180deg, #ffffff, #f7f9fc);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent, #2563eb);
+    border-radius: 12px;
+    padding: 10px 13px;
+    font-size: 1em;
+    line-height: 1.35;
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    transition: box-shadow 0.2s var(--ease-out), transform 0.2s var(--ease-out);
+  }
+  .memo-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+  .memo-card .memo-card-title {
+    font-weight: 600;
+    word-break: break-word;
+    padding-right: 18px;
+  }
+  .memo-card .memo-card-text {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-size: 0.92em;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .memo-card .memo-del {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 20px;
+    height: 20px;
+    line-height: 18px;
+    text-align: center;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 0;
+  }
+  .memo-card .memo-del:hover { background: rgba(239, 68, 68, 0.13); color: #dc2626; }
   /* ファイル/フォルダ選択を1ボタンにまとめる：押すと選択肢が開く（2026-07-29） */
   .imp-picker > summary { list-style: none; }
   .imp-picker > summary::-webkit-details-marker { display: none; }
@@ -2049,6 +2097,17 @@
         </div>
       </div>
 
+      <!-- メモ：タスクボードのカードと同じ見た目。クリックすると本文を表示するだけの簡易メモ -->
+      <div class="imp-src">
+        <span class="f-label" style="font-weight:600;">📝 メモ</span>
+        <span style="display:flex; gap:6px; flex-wrap:wrap;">
+          <input type="text" id="memoTitle" placeholder="メモのタイトル" style="flex:1; min-width:140px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
+          <button type="button" id="btnAddMemo" class="secondary small">＋ メモを追加</button>
+        </span>
+        <textarea id="memoText" rows="2" placeholder="メモの内容（クリックで表示されます）" style="width:100%; margin-top:6px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; resize:vertical;"></textarea>
+        <div id="memoList" class="memo-list"></div>
+      </div>
+
       <div id="impStatus" style="font-size:12.5px; color:var(--muted); min-height:18px; margin:6px 0;"></div>
 
       <div id="impFolderInfo" hidden style="margin:10px 0; padding:8px; background:rgba(59,130,246,0.08); border-radius:6px; border-left:3px solid #3b82f6;">
@@ -2286,7 +2345,9 @@
     boardGroups: [],
     lockedGroups: [], // 「完全に1つ」に固定した結合ボードのキー一覧（分離不可にする）
     aiPanelPos: null,
-    autoDraftLog: [] // 自動リマインダー下書きの作成履歴（最新50件）
+    autoDraftLog: [], // 自動リマインダー下書きの作成履歴（最新50件）
+    memos: [], // 自動タスク作成内のメモ（{ id, title, text }）。クリックで本文を表示するだけの簡易メモ
+    nextMemoId: 1
   });
 
   let state = load();
@@ -4541,6 +4602,63 @@
       runImpExtract();
     });
   }
+
+  // ---- メモ（タスクボードのカードと同じ見た目。クリックで本文を表示するだけの簡易メモ） ----
+  const memoListEl = document.getElementById("memoList");
+  function renderMemos() {
+    if (!memoListEl) return;
+    memoListEl.innerHTML = "";
+    for (const m of (state.memos || [])) {
+      const card = document.createElement("div");
+      card.className = "memo-card";
+      card.dataset.id = m.id;
+
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "memo-del";
+      del.title = "メモを削除";
+      del.textContent = "✕";
+      del.addEventListener("click", e => {
+        e.stopPropagation(); // カードのクリック（本文表示）と分離する
+        state.memos = state.memos.filter(x => x.id !== m.id);
+        save();
+        renderMemos();
+      });
+
+      const title = document.createElement("div");
+      title.className = "memo-card-title";
+      title.textContent = m.title || "（無題）";
+
+      const text = document.createElement("div");
+      text.className = "memo-card-text";
+      text.textContent = m.text || "";
+      text.hidden = true; // クリックするまで本文は隠す
+
+      // クリックすると本文の表示/非表示を切り替える（表示されるだけ・編集はしない）
+      card.addEventListener("click", () => { text.hidden = !text.hidden; });
+
+      card.append(del, title, text);
+      memoListEl.appendChild(card);
+    }
+  }
+  const btnAddMemo = document.getElementById("btnAddMemo");
+  const memoTitleEl = document.getElementById("memoTitle");
+  const memoTextEl = document.getElementById("memoText");
+  if (btnAddMemo) {
+    btnAddMemo.addEventListener("click", () => {
+      const title = (memoTitleEl.value || "").trim();
+      const text = (memoTextEl.value || "").trim();
+      if (!title && !text) { impSetStatus("メモのタイトルか内容を入力してください"); return; }
+      if (!Array.isArray(state.memos)) state.memos = [];
+      if (!state.nextMemoId) state.nextMemoId = 1;
+      state.memos.push({ id: state.nextMemoId++, title, text });
+      save();
+      memoTitleEl.value = "";
+      memoTextEl.value = "";
+      renderMemos();
+    });
+  }
+  renderMemos();
 
   const impCheckAll = document.getElementById("impCheckAll");
   if (impCheckAll) {
