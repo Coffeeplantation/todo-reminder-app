@@ -536,6 +536,9 @@
   .kb-list-table .kl-due { white-space: nowrap; }
   .kb-list-table .kl-due.overdue { color: #d33; font-weight: 700; }
   .kb-list-table .kl-members { min-width: 80px; }
+  /* メンバー名はクリックで参加者リストを表示できる（行クリックの編集ダイアログとは分離） */
+  .kb-list-table .kl-members-btn { cursor: pointer; color: var(--accent, #2563eb); text-decoration: underline dotted; text-underline-offset: 2px; }
+  .kb-list-table .kl-members-btn:hover { text-decoration-style: solid; }
   .kb-list-table .kl-muted { color: #9aa3b2; }
   .kb-col-tile-icon {
     position: absolute;
@@ -1375,6 +1378,15 @@
     white-space: pre-wrap;
     word-break: break-word;
   }
+  /* メモを開いたときの編集フォーム */
+  .memo-card.editing { cursor: default; width: 240px; }
+  .memo-card .memo-edit { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+  .memo-card .memo-edit input, .memo-card .memo-edit textarea {
+    width: 100%; box-sizing: border-box; padding: 5px 7px;
+    border: 1px solid var(--border); border-radius: 7px;
+    font-family: inherit; font-size: 0.92em;
+  }
+  .memo-card .memo-edit textarea { resize: vertical; min-height: 48px; line-height: 1.5; }
   .memo-card .memo-del {
     position: absolute;
     top: 6px;
@@ -1786,12 +1798,14 @@
             <option value="local">フォルダの写真</option>
           </select>
           <span id="cfgBgLocalRow" style="display:none; gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+            <button type="button" id="btnBgFile" class="secondary small">🖼 写真ファイルを選択</button>
             <button type="button" id="btnBgFolder" class="secondary small">📂 写真フォルダを選択</button>
             <button type="button" id="btnBgPhotosClear" class="ghost small">登録写真をクリア</button>
             <small id="bgPhotoCount" style="color:var(--muted);"></small>
           </span>
           <input type="file" id="bgFolderInput" webkitdirectory multiple hidden>
-          <small style="color:var(--muted); display:block; margin-top:2px;">「フォルダの写真」はPC内の画像（jpg/png等）をこのブラウザ（IndexedDB）へ取り込み、ランダムに表示します。取り込み後はオフラインでも使えます。</small>
+          <input type="file" id="bgFilesInput" accept="image/*" multiple hidden>
+          <small style="color:var(--muted); display:block; margin-top:2px;">「フォルダの写真」はPC内の画像（jpg/png等）をこのブラウザ（IndexedDB）へ取り込み、ランダムに表示します。<b>「🖼 写真ファイルを選択」でピクチャから1枚だけ選んで背景にすることもできます。</b>取り込み後はオフラインでも使えます。</small>
         </span>
 
         <label for="cfgBgInterval">背景の自動切替間隔（分）</label>
@@ -2097,14 +2111,12 @@
         </div>
       </div>
 
-      <!-- メモ：タスクボードのカードと同じ見た目。クリックすると本文を表示するだけの簡易メモ -->
+      <!-- メモ：タスクボードのカードと同じ見た目。「メモを作成」で1枚追加し、カードを開いてタイトル・内容を編集する -->
       <div class="imp-src">
         <span class="f-label" style="font-weight:600;">📝 メモ</span>
-        <span style="display:flex; gap:6px; flex-wrap:wrap;">
-          <input type="text" id="memoTitle" placeholder="メモのタイトル" style="flex:1; min-width:140px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
-          <button type="button" id="btnAddMemo" class="secondary small">＋ メモを追加</button>
+        <span>
+          <button type="button" id="btnAddMemo" class="secondary small">＋ メモを作成</button>
         </span>
-        <textarea id="memoText" rows="2" placeholder="メモの内容（クリックで表示されます）" style="width:100%; margin-top:6px; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; resize:vertical;"></textarea>
         <div id="memoList" class="memo-list"></div>
       </div>
 
@@ -3052,12 +3064,11 @@
     changeBackground(false);
     restartBgTimer();
   });
-  document.getElementById("btnBgFolder").addEventListener("click", () => document.getElementById("bgFolderInput").click());
-  document.getElementById("bgFolderInput").addEventListener("change", async e => {
-    const files = [...e.target.files]
+  // フォルダ選択・ファイル選択の両方から呼ぶ共通の背景写真取り込み処理
+  async function bgImportFiles(fileList) {
+    const files = [...fileList]
       .filter(f => /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name) && f.size < 15 * 1024 * 1024)
       .slice(0, 200); // 取り込み上限（容量保護）
-    e.target.value = "";
     if (!files.length) { toast("画像ファイル（jpg/png等）が見つかりませんでした"); return; }
     try {
       await bgDbAddAll(files);
@@ -3070,6 +3081,17 @@
     } catch (err) {
       toast("写真の取り込みに失敗しました: " + err.message);
     }
+  }
+  document.getElementById("btnBgFolder").addEventListener("click", () => document.getElementById("bgFolderInput").click());
+  document.getElementById("bgFolderInput").addEventListener("change", async e => {
+    const list = e.target.files; e.target.value = "";
+    await bgImportFiles(list);
+  });
+  // 🖼 写真ファイルを選択：ピクチャ等から個別の画像を参照して背景にする
+  document.getElementById("btnBgFile").addEventListener("click", () => document.getElementById("bgFilesInput").click());
+  document.getElementById("bgFilesInput").addEventListener("change", async e => {
+    const list = e.target.files; e.target.value = "";
+    await bgImportFiles(list);
   });
   document.getElementById("btnBgPhotosClear").addEventListener("click", async () => {
     if (!confirm("登録した背景写真をすべて削除しますか？（PC内の元ファイルは消えません）")) return;
@@ -4603,14 +4625,27 @@
     });
   }
 
-  // ---- メモ（タスクボードのカードと同じ見た目。クリックで本文を表示するだけの簡易メモ） ----
+  // ---- メモ（タスクボードのカードと同じ見た目。「メモを作成」で追加し、カードを開いて編集する） ----
   const memoListEl = document.getElementById("memoList");
+  let openMemoId = null; // 現在開いて編集中のメモID（null=すべて閉じている）
+
+  // 同名を避けるため「メモ」＋連番でユニークなタイトルを作る（excludeId は自分自身を除外）
+  function uniqueMemoTitle(base, excludeId) {
+    const others = (state.memos || []).filter(m => m.id !== excludeId).map(m => (m.title || "").trim());
+    base = (base || "").trim() || "メモ";
+    if (!others.includes(base)) return base;
+    let n = 1;
+    while (others.includes(base + n)) n++;
+    return base + n;
+  }
+
   function renderMemos() {
     if (!memoListEl) return;
     memoListEl.innerHTML = "";
     for (const m of (state.memos || [])) {
+      const editing = m.id === openMemoId;
       const card = document.createElement("div");
-      card.className = "memo-card";
+      card.className = "memo-card" + (editing ? " editing" : "");
       card.dataset.id = m.id;
 
       const del = document.createElement("button");
@@ -4619,8 +4654,9 @@
       del.title = "メモを削除";
       del.textContent = "✕";
       del.addEventListener("click", e => {
-        e.stopPropagation(); // カードのクリック（本文表示）と分離する
+        e.stopPropagation();
         state.memos = state.memos.filter(x => x.id !== m.id);
+        if (openMemoId === m.id) openMemoId = null;
         save();
         renderMemos();
       });
@@ -4629,32 +4665,55 @@
       title.className = "memo-card-title";
       title.textContent = m.title || "（無題）";
 
-      const text = document.createElement("div");
-      text.className = "memo-card-text";
-      text.textContent = m.text || "";
-      text.hidden = true; // クリックするまで本文は隠す
+      card.append(del, title);
 
-      // クリックすると本文の表示/非表示を切り替える（表示されるだけ・編集はしない）
-      card.addEventListener("click", () => { text.hidden = !text.hidden; });
+      if (editing) {
+        // 開いた状態：タイトル・内容を編集できる（入力するたびに保存）
+        const form = document.createElement("div");
+        form.className = "memo-edit";
+        form.addEventListener("click", e => e.stopPropagation()); // 編集操作でカードを閉じない
 
-      card.append(del, title, text);
+        const tin = document.createElement("input");
+        tin.type = "text";
+        tin.value = m.title || "";
+        tin.placeholder = "タイトル";
+        tin.addEventListener("input", () => { m.title = tin.value; title.textContent = m.title || "（無題）"; save(); });
+        // 同名なら数字で区別する（フォーカスが外れたタイミングで整える）
+        tin.addEventListener("blur", () => {
+          const uniq = uniqueMemoTitle(m.title, m.id);
+          if (uniq !== (m.title || "").trim()) { m.title = uniq; tin.value = uniq; title.textContent = uniq; save(); }
+        });
+
+        const ta = document.createElement("textarea");
+        ta.rows = 3;
+        ta.value = m.text || "";
+        ta.placeholder = "メモの内容";
+        ta.addEventListener("input", () => { m.text = ta.value; save(); });
+
+        form.append(tin, ta);
+        card.appendChild(form);
+      }
+
+      // カードのクリックで開閉（開くと編集フォーム表示、閉じるとタイトルのみ）
+      card.addEventListener("click", () => {
+        openMemoId = editing ? null : m.id;
+        renderMemos();
+      });
+
       memoListEl.appendChild(card);
     }
   }
+
   const btnAddMemo = document.getElementById("btnAddMemo");
-  const memoTitleEl = document.getElementById("memoTitle");
-  const memoTextEl = document.getElementById("memoText");
   if (btnAddMemo) {
     btnAddMemo.addEventListener("click", () => {
-      const title = (memoTitleEl.value || "").trim();
-      const text = (memoTextEl.value || "").trim();
-      if (!title && !text) { impSetStatus("メモのタイトルか内容を入力してください"); return; }
       if (!Array.isArray(state.memos)) state.memos = [];
       if (!state.nextMemoId) state.nextMemoId = 1;
-      state.memos.push({ id: state.nextMemoId++, title, text });
+      const id = state.nextMemoId++;
+      // 既定タイトルは「メモ」＋連番で同名を避ける
+      state.memos.push({ id, title: uniqueMemoTitle("メモ"), text: "" });
+      openMemoId = id; // 作成後すぐ開いて編集できるようにする
       save();
-      memoTitleEl.value = "";
-      memoTextEl.value = "";
       renderMemos();
     });
   }
@@ -5370,7 +5429,7 @@
         <span class="status-badge status-${task.status}">${task.status}</span>
         <span class="t-foot-right">
           ${(task.participants && task.participants.length) ? `<button type="button" class="t-participants-btn" data-show-participants title="参加者リストを表示">👥 ${task.participants.length}</button>` : ""}
-          ${assignee ? `<span class="t-avatar" style="background:${avatarColor(assignee)}" title="${escapeHtml(assignee)}">${escapeHtml([...assignee][0])}</span>` : ""}
+          ${assignee ? `<span class="t-avatar" data-show-members style="background:${avatarColor(assignee)}; cursor:pointer;" title="参加メンバーを表示（${escapeHtml(assignee)}）">${escapeHtml([...assignee][0])}</span>` : ""}
           <span class="t-caret" aria-hidden="true"><svg width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         </span>
       </div>
@@ -5451,9 +5510,18 @@
         showParticipantsList(task.name, task.participants || []);
       });
     }
+    // 担当者アバター（参加メンバー）：クリックで参加メンバー（主担当＋参加者）をリスト表示
+    const membersBtn = card.querySelector("[data-show-members]");
+    if (membersBtn) {
+      membersBtn.addEventListener("click", e => {
+        e.stopPropagation();
+        showParticipantsList(task.name, membersOf(task));
+      });
+    }
     card.addEventListener("click", e => {
       if (e.target.closest("[data-detail]")) return;
       if (e.target.closest("[data-show-participants]")) return;
+      if (e.target.closest("[data-show-members]")) return;
       // リサイズ操作の直後や、ハンドル自体のクリックでは選択トグルしない
       if (cardResized || e.target.classList.contains("kb-card-resize")) return;
       const willExpand = !expanded;
@@ -5773,7 +5841,7 @@
               <td class="kl-title"><span class="kl-dot" style="background:${dot}" title="${escapeHtml(t.status)}"></span>${escapeHtml(t.name)}</td>
               <td class="kl-content">${t.content ? escapeHtml(t.content) : '<span class="kl-muted">—</span>'}</td>
               <td class="kl-due${overdue ? " overdue" : ""}">${dueText}${overdue ? " ⚠" : ""}</td>
-              <td class="kl-members">${members.length ? escapeHtml(members.join("、")) : '<span class="kl-muted">—</span>'}</td>
+              <td class="kl-members">${members.length ? `<span class="kl-members-btn" data-show-members title="参加メンバーをリスト表示">${escapeHtml(members.join("、"))}</span>` : '<span class="kl-muted">—</span>'}</td>
               <td class="kl-remarks">${t.remarks ? escapeHtml(t.remarks) : '<span class="kl-muted">—</span>'}</td>
             </tr>`;
           }).join("");
@@ -5781,10 +5849,18 @@
             <thead><tr><th>タイトル</th><th>内容</th><th>期日</th><th>メンバー</th><th>備考</th></tr></thead>
             <tbody>${rows}</tbody></table>`;
           listWrap.querySelectorAll("tr[data-task-id]").forEach(tr => {
+            const task = state.tasks.find(x => x.id === Number(tr.dataset.taskId));
             tr.addEventListener("click", () => {
-              const task = state.tasks.find(x => x.id === Number(tr.dataset.taskId));
               if (task) openTaskDialog(task);
             });
+            // メンバー名クリック：行の編集ダイアログではなく参加メンバーのリストを表示する
+            const mb = tr.querySelector("[data-show-members]");
+            if (mb && task) {
+              mb.addEventListener("click", e => {
+                e.stopPropagation();
+                showParticipantsList(task.name, membersOf(task));
+              });
+            }
           });
         }
         col.appendChild(listWrap);
