@@ -1246,8 +1246,17 @@
   dialog .dlg-actions button { padding: 10px 22px; font-size: 16px; }
 
   /* ---- 予定の取り込みパネル・参加者チップ ---- */
-  /* 機能説明：クリックで開閉（既定は閉じる）。常時表示をやめて画面を見やすくする（2026-07-29） */
-  .imp-desc { margin: 0 0 14px; }
+  /* タイトル行：見出しを左、機能説明トグルを右上に置く（2026-07-29） */
+  .imp-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+  .imp-head h2 { margin: 0; }
+  /* 機能説明：右上のトグルをクリックで開閉。開くとポップオーバー表示（既定は閉じる） */
+  .imp-desc { position: relative; flex: none; }
   .imp-desc > summary {
     list-style: none;
     cursor: pointer;
@@ -1262,6 +1271,7 @@
     background: rgba(37, 99, 235, 0.06);
     border: 1px solid rgba(37, 99, 235, 0.18);
     border-radius: 8px;
+    white-space: nowrap;
     transition: background 0.15s ease;
   }
   .imp-desc > summary::-webkit-details-marker { display: none; }
@@ -1273,8 +1283,21 @@
   }
   .imp-desc[open] > summary::before { transform: rotate(90deg); }
   .imp-desc > summary:hover { background: rgba(37, 99, 235, 0.12); }
-  .imp-desc[open] > summary { margin-bottom: 2px; }
-  .imp-desc p { line-height: 1.7; }
+  .imp-desc-pop {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    width: min(380px, 82vw);
+    padding: 10px 12px;
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.7;
+    background: var(--card, #fff);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm);
+    z-index: 20;
+  }
   /* 取り込み元カード：区切りを付けて1ブロックずつ見やすく（2026-07-29） */
   .imp-src {
     display: flex;
@@ -1909,17 +1932,18 @@
   </section>
 
   <section class="panel modal-only" id="sectionImport">
-    <h2>📥 自動タスク作成（予定表をAIに取り込む）</h2>
-    <div class="panel-body" id="importPanelBody">
+    <div class="imp-head">
+      <h2>📥 自動タスク作成（予定表をAIに取り込む）</h2>
       <details class="imp-desc">
         <summary>ℹ️ この機能について</summary>
-        <p style="font-size:12.5px; color:var(--muted); margin:8px 0 10px;">
+        <div class="imp-desc-pop">
           参照リンク（URL）、フォルダ内のファイル（Excel / CSV / カレンダー(.ics) / テキスト）、メールボックスの書き出しから予定を読み取り、タスクボード（現行予定表）へ自動登録します。<br>
           表形式のファイルはそのまま解析し、自由な文章はローカルAI（Ollama）が予定を抽出します。読み込んだ内容が外部へ送信されることはありません。<br>
           更新版の予定表を読み込むと、既存の予定と<b>同じ名前で期日などが異なるもの</b>は「変更」として検出します。反映時に変更点の確認チェックが出るので、内容を確かめてからスケジュールを更新できます。
-        </p>
+        </div>
       </details>
-
+    </div>
+    <div class="panel-body" id="importPanelBody">
       <!-- 取り込んだ予定の反映先：新規タスクを作るか、既存タスクへ予定を追加するかを選ぶ -->
       <div id="impModeRow" style="display:flex; flex-direction:column; gap:8px; margin:0 0 12px; padding:10px 12px; background:rgba(37,99,235,0.06); border:1px solid rgba(37,99,235,0.2); border-radius:8px;">
         <span style="font-weight:700; font-size:13px;">取り込んだ予定の反映先</span>
