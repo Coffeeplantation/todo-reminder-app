@@ -1964,12 +1964,16 @@
       <div class="imp-src">
         <span class="f-label" style="font-weight:600;">📧 メールボックスから読み込む</span>
         <span style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button type="button" id="btnOpenGmail" class="secondary small">📬 Gmailを開く</button>
+          <button type="button" id="btnOpenOutlook" class="secondary small">📮 Outlookを開く</button>
           <label for="impMailInput" class="imp-pick" style="flex:none;">📧 書き出しファイルを選択</label>
           <input type="file" id="impMailInput" class="imp-input-hidden">
           <details class="imp-hint">
             <summary>ℹ️ 使い方</summary>
             <div class="imp-hint-body">
-              アプリのフォルダにある「<b>メールボックス読み取り.vbs</b>」をダブルクリックすると、指定したOutlookフォルダのメールがデスクトップに「メールボックス書き出し.txt」として保存されます。そのファイルをここで選択（またはドラッグ＆ドロップ）すると、ローカルAIがメールごとに予定を読み取ります。
+              <b>Gmail / Outlook をブラウザで開く</b>：ボタンで受信箱を開き、読み込みたいメールの本文をコピー → 上の「📋 テキスト・画像の貼り付け」欄に貼り付けて「🤖 読込」を押すと、ローカルAIが予定を読み取ります。<br>
+              <b>Outlookをまとめて読み込む</b>：アプリのフォルダにある「<b>メールボックス読み取り.vbs</b>」をダブルクリックすると、指定したOutlookフォルダのメールがデスクトップに「メールボックス書き出し.txt」として保存されます。そのファイルをここで選択（またはドラッグ＆ドロップ）すると、メールごとに予定を読み取ります。<br>
+              ※ 開いた受信箱のメール内容がPCの外（第三者）へ送信されることはありません。読み取りはPC内のローカルAIだけで行います。
             </div>
           </details>
         </span>
@@ -1977,6 +1981,7 @@
 
       <div class="imp-src">
         <span class="f-label" style="font-weight:600;">🔗 参照リンク</span>
+        <span style="font-size:12px; color:var(--muted);">リンク先の予定を読み込む</span>
         <span style="display:flex; gap:6px;">
           <input type="url" id="impUrl" placeholder="https://example.com/schedule" style="flex:1; padding:6px 8px; border:1px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px;">
           <button type="button" id="btnImpUrl" class="secondary small">読み込む</button>
@@ -4403,6 +4408,23 @@
       const u = document.getElementById("impUrl").value.trim();
       if (!u) { impSetStatus("URLを入力してください"); return; }
       impHandleUrl(u).catch(err => impSetStatus("エラー: " + err.message));
+    });
+  }
+
+  // Gmail / Outlook の受信箱をブラウザで開く（開いたメール本文をコピーして貼り付け欄で読み込む運用）。
+  // アプリ自身は受信箱を直接読まないため、メール内容がPC外へ送られることはない（完全ローカル維持）。
+  const btnOpenGmail = document.getElementById("btnOpenGmail");
+  if (btnOpenGmail) {
+    btnOpenGmail.addEventListener("click", () => {
+      window.open("https://mail.google.com/", "_blank", "noopener");
+      impSetStatus("Gmailを開きました。読みたいメール本文をコピーし、「📋 テキスト・画像の貼り付け」欄に貼り付けて読込してください。");
+    });
+  }
+  const btnOpenOutlook = document.getElementById("btnOpenOutlook");
+  if (btnOpenOutlook) {
+    btnOpenOutlook.addEventListener("click", () => {
+      window.open("https://outlook.live.com/mail/", "_blank", "noopener");
+      impSetStatus("Outlookを開きました。読みたいメール本文をコピーし、「📋 テキスト・画像の貼り付け」欄に貼り付けて読込してください。");
     });
   }
 
