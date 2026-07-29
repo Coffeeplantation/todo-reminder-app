@@ -2006,11 +2006,13 @@
         <!-- 1つのボタンにまとめる：押すと「ファイル」「フォルダ」の選択肢が開く。
              ファイルとフォルダは別々の input（webkitdirectory 有無）が必要なため、1つのネイティブダイアログでは兼用できない。 -->
         <details class="imp-picker">
-          <summary class="imp-pick">📂 ファイル / フォルダを選択</summary>
+          <summary class="imp-pick">📂 ファイル / フォルダ / 画像を選択</summary>
           <div class="imp-picker-options">
-            <!-- ボタンではなく label[for] にすることで、JSに依存せずネイティブにファイル/フォルダ選択ダイアログを開く。 -->
+            <!-- ボタンではなく label[for] にすることで、JSに依存せずネイティブにファイル/フォルダ選択ダイアログを開く。
+                 画像は下部の impImageInput（accept=image/*）を参照する。 -->
             <label for="impFilesInput" class="imp-pick">📄 ファイルを選択</label>
             <label for="impFolderInput" class="imp-pick">📂 フォルダを選択</label>
+            <label for="impImageInput" class="imp-pick">🖼️ 画像を選択</label>
           </div>
         </details>
         <!-- accept は付けない：付けると選択ダイアログで他のファイルがグレー表示になり「選べない」ように見えるため。
@@ -2040,7 +2042,6 @@
           <button type="button" id="btnImpImageClear" class="secondary small" title="画像を外す">✕ 画像を外す</button>
         </div>
         <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
-          <label for="impImageInput" class="secondary small" style="cursor:pointer; display:inline-flex; align-items:center;">📷 画像を選択</label>
           <details class="imp-hint">
             <summary>ℹ️ 使い方</summary>
             <div class="imp-hint-body">画像はローカルAI（Ollamaのビジョンモデル）で読み取ります。オフラインのまま利用できます。</div>
