@@ -1288,6 +1288,36 @@
     box-shadow: var(--shadow-sm);
   }
   .imp-src .f-label { font-size: 13.5px; }
+  /* 個別の使い方説明：クリックで開閉するコンパクトなヒント（2026-07-29） */
+  .imp-hint { display: inline-block; }
+  .imp-hint > summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--muted);
+    padding: 2px 6px;
+    border-radius: 6px;
+    transition: background 0.15s ease;
+  }
+  .imp-hint > summary::-webkit-details-marker { display: none; }
+  .imp-hint > summary::before {
+    content: "▸";
+    font-size: 9px;
+    transition: transform 0.15s ease;
+  }
+  .imp-hint[open] > summary::before { transform: rotate(90deg); }
+  .imp-hint > summary:hover { background: rgba(37, 99, 235, 0.08); }
+  .imp-hint-body {
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.6;
+    margin-top: 4px;
+  }
   /* フォルダ選択／ファイル選択は label[for] だが、ボタンと同じ緑スタイルで同幅・横並びに表示する（2026-07-14） */
   .imp-pick {
     flex: 1;
@@ -1909,9 +1939,12 @@
         <span style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
           <label for="impMailInput" class="imp-pick" style="flex:none;">📧 書き出しファイルを選択</label>
           <input type="file" id="impMailInput" class="imp-input-hidden">
-          <small style="color:var(--muted); font-size:11.5px; flex:1; min-width:220px;">
-            アプリのフォルダにある「<b>メールボックス読み取り.vbs</b>」をダブルクリックすると、指定したOutlookフォルダのメールがデスクトップに「メールボックス書き出し.txt」として保存されます。そのファイルをここで選択（またはドラッグ＆ドロップ）すると、ローカルAIがメールごとに予定を読み取ります。
-          </small>
+          <details class="imp-hint">
+            <summary>ℹ️ 使い方</summary>
+            <div class="imp-hint-body">
+              アプリのフォルダにある「<b>メールボックス読み取り.vbs</b>」をダブルクリックすると、指定したOutlookフォルダのメールがデスクトップに「メールボックス書き出し.txt」として保存されます。そのファイルをここで選択（またはドラッグ＆ドロップ）すると、ローカルAIがメールごとに予定を読み取ります。
+            </div>
+          </details>
         </span>
       </div>
 
@@ -1952,7 +1985,10 @@
         <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
           <button type="button" id="btnImpText" class="secondary small">🤖 抽出</button>
           <label for="impImageInput" class="secondary small" style="cursor:pointer; display:inline-flex; align-items:center;">📷 画像を選択</label>
-          <span style="font-size:11px; color:var(--muted);">画像はローカルAI（Ollamaのビジョンモデル）で読み取ります。オフラインのまま利用できます。</span>
+          <details class="imp-hint">
+            <summary>ℹ️ 使い方</summary>
+            <div class="imp-hint-body">画像はローカルAI（Ollamaのビジョンモデル）で読み取ります。オフラインのまま利用できます。</div>
+          </details>
         </div>
       </div>
 
